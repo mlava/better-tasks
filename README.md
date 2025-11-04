@@ -2,8 +2,7 @@ If you've ever wondered why there isn't the ability to create recurring tasks in
 
 After you install this extension, it will automatically recognise new {{[[TODO]]}} items with a Repeat:: and/or Due:: attribute.
 
-
-📘 Examples — Recurring Task Syntax
+### 📘 Examples:
 
 You can record a recurring task either:
 - Inline, with metadata on the same block, or
@@ -15,40 +14,35 @@ Both styles work identically — choose your preferred style in Settings → Rec
 
 Use Roam attributes directly inside the task block.
 
-{{[[TODO]]}} Review project metrics
-repeat:: every weekday
-due:: [[2025-11-06]]
-
-or, as a single block with line breaks:
-
-{{[[TODO]]}} Review project metrics
-repeat:: every weekday
-due:: [[2025-11-06]]
-
+`{{[[TODO]]}} Review project metrics repeat:: every weekday due:: [[2025-11-06]]`
 
 You can also include other metadata like:
 
-{{[[TODO]]}} Send team update
+`{{[[TODO]]}} Send team update
 repeat:: every 2 weeks on Friday
 due:: [[2025-11-07]]
-completed:: [[2025-10-24]]
+completed:: [[2025-10-24]]`
 
 
 🔹 Child Block Style
 
 When "Child" mode is enabled in settings, repeat and due information is placed in sub-blocks under the task.
 
+```
 {{[[TODO]]}} Write weekly newsletter
-    - repeat:: every Friday
-    - due:: [[2025-11-07]]
+  - repeat:: every Friday
+  - due:: [[2025-11-07]]
+```
 
 
 If the task is completed, the extension may add a completion timestamp (depending on your settings):
 
+```
 {{[[DONE]]}} Write weekly newsletter
-    - repeat:: every Friday
-    - due:: [[2025-11-07]]
-    - completed:: [[2025-10-31]]
+  - repeat:: every Friday
+  - due:: [[2025-11-07]]
+  - completed:: [[2025-10-31]]
+```
 
 
 🔹 Hidden Attribute (Pill) Style
@@ -75,14 +69,17 @@ Repeat pill → copies the rule to clipboard (Alt+click to edit it)
 Due pill → opens the due date’s Daily Notes Page (Shift+click to snooze +1 day)
 
 
-🧭 Settings Quick Reference
+## 🧭 Settings:
 
 Destination for next task
 - Choose where the next instance appears: Daily Notes Page (DNP), the same page as the current task, or under a heading on the DNP
+
 Calculate next due date from
 - Base the next due date on the current due date or the completion date
+
 Show repeat/due as
 - Display as child blocks (visible) or hidden props with pills
+
 Confirm before spawning next task
 - Ask for confirmation when you complete a recurring task
 
