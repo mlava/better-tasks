@@ -99,7 +99,7 @@ Ordinals accepted: 1st/first, 2nd/second, 3rd/third, 4th/fourth, last.
 
 “Monthly” rules that name a day number will clamp to the last valid day when needed (e.g., “day 31” → Feb 29/28 depending on year).
 
-###Daily schedules
+**Daily schedules**
 
 *Every day*
 - daily
@@ -114,7 +114,7 @@ Ordinals accepted: 1st/first, 2nd/second, 3rd/third, 4th/fourth, last.
 *Weekdays only*
 - every weekday (Mon–Fri)
 
-###Weekly schedules
+**Weekly schedules**
 
 *Every week on a specific day*
 - every monday
@@ -143,7 +143,7 @@ Ordinals accepted: 1st/first, 2nd/second, 3rd/third, 4th/fourth, last.
 - every weekend
 - weekend (equivalent to weekly on Saturday and Sunday)
 
-###Monthly schedules (by day number)
+**Monthly schedules**
 
 *Same day of each month*
 - monthly (uses the current due date’s day-of-month as the anchor)
@@ -161,7 +161,7 @@ All of the following forms are accepted and equivalent for day numbers:
 - 12th day of each month
 - day 12 each month
 
-*Monthly schedules (by Nth weekday)*
+**Monthly schedules (by Nth weekday)**
 - First/Second/Third/Fourth/Last <Weekday> of each month
 - every month on the 1st monday
 - the first monday of every month
