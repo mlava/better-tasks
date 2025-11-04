@@ -16,13 +16,13 @@ export default {
           id: "rt-dnp-heading",
           name: "DNP heading (optional)",
           description: "Create under this heading on DNP when destination is DNP under heading",
-          action: { type: "input", placeholder: "#Tasks" },
+          action: { type: "input", placeholder: "Tasks" },
         },
         {
           id: "rt-advance-from",
           name: "Calculate next due date from",
-          description: "Calculate next date from current due date or completion date",
-          action: { type: "select", items: ["due", "completion"] },
+          description: "Calculate next date from current due date or TODO completion date",
+          action: { type: "select", items: ["Due", "Completion"] },
         },
         {
           id: "rt-attribute-surface",
@@ -532,7 +532,7 @@ export default {
         console.warn(`[RecurringTasks] Unable to parse repeat rule "${meta.repeat}"`);
         return null;
       }
-      const base = set.advanceFrom === "completion" ? todayLocal() : meta.due || todayLocal();
+      const base = set.advanceFrom === "Completion" ? todayLocal() : meta.due || todayLocal();
       switch (rule.kind) {
         case "DAILY":
           return addDaysLocal(base, rule.interval || 1);
