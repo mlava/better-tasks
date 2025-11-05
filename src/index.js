@@ -1997,8 +1997,64 @@ export default {
       });
     }
 
+    function promptForDate({ title, message, initial }) {
+      return new Promise((resolve) => {
+        let settled = false;
+        let current = typeof initial === "string" ? initial : "";
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+        const inputHtml = `<input type="date" value="${escapeHtml(current)}" />`;
+        iziToast.question({
+          theme: "light",
+          color: "black",
+          layout: 2,
+          class: "recTasks2",
+          position: "center",
+          drag: false,
+          timeout: false,
+          close: true,
+          overlay: true,
+          title,
+          message,
+          inputs: [
+            [
+              inputHtml,
+              "input",
+              function (_instance, _toast, input) {
+                current = input.value;
+              },
+              true,
+            ],
+          ],
+          buttons: [
+            [
+              "<button>Save</button>",
+              (instance, toastInstance, _button, _e, inputs) => {
+                const val = inputs?.[0]?.value?.trim();
+                instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
+                finish(val || null);
+              },
+              true,
+            ],
+            [
+              "<button>Cancel</button>",
+              (instance, toastInstance) => {
+                instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
+                finish(null);
+              },
+            ],
+          ],
+          onClosed: () => finish(null),
+        });
+      });
+    }
+
     function promptForRepeatAndDue(initial = {}) {
       const includeTaskText = !!initial.includeTaskText;
+      const setSnapshot = S();
       const snapshot = {
         repeat: typeof initial.repeat === "string" && initial.repeat ? initial.repeat : initial.repeatRaw || "",
         due:
@@ -2012,6 +2068,14 @@ export default {
               ? initial.taskTextRaw
               : "",
       };
+      const initialDueDate = snapshot.due ? parseRoamDate(snapshot.due) : null;
+      const initialDueIso =
+        initialDueDate instanceof Date && !Number.isNaN(initialDueDate.getTime())
+          ? formatIsoDate(initialDueDate, setSnapshot)
+          : /^\d{4}-\d{2}-\d{2}$/.test(snapshot.due || "")
+            ? snapshot.due
+            : "";
+      snapshot.dueIso = initialDueIso;
       return new Promise((resolve) => {
         let settled = false;
         const finish = (value) => {
@@ -2025,12 +2089,10 @@ export default {
         const repeatInputHtml = `<input type="text" placeholder="Repeat rule (required)" value="${escapeHtml(
           snapshot.repeat || ""
         )}" />`;
-        const dueInputHtml = `<input type="text" placeholder="Optional due date (YYYY-MM-DD or [[Page]])" value="${escapeHtml(
-          snapshot.due || ""
-        )}" />`;
+        const dueInputHtml = `<input type="date" value="${escapeHtml(snapshot.dueIso || "")}" />`;
         const promptMessage = includeTaskText
           ? "Enter the task text, repeat rule, and optional due date."
-          : "Enter the repeat rule and, optionally, a due date.";
+          : "Enter the repeat rule and, optionally, pick a due date.";
         const inputs = [];
         const indexes = {};
         if (includeTaskText) {
@@ -2047,7 +2109,7 @@ export default {
         indexes.repeat = inputs.length;
         const repeatConfig = [
           repeatInputHtml,
-          "keyup",
+          "input",
           function (_instance, _toast, input) {
             snapshot.repeat = input.value;
           },
@@ -2057,9 +2119,9 @@ export default {
         indexes.due = inputs.length;
         inputs.push([
           dueInputHtml,
-          "keyup",
+          "input",
           function (_instance, _toast, input) {
-            snapshot.due = input.value;
+            snapshot.dueIso = input.value;
           },
         ]);
         iziToast.question({
@@ -2085,14 +2147,23 @@ export default {
                   inputs?.[indexes.repeat]?.focus?.();
                   return;
                 }
-                const dueValue = inputs?.[indexes.due]?.value?.trim() || "";
+                const dueIso = inputs?.[indexes.due]?.value?.trim() || "";
                 const taskValue =
                   includeTaskText && indexes.task != null
                     ? (inputs?.[indexes.task]?.value || "").trim()
                     : undefined;
                 const normalizedRepeat = normalizeRepeatRuleText(repeatValue) || repeatValue;
-                const dueText = dueValue || null;
-                const dueDate = dueText ? parseRoamDate(dueText) : null;
+                let dueText = null;
+                let dueDate = null;
+                if (dueIso) {
+                  dueDate = parseRoamDate(dueIso);
+                  if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) {
+                    toast("Couldn't parse that date.");
+                    inputs?.[indexes.due]?.focus?.();
+                    return;
+                  }
+                  dueText = dueIso;
+                }
                 instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
                 finish({
                   repeat: normalizedRepeat,
@@ -2516,24 +2587,28 @@ export default {
       if (!due) return;
       if (event.altKey || event.metaKey || event.ctrlKey) {
         const existing = formatIsoDate(due, set);
-        const next = await promptForValue({
+        const nextIso = await promptForDate({
           title: "Edit Due Date",
-          message: "Set next due date (YYYY-MM-DD or [[Page Title]])",
-          placeholder: existing,
+          message: "Select the next due date",
           initial: existing,
         });
-        if (!next) return;
-        await updateBlockProps(uid, { due: next });
+        if (!nextIso) return;
+        const parsed = parseRoamDate(nextIso);
+        if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) {
+          toast("Couldn't parse that date.");
+          return;
+        }
+        const nextStr = formatDate(parsed, set);
+        await updateBlockProps(uid, { due: nextStr });
         let dueChildInfo = null;
         if (set.attributeSurface === "Child") {
-          dueChildInfo = await ensureChildAttr(uid, "due", next);
+          dueChildInfo = await ensureChildAttr(uid, "due", nextStr);
         }
-        await ensureInlineAttribute(block, "due", next);
-        const parsed = parseRoamDate(next) || todayLocal();
+        await ensureInlineAttribute(block, "due", nextStr);
         meta.due = parsed;
         if (set.attributeSurface === "Child") {
           meta.childAttrMap = meta.childAttrMap || {};
-          meta.childAttrMap.due = { value: next, uid: dueChildInfo?.uid || meta.childAttrMap.due?.uid || null };
+          meta.childAttrMap.due = { value: nextStr, uid: dueChildInfo?.uid || meta.childAttrMap.due?.uid || null };
         }
         mergeRepeatOverride(uid, { due: parsed });
         const relocation = await relocateBlockForDue(block, parsed, set, meta);
@@ -2562,7 +2637,7 @@ export default {
             previousParentUid: contextSnapshot.previousParentUid,
             previousOrder: contextSnapshot.previousOrder,
             newDue: new Date(parsed.getTime()),
-            newDueStr: next,
+            newDueStr: nextStr,
             newParentUid: relocation.targetUid,
             wasMoved: relocation.moved,
             snapshot: contextSnapshot.snapshot,
@@ -2775,25 +2850,29 @@ export default {
       const meta = await readRecurringMeta(block, set);
       const contextSnapshot = prepareDueChangeContext(block, meta, set);
       const initial = meta.due ? formatIsoDate(meta.due, set) : "";
-      const next = await promptForValue({
+      const nextIso = await promptForDate({
         title: "Snooze until",
-        message: "Enter a date (YYYY-MM-DD or [[Page Title]])",
-        placeholder: initial,
+        message: "Select the date to resume this task",
         initial,
       });
-      if (!next) return;
-      await updateBlockProps(uid, { due: next });
+      if (!nextIso) return;
+      const parsed = parseRoamDate(nextIso);
+      if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) {
+        toast("Couldn't parse that date.");
+        return;
+      }
+      const nextStr = formatDate(parsed, set);
+      await updateBlockProps(uid, { due: nextStr });
       let dueChildInfo = null;
       if (set.attributeSurface === "Child") {
-        dueChildInfo = await ensureChildAttr(uid, "due", next);
+        dueChildInfo = await ensureChildAttr(uid, "due", nextStr);
         meta.childAttrMap = meta.childAttrMap || {};
         meta.childAttrMap.due = {
-          value: next,
+          value: nextStr,
           uid: dueChildInfo?.uid || meta.childAttrMap.due?.uid || null,
         };
       }
-      await ensureInlineAttribute(block, "due", next);
-      const parsed = parseRoamDate(next) || todayLocal();
+      await ensureInlineAttribute(block, "due", nextStr);
       meta.due = parsed;
       mergeRepeatOverride(uid, { due: parsed });
       const relocation = await relocateBlockForDue(block, parsed, set, meta);
@@ -2818,7 +2897,7 @@ export default {
           previousParentUid: contextSnapshot.previousParentUid,
           previousOrder: contextSnapshot.previousOrder,
           newDue: new Date(parsed.getTime()),
-          newDueStr: next,
+          newDueStr: nextStr,
           newParentUid: relocation.targetUid,
           wasMoved: relocation.moved,
           snapshot: contextSnapshot.snapshot,
