@@ -1,176 +1,190 @@
-If you've ever wondered why there isn't the ability to create recurring tasks in Roam Research, with this extension there now is!
+# 🌀 Recurring Tasks for Roam Research
 
-After you install this extension, it will automatically recognise new {{[[TODO]]}} items with a Repeat:: and/or Due:: attribute.
+Bring true recurring task automation to Roam Research!  
+This extension automatically recognizes and manages TODO items that include `repeat::` and/or `due::` attributes, generating the next instance when a task is completed.
 
-### 📘 Examples:
+---
 
-You can record a recurring task either:
-- Inline, with metadata on the same block, or
-- Using child blocks, when you prefer to keep the main task text clean.
+## 📘 Quick Overview
 
-Both styles work identically — choose your preferred style in Settings → Recurring Tasks → “Show repeat/due as” (Child or Hidden).
+You can record a recurring task in **two styles** — both behave identically.  
+Choose your preferred mode under **Settings → Recurring Tasks → “Show repeat/due as”**.
 
-🔹 Inline Attribute Style
+### 🔹 Inline Attribute Style
 
-Use Roam attributes directly inside the task block.
+Use Roam attributes directly within the task block:
 
-`{{[[TODO]]}} Review project metrics repeat:: every weekday due:: [[2025-11-06]]`
+```markdown
+{{[[TODO]]}} Review project metrics repeat:: every weekday due:: [[2025-11-06]]
+```
 
-You can also include other metadata like:
+You can add other metadata such as completion date:
 
-`{{[[TODO]]}} Send team update
+```markdown
+{{[[DONE]]}} Send team update
 repeat:: every 2 weeks on Friday
 due:: [[2025-11-07]]
-completed:: [[2025-10-24]]`
-
-
-🔹 Child Block Style
-
-When "Child" mode is enabled in settings, repeat and due information is placed in sub-blocks under the task.
-
+completed:: [[2025-10-24]]
 ```
+
+### 🔹 Child Block Style
+
+If you prefer to keep the task text clean, choose “Child” mode. The repeat and due info will appear as sub-blocks:
+
+```markdown
 {{[[TODO]]}} Write weekly newsletter
   - repeat:: every Friday
   - due:: [[2025-11-07]]
 ```
 
+When completed:
 
-If the task is completed, the extension may add a completion timestamp (depending on your settings):
-
-```
+```markdown
 {{[[DONE]]}} Write weekly newsletter
   - repeat:: every Friday
   - due:: [[2025-11-07]]
   - completed:: [[2025-10-31]]
 ```
 
+### 🔹 Hidden Attribute (Pill) Style
 
-🔹 Hidden Attribute (Pill) Style
+When set to “Hidden”, repeat/due are stored as hidden block properties.  
+You’ll see **visual pills** beside the checkbox for clarity:
 
-If “Hidden” mode is selected:
+```
+☑️ Write weekly newsletter  ↻ every Friday · Next: Fri 7 Nov ⋯
+```
 
-- The repeat:: and due:: lines are stored in the block’s properties, not shown as text.
-- Visual “pills” (labels) appear next to the checkbox for easy reference.
+- Hover a pill for details.
+- Click **↻** to **edit** the repeat rule. (**Alt+Click** copies it.)
+- Click **Next:** to open that date’s Daily Note Page.  
+  **Shift+Click** snoozes by +1 day.  
+  **Alt/Ctrl/Meta+Click** opens a date picker to change the due date.
+- Click **⋯** for more options (see below).
 
-For example, the visible block might look like:
+---
 
-☑️  Write weekly newsletter   [Repeat] [Due]
+## ⚙️ Settings
 
+### 🗂️ Destination for Next Task
+Determines where the next instance of a recurring task appears:
+- **Daily Notes Page (DNP)** — Default; next occurrence is created on its due date’s DNP.  
+- **Same Page** — Next occurrence appears below the current one.
+- **Under a Heading on DNP** — Adds the new task under the heading you specify (default: “Tasks”).
 
-Hovering over the pills shows the full values:
+### ⏱️ Calculate Next Due Date From
+Controls whether new due dates are based on:
+- **Due Date** — Start from the current due date.
+- **Completion Date** — Start from when you actually mark it done.
 
-Repeat: every Friday
-Due: [[2025-11-07]]
+### 🧱 Show Repeat/Due As
+Controls how repeat/due metadata appear:
+- **Child** — Adds visible sub-blocks under the TODO.
+- **Hidden** — Stores them as hidden props and shows pills inline.
 
-Click actions:
+### 🗨️ Confirm Before Spawning Next Task
+If enabled, shows a confirmation dialog (“Spawn next occurrence?”) when you complete a recurring TODO.
 
-Repeat pill → copies the rule to clipboard (Alt+click to edit it)
+---
 
-Due pill → opens the due date’s Daily Notes Page (Shift+click to snooze +1 day)
+## 🧩 Pills and Menus
 
+Each task with hidden attributes shows an inline “pill” next to its checkbox.
 
-## 🧭 Settings:
+**Pill actions:**
+- **Repeat pill (↻)** — Click to edit; Alt+Click to copy rule text.
+- **Due pill (Next:)** — Click to open DNP; Shift+Click to snooze 1 day; Alt/Ctrl/Meta+Click to edit due date.
+- **⋯ (menu)** — Opens the task menu with more options:
 
-Destination for next task
-- Choose where the next instance appears: Daily Notes Page (DNP), the same page as the current task, or under a heading on the DNP
+| Action | Description |
+|--------|--------------|
+| Snooze +1 day | Push due date forward 1 day |
+| Snooze +3 days | Push due date forward 3 days |
+| Snooze to next Monday | Move to the next Monday |
+| Snooze (pick date) | Choose a custom snooze date |
+| Skip this occurrence | Jump directly to next repeat cycle |
+| Generate next now | Immediately create the next task |
+| End recurrence | Stop this task from recurring |
 
-Calculate next due date from
-- Base the next due date on the current due date or the completion date
+All actions support **Undo** via a toast notification.
 
-Show repeat/due as
-- Display as child blocks (visible) or hidden props with pills
+---
 
-Confirm before spawning next task
-- Ask for confirmation when you complete a recurring task
+## 🧭 Commands
 
+You can trigger these from Roam’s Command Palette (`Ctrl+P` / `Cmd+P`) or block context menu:
 
-## Repeat field:
+- **Convert TODO to Recurring Task**
+- **Create a Recurring TODO**
 
-The Repeat field accepts natural-language phrases (case-insensitive, extra spaces/commas are fine). Below are all supported patterns with examples.
+These commands let you turn an existing task into a recurring one or start a new recurring TODO directly.
 
-You can use full weekday names or common abbreviations: monday | mon, tuesday | tue | tues, wednesday | wed, thursday | thu | thur | thurs, friday | fri, saturday | sat, sunday | sun.
+---
 
-Ordinals accepted: 1st/first, 2nd/second, 3rd/third, 4th/fourth, last.
+## 📆 Repeat Field Syntax
 
-“Every X weeks on …” accepts a comma or space-separated list of days (e.g., Mon Wed or Mon, Wed).
+The `repeat::` attribute accepts **natural language** patterns — flexible and case-insensitive.
 
-“Monthly” rules that name a day number will clamp to the last valid day when needed (e.g., “day 31” → Feb 29/28 depending on year).
+### 🗓️ Daily
+| Example | Meaning |
+|----------|----------|
+| every day | once per day |
+| every 2 days | every second day |
+| every other day | every 2 days |
+| every weekday | Monday–Friday |
 
-**Daily schedules**
+### 📅 Weekly
+| Example | Meaning |
+|----------|----------|
+| every monday | every week on Monday |
+| every week | once per week |
+| every other week | every two weeks |
+| weekly on tue, thu | every Tuesday and Thursday |
+| every 3 weeks on fri | every third Friday |
 
-*Every day*
-- daily
-- every day
+### 🗓️ Monthly (by day number)
+| Example | Meaning |
+|----------|----------|
+| monthly | same day each month |
+| every month on day 15 | 15th of each month |
+| the 1st day of each month | 1st day of month |
+| 31st day → clamps to Feb 29/28 | auto-adjusts for shorter months |
 
-*Every N days*
-- every 2 days
-- every other day (same as every 2 days)
-- every second day / every third day / every four days / every five days
-- every 7 days (any positive integer)
+### 🗓️ Monthly (by weekday)
+| Example | Meaning |
+|----------|----------|
+| first monday of each month | 1st Monday every month |
+| 2nd wed every month | 2nd Wednesday |
+| last friday of each month | final Friday each month |
 
-*Weekdays only*
-- every weekday (Mon–Fri)
+### 📆 Weekends
+| Example | Meaning |
+|----------|----------|
+| every weekend | Saturday & Sunday |
 
-**Weekly schedules**
+---
 
-*Every week on a specific day*
-- every monday
-- every mondays (plural also works)
-- every mon (abbreviation works)
+## 💡 Tips
 
-*Generic weekly (no specific day list)*
-- weekly
-- every week
+- Any TODO with a `repeat::` value automatically becomes a recurring task.
+- Completing it will **spawn the next occurrence** (optionally after confirmation).
+- Hidden mode keeps your pages tidy with pills; Child mode keeps everything explicit.
+- Most actions (skip, snooze, edit) display an **Undo** toast.
 
-*Every other/second week*
-- every other week
-- every second week
+---
 
-*Weekly on multiple days*
-- weekly on tuesday thursday
-- weekly on tue, thu
-- every week on mon, wed, fri
+## 🧰 Example Workflow
 
-*Every N weeks (optionally on specific days)*
-- every 2 weeks
-- every 3 weeks on tue
-- every 4 weeks on mon wed
+1. Create a task:
 
-*Weekend*
-- every weekend
-- weekend (equivalent to weekly on Saturday and Sunday)
+   ```markdown
+   {{[[TODO]]}} Send weekly update repeat:: every Friday due:: [[2025-11-07]]
+   ```
 
-**Monthly schedules**
+2. Mark it done — the extension automatically creates the next task for `[[2025-11-14]]`.
 
-*Same day of each month*
-- monthly (uses the current due date’s day-of-month as the anchor)
+3. If you snooze or skip, the due date updates and pills reflect the change immediately.
 
-*Explicit day number*
-- every month on day 15
-- the 1st day of every month
-- 1st day of each month
-- day 28 each month
-- the 3rd day of each month
+---
 
-All of the following forms are accepted and equivalent for day numbers:
-- every month on day 12
-- the 12 day of every month (ordinal or plain number)
-- 12th day of each month
-- day 12 each month
-
-**Monthly schedules (by Nth weekday)**
-- First/Second/Third/Fourth/Last <Weekday> of each month
-- every month on the 1st monday
-- the first monday of every month
-- second tue of each month
-- 3rd wed every month
-- fourth thu of every month
-- last friday of each month
-
-You can mix full names or abbreviations and either ordinal style:
-- Ordinals: 1st|first, 2nd|second, 3rd|third, 4th|fourth, last
-- Weekdays: monday|mon, tuesday|tue|tues, wednesday|wed, thursday|thu|thur|thurs, friday|fri, saturday|sat, sunday|sun
-
-Compact variants
-- 2nd Tue each month
-- last Fri every month
+Enjoy effortless recurring task management directly inside Roam Research!

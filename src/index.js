@@ -261,6 +261,7 @@ export default {
     const processedMap = new Map();
     const repeatOverrides = new Map();
     const deletingChildAttrs = new Set();
+    let childAttrMigrationRunning = false;
 
     function normalizeOverrideEntry(entry) {
       if (!entry) return null;
@@ -1227,34 +1228,22 @@ export default {
 
     // ========================= Completion + next spawn =========================
     async function ensureChildAttr(uid, key, value) {
-      const current = await window.roamAlphaAPI.q(`
-        [:find (pull ?c [:block/uid :block/string])
-         :where [?p :block/uid "${uid}"] [?c :block/parents ?p]]`);
-      const match = (current || []).find((r) =>
-        new RegExp(`^\\s*${key}::\\s*`, "i").test((r[0]?.string || "").trim())
-      );
-      if (!match) {
+      const parent = await getBlock(uid);
+      if (!parent) {
+        return { created: false, uid: null, previousValue: null };
+      }
+      const children = Array.isArray(parent.children) ? parent.children : [];
+      const keyRegex = new RegExp(`^\\s*${key}::\\s*`, "i");
+      const match = children.find((child) => keyRegex.test((child?.string || "").trim()));
+      if (!match || !match.uid) {
         const newUid = window.roamAlphaAPI.util.generateUID();
         await createBlock(uid, 0, `${key}:: ${value}`, newUid);
         return { created: true, uid: newUid, previousValue: null };
       }
-      const matchBlock = match[0];
-      const matchUid = matchBlock?.uid;
-      if (!matchUid) {
-        const newUid = window.roamAlphaAPI.util.generateUID();
-        await createBlock(uid, 0, `${key}:: ${value}`, newUid);
-        return { created: true, uid: newUid, previousValue: null };
-      }
-      const existing = await getBlock(matchUid);
-      if (!existing) {
-        const newUid = window.roamAlphaAPI.util.generateUID();
-        await createBlock(uid, 0, `${key}:: ${value}`, newUid);
-        return { created: true, uid: newUid, previousValue: null };
-      }
-      const curVal = matchBlock?.string?.replace(/^[^:]+::\s*/i, "")?.trim() || "";
+      const curVal = match.string?.replace(/^[^:]+::\s*/i, "")?.trim() || "";
       if (curVal !== value) {
         try {
-          await window.roamAlphaAPI.updateBlock({ block: { uid: matchUid, string: `${key}:: ${value}` } });
+          await window.roamAlphaAPI.updateBlock({ block: { uid: match.uid, string: `${key}:: ${value}` } });
         } catch (err) {
           console.warn("[RecurringTasks] ensureChildAttr update failed, recreating", err);
           const newUid = window.roamAlphaAPI.util.generateUID();
@@ -1262,38 +1251,32 @@ export default {
           return { created: true, uid: newUid, previousValue: curVal };
         }
       }
-      return { created: false, uid: matchUid, previousValue: curVal };
+      return { created: false, uid: match.uid, previousValue: curVal };
     }
 
     async function removeChildAttr(uid, key) {
       const token = `${uid}::${key}`;
       if (deletingChildAttrs.has(token)) return;
       deletingChildAttrs.add(token);
-      const current = await window.roamAlphaAPI.q(`
-        [:find (pull ?c [:block/uid :block/string])
-         :where [?p :block/uid "${uid}"] [?c :block/parents ?p]]`);
-      const match = (current || []).find((r) =>
-        new RegExp(`^\\s*${key}::\\s*`, "i").test((r[0]?.string || "").trim())
-      );
-      if (match) {
-        const entry = match[0];
-        const targetUid = typeof entry?.uid === "string" ? entry.uid.trim() : "";
-        if (!targetUid) {
-          deletingChildAttrs.delete(token);
-          return;
+      try {
+        const block = await getBlock(uid);
+        const children = Array.isArray(block?.children) ? block.children : [];
+        const matches = children.filter((entry) =>
+          new RegExp(`^\\s*${key}::\\s*`, "i").test((entry?.string || "").trim())
+        );
+        if (!matches.length) return;
+        for (const entry of matches) {
+          const targetUid = typeof entry?.uid === "string" ? entry.uid.trim() : "";
+          if (!targetUid) continue;
+          try {
+            await deleteBlock(targetUid);
+          } catch (err) {
+            console.warn("[RecurringTasks] removeChildAttr failed", err);
+          }
         }
-        const exists = await getBlock(targetUid);
-        if (!exists) {
-          deletingChildAttrs.delete(token);
-          return;
-        }
-        try {
-          await deleteBlock(targetUid);
-        } catch (err) {
-          console.warn("[RecurringTasks] removeChildAttr failed", err);
-        }
+      } finally {
+        deletingChildAttrs.delete(token);
       }
-      deletingChildAttrs.delete(token);
     }
 
     async function markCompleted(block, meta, set) {
@@ -2238,6 +2221,9 @@ export default {
         pendingSurfaceSync = null;
       }
       void syncPillsForSurface(next);
+      if (next === "Child") {
+        void populateChildAttrsFromProps();
+      }
       lastAttrSurface = next;
     }
 
@@ -2247,6 +2233,9 @@ export default {
         pendingSurfaceSync = null;
         const current = lastAttrSurface || surface || "Child";
         void syncPillsForSurface(current);
+        if (current === "Child") {
+          void populateChildAttrsFromProps();
+        }
       }, 0);
     }
 
@@ -2326,6 +2315,73 @@ export default {
         }
       } else {
         clearAllPills();
+        if (surface === "Child") {
+          void populateChildAttrsFromProps();
+        }
+      }
+    }
+
+    async function populateChildAttrsFromProps() {
+      if (lastAttrSurface !== "Child" || childAttrMigrationRunning) return;
+      childAttrMigrationRunning = true;
+      try {
+        const set = S();
+        let rows = [];
+        try {
+          rows =
+            (await window.roamAlphaAPI.q(`
+              [:find (pull ?b [:block/uid :block/props {:block/children [:block/uid :block/string]}])
+               :where
+               [?b :block/props ?p]]`)) || [];
+        } catch (err) {
+          console.warn("[RecurringTasks] populateChildAttrsFromProps query failed", err);
+          return;
+        }
+        for (const row of rows) {
+          if (lastAttrSurface !== "Child") break;
+          const block = row?.[0];
+          const uid = block?.uid;
+          if (!uid) continue;
+          const props = parseProps(block.props);
+          let repeatVal = typeof props.repeat === "string" && props.repeat ? props.repeat : null;
+          let dueVal = typeof props.due === "string" && props.due ? props.due : null;
+          try {
+            const meta = await readRecurringMeta(block, set);
+            if (!repeatVal && typeof meta?.repeat === "string" && meta.repeat) {
+              repeatVal = meta.repeat;
+            }
+            if (!repeatVal && typeof meta?.props?.repeat === "string" && meta.props.repeat) {
+              repeatVal = meta.props.repeat;
+            }
+            if (!repeatVal && typeof meta?.childAttrMap?.repeat?.value === "string") {
+              repeatVal = meta.childAttrMap.repeat.value;
+            }
+            if (!dueVal && typeof meta?.props?.due === "string" && meta.props.due) {
+              dueVal = meta.props.due;
+            }
+            if (!dueVal && meta?.due instanceof Date && !Number.isNaN(meta.due.getTime())) {
+              dueVal = formatDate(meta.due, set);
+            }
+            if (!dueVal && typeof meta?.childAttrMap?.due?.value === "string") {
+              dueVal = meta.childAttrMap.due.value;
+            }
+          } catch (err) {
+            console.warn("[RecurringTasks] populateChildAttrsFromProps meta read failed", err);
+          }
+          if (!repeatVal && !dueVal) continue;
+          try {
+            if (repeatVal) {
+              await ensureChildAttr(uid, "repeat", repeatVal);
+            }
+            if (dueVal) {
+              await ensureChildAttr(uid, "due", dueVal);
+            }
+          } catch (err) {
+            console.warn("[RecurringTasks] populateChildAttrsFromProps sync failed", err);
+          }
+        }
+      } finally {
+        childAttrMigrationRunning = false;
       }
     }
 
@@ -2392,33 +2448,46 @@ export default {
           const inlineAttrs = parseAttrsFromBlockText(block.string || "");
 
           if (set.attributeSurface === "Hidden") {
-            const propsUpdate = {};
-            if (inlineAttrs.repeat && (!props.repeat || props.repeat !== inlineAttrs.repeat)) {
-              propsUpdate.repeat = inlineAttrs.repeat;
-            }
-            if (inlineAttrs.due && (!props.due || props.due !== inlineAttrs.due)) {
-              propsUpdate.due = inlineAttrs.due;
-            }
-            if (Object.keys(propsUpdate).length) {
-              await updateBlockProps(uid, propsUpdate);
-            }
-            const cleaned = removeInlineAttributes(block.string || "", ["repeat", "due"]);
-            if (cleaned !== block.string) {
-              await updateBlockString(uid, cleaned);
-              block.string = cleaned;
-              schedule(0);       // next tick
-              schedule(100);      // after first paint
-              // schedule(200);  // later retry if lagging
-            }
-            const childAttrMap = meta.childAttrMap || {};
-            for (const key of ["repeat", "due"]) {
-              if (childAttrMap[key]?.uid) {
-                await removeChildAttr(uid, key);
-                delete childAttrMap[key];
-              }
-            }
-            meta.childAttrMap = childAttrMap;
+          const repeatSource =
+            (typeof meta.repeat === "string" && meta.repeat) ||
+            (typeof meta?.props?.repeat === "string" && meta.props.repeat) ||
+            inlineAttrs.repeat ||
+            meta.childAttrMap?.repeat?.value ||
+            null;
+          let dueSource = null;
+          if (typeof meta?.props?.due === "string" && meta.props.due) {
+            dueSource = meta.props.due;
+          } else if (meta.due instanceof Date && !Number.isNaN(meta.due.getTime())) {
+            dueSource = formatDate(meta.due, set);
+          } else if (inlineAttrs.due) {
+            dueSource = inlineAttrs.due;
+          } else if (typeof meta.childAttrMap?.due?.value === "string" && meta.childAttrMap.due.value) {
+            dueSource = meta.childAttrMap.due.value;
           }
+          await updateBlockProps(uid, {
+            repeat: repeatSource || undefined,
+            due: dueSource || undefined,
+          });
+          if (repeatSource) meta.repeat = repeatSource;
+          if (dueSource) {
+            const parsed = parseRoamDate(dueSource);
+            meta.due = parsed instanceof Date && !Number.isNaN(parsed.getTime()) ? parsed : meta.due;
+          }
+          const cleaned = removeInlineAttributes(block.string || "", ["repeat", "due"]);
+          if (cleaned !== block.string) {
+            await updateBlockString(uid, cleaned);
+            block.string = cleaned;
+            schedule(0);       // next tick
+            schedule(100);      // after first paint
+            // schedule(200);  // later retry if lagging
+          }
+          await removeChildAttr(uid, "repeat");
+          await removeChildAttr(uid, "due");
+          const childAttrMap = { ...(meta.childAttrMap || {}) };
+          delete childAttrMap.repeat;
+          delete childAttrMap.due;
+          meta.childAttrMap = childAttrMap;
+        }
 
           const humanRepeat = meta.repeat || inlineAttrs.repeat || "";
           const dueDate = meta.due || null;
@@ -3326,7 +3395,11 @@ export default {
         const props = parseProps(parent.props);
         if (props.repeat !== normalized) {
           await updateBlockProps(parentUid, { repeat: normalized });
-          await ensureChildAttr(parentUid, "repeat", normalized); // reflect normalization
+          if (info?.uid) {
+            await updateBlockString(info.uid, `repeat:: ${normalized}`);
+          } else {
+            await ensureChildAttr(parentUid, "repeat", normalized);
+          }
           await ensureInlineAttribute(parent, "repeat", normalized);
           toast(`Repeat → ${normalized}`);
         }
@@ -3334,7 +3407,11 @@ export default {
         const props = parseProps(parent.props);
         if (props.due !== rawValue) {
           await updateBlockProps(parentUid, { due: rawValue });
-          await ensureChildAttr(parentUid, "due", rawValue);
+          if (info?.uid) {
+            await updateBlockString(info.uid, `due:: ${rawValue}`);
+          } else {
+            await ensureChildAttr(parentUid, "due", rawValue);
+          }
           await ensureInlineAttribute(parent, "due", rawValue);
           toast(`Due → ${rawValue}`);
         }
