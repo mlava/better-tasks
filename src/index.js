@@ -1,7 +1,8 @@
 import iziToast from "izitoast";
 
-const DEFAULT_REPEAT_ATTR = "repeat";
-const DEFAULT_DUE_ATTR = "due";
+const DEFAULT_REPEAT_ATTR = "attrRepeat_RT";
+const DEFAULT_DUE_ATTR = "attrDue_RT";
+const INSTALL_TOAST_KEY = "rt-intro-toast";
 
 let lastAttrNames = null;
 
@@ -61,6 +62,14 @@ export default {
     };
     extensionAPI.settings.panel.create(config);
     lastAttrNames = resolveAttributeNames();
+
+    const introSeen = extensionAPI.settings.get(INSTALL_TOAST_KEY);
+    if (!introSeen) {
+      toast(
+        "This extension automatically recognises {{[[TODO]]}} tasks in your graph and uses attributes to determine a recurrence pattern and due date. By default, it uses 'attrRepeat_RT' and 'attrDue_RT' as those attributes. These can be changed in the extension settings.<BR><BR>If you already happen to use 'attrRepeat_RT' and/or 'attrDue_RT' attributes for other functions in your graph, please change the defaults in Roam Depot Settings for this extension BEFORE testing it's functionality to avoid any unexpected behaviour."
+      );
+      extensionAPI.settings.set(INSTALL_TOAST_KEY, "1");
+    }
 
     extensionAPI.ui.commandPalette.addCommand({
       label: "Convert TODO to Recurring Task",
