@@ -1,5 +1,12 @@
 import iziToast from "izitoast";
 
+const DEFAULT_REPEAT_ATTR = "repeat";
+const DEFAULT_DUE_ATTR = "due";
+
+let lastAttrNames = null;
+
+let latestHelpers = null;
+
 export default {
   onload: ({ extensionAPI }) => {
     const config = {
@@ -23,11 +30,26 @@ export default {
           description: "Calculate next date from current due date or TODO completion date",
           action: { type: "select", items: ["Due", "Completion"] },
         },
+        // placeholder for future feature - hidden mode
+        /*
         {
           id: "rt-attribute-surface",
           name: "Show repeat/due as",
           description: "Where to display human-visible repeat/due",
           action: { type: "select", items: ["Child", "Hidden"], onChange: handleAttributeSurfaceChange },
+        },
+        */
+        {
+          id: "rt-repeat-attr",
+          name: "Repeat attribute name",
+          description: "Inline/child attribute label for the repeat rule",
+          action: { type: "input", placeholder: DEFAULT_REPEAT_ATTR, onChange: handleAttributeNameChange },
+        },
+        {
+          id: "rt-due-attr",
+          name: "Due attribute name",
+          description: "Inline/child attribute label for due dates",
+          action: { type: "input", placeholder: DEFAULT_DUE_ATTR, onChange: handleAttributeNameChange },
         },
         {
           id: "rt-confirm",
@@ -38,6 +60,7 @@ export default {
       ],
     };
     extensionAPI.settings.panel.create(config);
+    lastAttrNames = resolveAttributeNames();
 
     extensionAPI.ui.commandPalette.addCommand({
       label: "Convert TODO to Recurring Task",
@@ -74,14 +97,19 @@ export default {
       const props = parseProps(block.props);
       const inlineAttrs = parseAttrsFromBlockText(fstring);
       const childAttrs = parseAttrsFromChildBlocks(block.children || []);
+      const attrNames = resolveAttributeNames();
+      const childRepeatEntry = pickChildAttr(childAttrs, attrNames.repeatAliases);
+      const childDueEntry = pickChildAttr(childAttrs, attrNames.dueAliases);
+      const inlineRepeatVal = pickInlineAttr(inlineAttrs, attrNames.repeatAliases);
+      const inlineDueVal = pickInlineAttr(inlineAttrs, attrNames.dueAliases);
 
       const promptResult = await promptForRepeatAndDue({
-        repeat: props.repeat || childAttrs.repeat?.value || inlineAttrs.repeat || "",
-        due: props.due || childAttrs.due?.value || inlineAttrs.due || "",
+        repeat: props.repeat || childRepeatEntry?.value || inlineRepeatVal || "",
+        due: props.due || childDueEntry?.value || inlineDueVal || "",
       });
       if (!promptResult) return;
 
-      const set = S();
+      const set = S(attrNames);
       const normalizedRepeat = normalizeRepeatRuleText(promptResult.repeat) || promptResult.repeat;
       if (!normalizedRepeat) {
         toast("Repeat rule is required.");
@@ -106,7 +134,8 @@ export default {
         dueStr = formatDate(dueDate, set);
       }
 
-      const baseWithoutAttrs = removeInlineAttributes(fstring, ["repeat", "due"]);
+      const removalKeys = [...new Set([...attrNames.repeatRemovalKeys, ...attrNames.dueRemovalKeys])];
+      const baseWithoutAttrs = removeInlineAttributes(fstring, removalKeys);
       const todoString = normalizeToTodoMacro(baseWithoutAttrs);
       if (todoString !== fstring) {
         await updateBlockString(fuid, todoString);
@@ -122,13 +151,17 @@ export default {
 
       await updateBlockProps(fuid, propsPatch);
 
+      const attrNamesForWrite = set.attrNames;
       if (set.attributeSurface === "Child") {
-        await ensureChildAttr(fuid, "repeat", normalizedRepeat);
-        if (dueStr) await ensureChildAttr(fuid, "due", dueStr);
-        else await removeChildAttr(fuid, "due");
+        await ensureChildAttrForType(fuid, "repeat", normalizedRepeat, attrNamesForWrite);
+        if (dueStr) {
+          await ensureChildAttrForType(fuid, "due", dueStr, attrNamesForWrite);
+        } else {
+          await removeChildAttrsForType(fuid, "due", attrNamesForWrite);
+        }
       } else {
-        await removeChildAttr(fuid, "repeat");
-        await removeChildAttr(fuid, "due");
+        await removeChildAttrsForType(fuid, "repeat", attrNamesForWrite);
+        await removeChildAttrsForType(fuid, "due", attrNamesForWrite);
       }
 
       repeatOverrides.delete(fuid);
@@ -153,21 +186,23 @@ export default {
       const props = parseProps(block.props);
       const inlineAttrs = parseAttrsFromBlockText(block.string || "");
       const childAttrs = parseAttrsFromChildBlocks(block.children || []);
-      const baseWithoutAttrs = removeInlineAttributes(block.string || "", ["repeat", "due"]);
+      const attrNames = resolveAttributeNames();
+      const childRepeatEntry = pickChildAttr(childAttrs, attrNames.repeatAliases);
+      const childDueEntry = pickChildAttr(childAttrs, attrNames.dueAliases);
+      const inlineRepeatVal = pickInlineAttr(inlineAttrs, attrNames.repeatAliases);
+      const inlineDueVal = pickInlineAttr(inlineAttrs, attrNames.dueAliases);
+      const removalKeys = [...new Set([...attrNames.repeatRemovalKeys, ...attrNames.dueRemovalKeys])];
+      const baseWithoutAttrs = removeInlineAttributes(block.string || "", removalKeys);
       const initialTaskText = normalizeToTodoMacro(baseWithoutAttrs).replace(/^{{\[\[TODO\]\]}}\s*/i, "");
       const promptResult = await promptForRepeatAndDue({
         includeTaskText: true,
         taskText: initialTaskText,
-        repeat: props.repeat || childAttrs.repeat?.value || inlineAttrs.repeat || "",
-        due:
-          props.due ||
-          childAttrs.due?.value ||
-          inlineAttrs.due ||
-          "",
+        repeat: props.repeat || childRepeatEntry?.value || inlineRepeatVal || "",
+        due: props.due || childDueEntry?.value || inlineDueVal || "",
       });
       if (!promptResult) return;
 
-      const set = S();
+      const set = S(attrNames);
       const normalizedRepeat = normalizeRepeatRuleText(promptResult.repeat) || promptResult.repeat;
       if (!normalizedRepeat) {
         toast("Repeat rule is required.");
@@ -194,7 +229,7 @@ export default {
 
       const taskTextInput =
         typeof promptResult.taskText === "string" ? promptResult.taskText : initialTaskText;
-      const cleanedTaskText = removeInlineAttributes(taskTextInput, ["repeat", "due"]);
+      const cleanedTaskText = removeInlineAttributes(taskTextInput, removalKeys);
       const todoString = normalizeToTodoMacro(cleanedTaskText);
       if (todoString !== (block.string || "")) {
         await updateBlockString(fuid, todoString);
@@ -211,12 +246,12 @@ export default {
       await updateBlockProps(fuid, propsPatch);
 
       if (set.attributeSurface === "Child") {
-        await ensureChildAttr(fuid, "repeat", normalizedRepeat);
-        if (dueStr) await ensureChildAttr(fuid, "due", dueStr);
-        else await removeChildAttr(fuid, "due");
+        await ensureChildAttrForType(fuid, "repeat", normalizedRepeat, set.attrNames);
+        if (dueStr) await ensureChildAttrForType(fuid, "due", dueStr, set.attrNames);
+        else await removeChildAttrsForType(fuid, "due", set.attrNames);
       } else {
-        await removeChildAttr(fuid, "repeat");
-        await removeChildAttr(fuid, "due");
+        await removeChildAttrsForType(fuid, "repeat", set.attrNames);
+        await removeChildAttrsForType(fuid, "due", set.attrNames);
       }
 
       repeatOverrides.delete(fuid);
@@ -224,13 +259,15 @@ export default {
       scheduleSurfaceSync(set.attributeSurface);
     }
 
-    function S() {
+    function S(attrNamesOverride = null) {
       const adv = (extensionAPI.settings.get("rt-advance-from") || "Due").toString().toLowerCase();
       const attrSurface = extensionAPI.settings.get("rt-attribute-surface") || "Child";
       if (attrSurface !== lastAttrSurface) {
         lastAttrSurface = attrSurface;
         scheduleSurfaceSync(attrSurface);
       }
+      const attrNames = attrNamesOverride || resolveAttributeNames();
+      lastAttrNames = attrNames;
       let tz = "UTC";
       let locale = "en-US";
       try {
@@ -255,14 +292,18 @@ export default {
         confirmBeforeSpawn: !!extensionAPI.settings.get("rt-confirm"),
         timezone: tz,
         locale,
+        attrNames,
       };
     }
 
     const processedMap = new Map();
     const repeatOverrides = new Map();
+    const invalidRepeatToasted = new Set();
+    const invalidDueToasted = new Set();
     const deletingChildAttrs = new Set();
     let childAttrMigrationRunning = false;
     let migratingChildToHidden = false;
+    let needsChildPopulate = false;
 
     function normalizeOverrideEntry(entry) {
       if (!entry) return null;
@@ -315,8 +356,18 @@ export default {
       const inlineAttrs = parseAttrsFromBlockText(block?.string || "");
       const location = captureBlockLocation(block);
       const childMap = meta?.childAttrMap || {};
-      const dueInfo = childMap["due"] || null;
-      const repeatInfo = childMap["repeat"] || null;
+      const attrNames = set?.attrNames || resolveAttributeNames();
+      const attrSurface = set?.attributeSurface || "Hidden";
+      const duePickOpts = {
+        allowFallback: attrSurface !== "Child" && attrNames.dueAttr === DEFAULT_DUE_ATTR,
+      };
+      const repeatPickOpts = {
+        allowFallback: attrSurface !== "Child" && attrNames.repeatAttr === DEFAULT_REPEAT_ATTR,
+      };
+      const dueInfo = pickChildAttr(childMap, attrNames.dueAliases, duePickOpts) || null;
+      const repeatInfo = pickChildAttr(childMap, attrNames.repeatAliases, repeatPickOpts) || null;
+      const inlineDueValue = pickInlineAttr(inlineAttrs, attrNames.dueAliases);
+      const inlineRepeatValue = pickInlineAttr(inlineAttrs, attrNames.repeatAliases);
       const snapshot = captureBlockSnapshot(block);
       const previousDueDate =
         meta?.due instanceof Date && !Number.isNaN(meta.due.getTime()) ? new Date(meta.due.getTime()) : null;
@@ -329,8 +380,8 @@ export default {
       return {
         previousDueDate,
         previousDueStr,
-        previousInlineDue: inlineAttrs?.due || null,
-        hadInlineDue: inlineAttrs?.due != null,
+        previousInlineDue: inlineDueValue || null,
+        hadInlineDue: inlineDueValue != null,
         previousChildDue: dueInfo?.value || null,
         hadChildDue: !!dueInfo,
         previousChildDueUid: dueInfo?.uid || null,
@@ -339,8 +390,8 @@ export default {
         previousParentUid: location.parentUid,
         previousOrder: location.order,
         previousProps: props && typeof props === "object" ? clonePlain(props) : {},
-        previousInlineRepeat: inlineAttrs?.repeat || null,
-        hadInlineRepeat: inlineAttrs?.repeat != null,
+        previousInlineRepeat: inlineRepeatValue || null,
+        hadInlineRepeat: inlineRepeatValue != null,
         snapshot,
       };
     }
@@ -407,27 +458,32 @@ export default {
 
           if (set.attributeSurface === "Child") {
             // Clear current attrs first to avoid duplicates
-            await removeChildAttr(uid, "repeat");
-            await removeChildAttr(uid, "due");
+            await removeChildAttrsForType(uid, "repeat", set.attrNames);
+            await removeChildAttrsForType(uid, "due", set.attrNames);
             await removeChildAttr(uid, "rt-processed");
             const childAttrs = snapshot.childAttrs || {};
             if (childAttrs.repeat?.value != null && childAttrs.repeat.value !== "") {
-              await ensureChildAttr(uid, "repeat", childAttrs.repeat.value);
+              await ensureChildAttrForType(uid, "repeat", childAttrs.repeat.value, set.attrNames);
             }
             if (childAttrs.due?.value != null && childAttrs.due.value !== "") {
-              await ensureChildAttr(uid, "due", childAttrs.due.value);
+              await ensureChildAttrForType(uid, "due", childAttrs.due.value, set.attrNames);
             }
             if (childAttrs["rt-processed"]?.value != null && childAttrs["rt-processed"].value !== "") {
               await ensureChildAttr(uid, "rt-processed", childAttrs["rt-processed"].value);
             }
           } else if (payload.hadInlineDue && typeof payload.previousInlineDue === "string" && block?.string) {
-            const restored = replaceAttributeInString(block.string, "due", payload.previousInlineDue);
+            const restored = replaceInlineAttrForType(block.string, "due", payload.previousInlineDue, set.attrNames);
             if (restored && restored !== block.string) {
               await updateBlockString(uid, restored);
               block = await getBlock(uid);
             }
             if (payload.hadInlineRepeat && typeof payload.previousInlineRepeat === "string") {
-              const repeatRestored = replaceAttributeInString(block.string || "", "repeat", payload.previousInlineRepeat);
+              const repeatRestored = replaceInlineAttrForType(
+                block.string || "",
+                "repeat",
+                payload.previousInlineRepeat,
+                set.attrNames
+              );
               if (repeatRestored && repeatRestored !== (block.string || "")) {
                 await updateBlockString(uid, repeatRestored);
                 block = await getBlock(uid);
@@ -447,14 +503,14 @@ export default {
           block = await getBlock(uid);
           if (set.attributeSurface === "Child") {
             if (payload.previousChildRepeat != null) {
-              await ensureChildAttr(uid, "repeat", payload.previousChildRepeat);
+              await ensureChildAttrForType(uid, "repeat", payload.previousChildRepeat, set.attrNames);
             } else {
-              await removeChildAttr(uid, "repeat");
+              await removeChildAttrsForType(uid, "repeat", set.attrNames);
             }
             if (payload.hadChildDue && payload.previousChildDue != null) {
-              await ensureChildAttr(uid, "due", payload.previousChildDue);
+              await ensureChildAttrForType(uid, "due", payload.previousChildDue, set.attrNames);
             } else {
-              await removeChildAttr(uid, "due");
+              await removeChildAttrsForType(uid, "due", set.attrNames);
             }
             if (snapshot?.childAttrs?.["rt-processed"]?.value != null && snapshot.childAttrs["rt-processed"].value !== "") {
               await ensureChildAttr(uid, "rt-processed", snapshot.childAttrs["rt-processed"].value);
@@ -462,13 +518,23 @@ export default {
               await removeChildAttr(uid, "rt-processed");
             }
           } else if (payload.hadInlineDue && block?.string) {
-            const restored = replaceAttributeInString(block.string, "due", payload.previousInlineDue || "");
+            const restored = replaceInlineAttrForType(
+              block.string,
+              "due",
+              payload.previousInlineDue || "",
+              set.attrNames
+            );
             if (restored && restored !== block.string) {
               await updateBlockString(uid, restored);
               block = await getBlock(uid);
             }
             if (payload.hadInlineRepeat && typeof payload.previousInlineRepeat === "string") {
-              const repeatRestored = replaceAttributeInString(block.string || "", "repeat", payload.previousInlineRepeat);
+              const repeatRestored = replaceInlineAttrForType(
+                block.string || "",
+                "repeat",
+                payload.previousInlineRepeat,
+                set.attrNames
+              );
               if (repeatRestored && repeatRestored !== (block.string || "")) {
                 await updateBlockString(uid, repeatRestored);
                 block = await getBlock(uid);
@@ -612,10 +678,16 @@ export default {
         }
         if (set.attributeSurface === "Child") {
           const childMap = (meta && meta.childAttrMap) || {};
-          const repeatChildVal = childMap.repeat?.value || repeatValue;
-          if (repeatChildVal) await ensureChildAttr(block.uid, "repeat", repeatChildVal);
-          if (dueStr) await ensureChildAttr(block.uid, "due", dueStr);
-          else if (childMap.due) await removeChildAttr(block.uid, "due");
+          const repeatChildEntry = pickChildAttr(childMap, getAttrAliases("repeat", set.attrNames), {
+            allowFallback: set.attrNames.repeatAttr === DEFAULT_REPEAT_ATTR,
+          });
+          const repeatChildVal = repeatChildEntry?.value || repeatValue;
+          if (repeatChildVal) await ensureChildAttrForType(block.uid, "repeat", repeatChildVal, set.attrNames);
+          if (dueStr) {
+            await ensureChildAttrForType(block.uid, "due", dueStr, set.attrNames);
+          } else if (repeatChildEntry) {
+            await removeChildAttrsForType(block.uid, "due", set.attrNames);
+          }
         }
       } catch (err) {
         console.warn("[RecurringTasks] relocate metadata sync failed", err);
@@ -634,6 +706,11 @@ export default {
     void syncPillsForSurface(lastAttrSurface);
     initiateObserver();
     window.addEventListener("hashchange", handleHashChange);
+
+    latestHelpers = {
+      getAttrSurface: () => lastAttrSurface || extensionAPI.settings.get("rt-attribute-surface") || "Child",
+      populateChildAttrsFromProps,
+    };
 
     // === Child -> Props sync listeners (only used when attribute surface is "Child")
     const _handleAnyEdit = handleAnyEdit.bind(null);
@@ -834,7 +911,16 @@ export default {
 
               try {
                 const set = S();
-                const block = await getBlock(uid);
+                if (set.attributeSurface === "Child") {
+                  await flushChildAttrSync(uid);
+                  await delay(60);
+                }
+                let block = await getBlock(uid);
+                if (set.attributeSurface === "Child") {
+                  await delay(60);
+                  const refreshed = await getBlock(uid);
+                  if (refreshed) block = refreshed;
+                }
                 if (!block) {
                   processedMap.delete(uid);
                   continue;
@@ -971,6 +1057,17 @@ export default {
     }
 
     async function updateBlockProps(uid, merge) {
+      const attrSnapshot = lastAttrNames || resolveAttributeNames();
+      const enrichedMerge = { ...(merge || {}) };
+      if (attrSnapshot) {
+        enrichedMerge.rt = {
+          ...(enrichedMerge.rt || {}),
+          attrRepeat: attrSnapshot.repeatAttr,
+          attrDue: attrSnapshot.dueAttr,
+          attrRepeatLabel: attrSnapshot.repeatAttr,
+          attrDueLabel: attrSnapshot.dueAttr,
+        };
+      }
       const current = await window.roamAlphaAPI.q(
         `[:find ?p :where [?b :block/uid "${uid}"] [?b :block/props ?p]]`
       );
@@ -980,9 +1077,9 @@ export default {
       } catch (e) {
         props = {};
       }
-      const next = { ...props, ...merge };
-      if (props.rt && merge?.rt) {
-        next.rt = { ...props.rt, ...merge.rt };
+      const next = { ...props, ...enrichedMerge };
+      if (props.rt && enrichedMerge?.rt) {
+        next.rt = { ...props.rt, ...enrichedMerge.rt };
       }
       for (const key of Object.keys(next)) {
         if (next[key] === undefined) delete next[key];
@@ -1034,62 +1131,91 @@ export default {
     const ATTR_RE = /^([\p{L}\p{N}_\-\/\s]+)::\s*(.+)$/u;
 
     async function readRecurringMeta(block, set) {
+      const attrSurface = set?.attributeSurface || "Hidden";
+      const attrNames = set?.attrNames || resolveAttributeNames();
       const props = parseProps(block.props);
       const rt = props.rt || {};
-
-      const fromProps = {
-        repeat: props.repeat || null,
-        due: props.due ? parseRoamDate(props.due) : null,
-      };
-
-      let repeatText = fromProps.repeat;
-      let dueDate = fromProps.due;
-      let processedTs = rt.processed ? Number(rt.processed) : null;
-      // Parse child attributes once (works even if there are no children)
       const childAttrMap = parseAttrsFromChildBlocks(block?.children || []);
-      const repeatChild = childAttrMap["repeat"];
-      const dueChild = childAttrMap["due"];
+      const allowRepeatFallback =
+        attrSurface !== "Child" && attrNames.repeatAttr === DEFAULT_REPEAT_ATTR;
+      const allowDueFallback =
+        attrSurface !== "Child" && attrNames.dueAttr === DEFAULT_DUE_ATTR;
+      const repeatChild = pickChildAttr(childAttrMap, attrNames.repeatAliases, {
+        allowFallback: allowRepeatFallback,
+      });
+      const dueChild = pickChildAttr(childAttrMap, attrNames.dueAliases, {
+        allowFallback: allowDueFallback,
+      });
       const processedChild = childAttrMap["rt-processed"];
+      const inlineAttrs = parseAttrsFromBlockText(block.string || "");
+      const inlineRepeat = pickInlineAttr(inlineAttrs, attrNames.repeatAliases, {
+        allowFallback: allowRepeatFallback,
+      });
+      const inlineDue = pickInlineAttr(inlineAttrs, attrNames.dueAliases, {
+        allowFallback: allowDueFallback,
+      });
 
-      const fromText = parseAttrsFromBlockText(block.string || "");
-      if (!repeatText && fromText["repeat"]) repeatText = fromText["repeat"];
-      if (!dueDate && fromText["due"]) {
-        const parsed = parseRoamDate(fromText["due"]);
-        if (parsed) dueDate = parsed;
-      }
-      if (!processedTs && fromText["rt-processed"]) {
-        const parsed = Number(fromText["rt-processed"]);
-        if (!Number.isNaN(parsed)) processedTs = parsed;
-      }
-      // In "Child" surface mode, child attrs are the source of truth and should override props.
-      if (set.attributeSurface === "Child") {
-        if (repeatChild?.value) repeatText = repeatChild.value;
-        if (dueChild?.value) dueDate = parseRoamDate(dueChild.value);
+      const canonicalRepeatKey = DEFAULT_REPEAT_ATTR.toLowerCase();
+      const canonicalDueKey = DEFAULT_DUE_ATTR.toLowerCase();
+      const hasCanonicalRepeatSignal =
+        !!childAttrMap[canonicalRepeatKey] || inlineAttrs[canonicalRepeatKey] != null;
+      const hasCanonicalDueSignal =
+        !!childAttrMap[canonicalDueKey] || inlineAttrs[canonicalDueKey] != null;
+      const hasCustomRepeatSignal =
+        !!childAttrMap[attrNames.repeatKey] || inlineAttrs[attrNames.repeatKey] != null;
+      const hasCustomDueSignal =
+        !!childAttrMap[attrNames.dueKey] || inlineAttrs[attrNames.dueKey] != null;
+      const propsRepeatMatches =
+        attrNames.repeatAttr === DEFAULT_REPEAT_ATTR ||
+        props.rt?.attrRepeat === attrNames.repeatAttr;
+      const propsDueMatches =
+        attrNames.dueAttr === DEFAULT_DUE_ATTR || props.rt?.attrDue === attrNames.dueAttr;
+      const allowPropsRepeat = propsRepeatMatches || hasCustomRepeatSignal;
+      const allowPropsDue = propsDueMatches || hasCustomDueSignal;
+
+      let repeatText = null;
+      let dueDate = null;
+      let processedTs = rt.processed ? Number(rt.processed) : null;
+
+      if (attrSurface === "Child") {
+        repeatText = repeatChild?.value || inlineRepeat || null;
+        dueDate = null;
+        const dueSource = dueChild?.value || inlineDue || null;
+        if (dueSource) {
+          const parsed = parseRoamDate(dueSource);
+          if (parsed instanceof Date && !Number.isNaN(parsed.getTime())) {
+            dueDate = parsed;
+            clearDueParseFailure(block?.uid || null);
+          } else if (dueChild?.value) {
+            noteDueParseFailure(block?.uid || null);
+          }
+        } else {
+          clearDueParseFailure(block?.uid || null);
+        }
         if (processedChild?.value) {
           const parsed = Number(processedChild.value);
           if (!Number.isNaN(parsed)) processedTs = parsed;
         }
       } else {
-        if (!repeatText && repeatChild?.value) repeatText = repeatChild.value;
-        if (!dueDate && dueChild?.value) dueDate = parseRoamDate(dueChild.value);
-        if (!processedTs && processedChild?.value) {
-          const parsed = Number(processedChild.value);
-          if (!Number.isNaN(parsed)) processedTs = parsed;
+        if (allowPropsRepeat && typeof props.repeat === "string" && props.repeat) {
+          repeatText = props.repeat;
+        } else if (inlineRepeat) {
+          repeatText = inlineRepeat;
+        } else if (repeatChild?.value) {
+          repeatText = repeatChild.value;
         }
-      }
-
-      // Child-mode precedence: child attrs override props/inline.
-      if (set.attributeSurface === "Child") {
-        if (repeatChild?.value) repeatText = repeatChild.value;
-        if (dueChild?.value) dueDate = parseRoamDate(dueChild.value);
-        if (processedChild?.value) {
-          const parsed = Number(processedChild.value);
-          if (!Number.isNaN(parsed)) processedTs = parsed;
+        let dueSource = null;
+        if (allowPropsDue && typeof props.due === "string" && props.due) {
+          dueSource = props.due;
+        } else if (inlineDue) {
+          dueSource = inlineDue;
+        } else if (dueChild?.value) {
+          dueSource = dueChild.value;
         }
-      } else {
-        // Non-child mode: only use child attrs as fallback if missing
-        if (!repeatText && repeatChild?.value) repeatText = repeatChild.value;
-        if (!dueDate && dueChild?.value) dueDate = parseRoamDate(dueChild.value);
+        if (dueSource) {
+          const parsed = parseRoamDate(dueSource);
+          if (parsed) dueDate = parsed;
+        }
         if (!processedTs && processedChild?.value) {
           const parsed = Number(processedChild.value);
           if (!Number.isNaN(parsed)) processedTs = parsed;
@@ -1137,8 +1263,11 @@ export default {
 
       const fallbackMeta = { ...(metaCandidate || baseMeta || {}) };
       const inlineAttrs = parseAttrsFromBlockText(snapshot.string || "");
+      const attrNames = set?.attrNames || resolveAttributeNames();
+      const inlineRepeat = pickInlineAttr(inlineAttrs, attrNames.repeatAliases);
+      const inlineDue = pickInlineAttr(inlineAttrs, attrNames.dueAliases);
       const valueSources = [
-        inlineAttrs.repeat,
+        inlineRepeat,
         metaCandidate?.props?.repeat,
         baseMeta?.props?.repeat,
         baseMeta?.repeat,
@@ -1150,7 +1279,7 @@ export default {
         }
       }
       const dueSources = [
-        inlineAttrs.due,
+        inlineDue,
         metaCandidate?.props?.due,
         baseMeta?.props?.due,
         baseMeta?.due,
@@ -1183,6 +1312,7 @@ export default {
     function parseAttrsFromBlockText(text) {
       if (!text) return {};
       const out = {};
+      const attrNames = resolveAttributeNames();
       const lines = text.split("\n").slice(0, 12);
       for (const line of lines) {
         const inlineRegex =
@@ -1190,7 +1320,13 @@ export default {
         let match;
         while ((match = inlineRegex.exec(line)) !== null) {
           const key = match[1].trim().toLowerCase();
-          if (!(key in out)) out[key] = match[2].trim();
+          const value = match[2].trim();
+          if (!(key in out)) out[key] = value;
+          if (key === attrNames.repeatKey && out.repeat == null) {
+            out.repeat = value;
+          } else if (key === attrNames.dueKey && out.due == null) {
+            out.due = value;
+          }
         }
       }
       return out;
@@ -1199,6 +1335,7 @@ export default {
     function parseAttrsFromChildBlocks(children) {
       if (!Array.isArray(children)) return {};
       const out = {};
+      const attrNames = resolveAttributeNames();
       for (const child of children) {
         const text = typeof child?.string === "string" ? child.string : null;
         if (!text) continue;
@@ -1211,9 +1348,179 @@ export default {
               uid: child?.uid || null,
             };
           }
+          if (key === attrNames.repeatKey && out.repeat == null) {
+            out.repeat = out[key];
+          } else if (key === attrNames.dueKey && out.due == null) {
+            out.due = out[key];
+          }
         }
       }
       return out;
+    }
+
+    function escapeRegExp(str) {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function hasInlineAttrLabel(text, label) {
+      if (!text || !label) return false;
+      const escaped = escapeRegExp(label.trim());
+      if (!escaped) return false;
+      const regex = new RegExp(`(^|\\s)${escaped}::`, "i");
+      return regex.test(text);
+    }
+
+    function hasChildAttrLabel(children, label) {
+      if (!Array.isArray(children) || !label) return false;
+      const escaped = escapeRegExp(label.trim());
+      if (!escaped) return false;
+      const regex = new RegExp(`^\\s*${escaped}::`, "i");
+      return children.some((child) => regex.test((child?.string || "").trim()));
+    }
+
+    function hasAnyAttributeChild(children) {
+      if (!Array.isArray(children)) return false;
+      return children.some((child) => {
+        const text = (child?.string || "").trim();
+        return ATTR_RE.test(text);
+      });
+    }
+
+    function sanitizeAttrName(value, fallback) {
+      if (value == null) return fallback;
+      const trimmed = String(value).trim().replace(/:+$/, "");
+      return trimmed || fallback;
+    }
+
+    function normalizeAttrLabel(value) {
+      if (typeof value !== "string") return "";
+      return value.trim().replace(/:+$/, "").toLowerCase();
+    }
+
+    function resolveAttributeNames() {
+      const repeatAttr = sanitizeAttrName(
+        extensionAPI.settings.get("rt-repeat-attr") || DEFAULT_REPEAT_ATTR,
+        DEFAULT_REPEAT_ATTR
+      );
+      const dueAttr = sanitizeAttrName(
+        extensionAPI.settings.get("rt-due-attr") || DEFAULT_DUE_ATTR,
+        DEFAULT_DUE_ATTR
+      );
+      const repeatKey = repeatAttr.toLowerCase();
+      const dueKey = dueAttr.toLowerCase();
+      const repeatAliases = repeatKey === DEFAULT_REPEAT_ATTR ? [repeatKey] : [repeatKey];
+      const dueAliases = dueKey === DEFAULT_DUE_ATTR ? [dueKey] : [dueKey];
+      const repeatRemovalKeys =
+        repeatKey === DEFAULT_REPEAT_ATTR ? [DEFAULT_REPEAT_ATTR] : [repeatAttr];
+      const dueRemovalKeys = dueKey === DEFAULT_DUE_ATTR ? [DEFAULT_DUE_ATTR] : [dueAttr];
+      return {
+        repeatAttr,
+        dueAttr,
+        repeatKey,
+        dueKey,
+        repeatAliases,
+        dueAliases,
+        repeatRemovalKeys,
+        dueRemovalKeys,
+      };
+    }
+
+    function pickInlineAttr(inlineMap, aliases, options = {}) {
+      if (!inlineMap) return null;
+      const { allowFallback = true } = options;
+      const [primary, ...fallbacks] = aliases;
+      if (primary && inlineMap[primary] != null && inlineMap[primary] !== "") {
+        return inlineMap[primary];
+      }
+      if (!allowFallback) return null;
+      for (const key of fallbacks) {
+        if (inlineMap[key] != null && inlineMap[key] !== "") {
+          return inlineMap[key];
+        }
+      }
+      return null;
+    }
+
+    function pickChildAttr(childMap, aliases, options = {}) {
+      if (!childMap) return null;
+      const { allowFallback = true } = options;
+      const [primary, ...fallbacks] = aliases;
+      if (primary && childMap[primary]) return childMap[primary];
+      if (!allowFallback) return null;
+      for (const key of fallbacks) {
+        if (childMap[key]) return childMap[key];
+      }
+      return null;
+    }
+
+    function getAttrLabel(type, attrNames) {
+      return type === "repeat" ? attrNames.repeatAttr : attrNames.dueAttr;
+    }
+
+    function getAttrKey(type, attrNames) {
+      return type === "repeat" ? attrNames.repeatKey : attrNames.dueKey;
+    }
+
+    function getAttrRemovalKeys(type, attrNames) {
+      return type === "repeat" ? attrNames.repeatRemovalKeys : attrNames.dueRemovalKeys;
+    }
+
+    function getAttrAliases(type, attrNames) {
+      return type === "repeat" ? attrNames.repeatAliases : attrNames.dueAliases;
+    }
+
+    async function ensureChildAttrForType(uid, type, value, attrNames) {
+      return ensureChildAttr(uid, getAttrLabel(type, attrNames), value);
+    }
+
+    async function removeChildAttrsForType(uid, type, attrNames) {
+      for (const key of getAttrRemovalKeys(type, attrNames)) {
+        await removeChildAttr(uid, key);
+      }
+    }
+
+    async function ensureInlineAttrForType(block, type, value, attrNames) {
+      const label = getAttrLabel(type, attrNames);
+      const aliases = getAttrRemovalKeys(type, attrNames).filter((name) => name !== label);
+      await ensureInlineAttribute(block, label, value, { aliases });
+    }
+
+    function replaceInlineAttrForType(text, type, value, attrNames) {
+      if (!text) return text;
+      const keys = getAttrRemovalKeys(type, attrNames);
+      let current = text;
+      for (const key of keys) {
+        const next = replaceAttributeInString(current, key, value);
+        if (next !== current) {
+          current = next;
+          break;
+        }
+      }
+      return current;
+    }
+
+    function getMetaChildAttr(meta, type, attrNames, options = {}) {
+      if (!meta) return null;
+      return pickChildAttr(meta.childAttrMap || {}, getAttrAliases(type, attrNames), options);
+    }
+
+    function setMetaChildAttr(meta, type, entry, attrNames) {
+      if (!meta) return;
+      meta.childAttrMap = meta.childAttrMap || {};
+      const label = getAttrLabel(type, attrNames);
+      meta.childAttrMap[label] = entry;
+      if (label === type) {
+        meta.childAttrMap[type] = entry;
+      } else {
+        delete meta.childAttrMap[type];
+      }
+    }
+
+    function clearMetaChildAttr(meta, type, attrNames) {
+      if (!meta || !meta.childAttrMap) return;
+      delete meta.childAttrMap[getAttrLabel(type, attrNames)];
+      const label = getAttrLabel(type, attrNames);
+      if (label === type) delete meta.childAttrMap[type];
     }
 
     function normalizeRepeatRuleText(value) {
@@ -1394,6 +1701,7 @@ export default {
 
       // === NEW: restore repeat/due depending on surface ===
       try {
+        const attrNames = set?.attrNames || resolveAttributeNames();
         const surface = (set && set.attributeSurface) || lastAttrSurface || "Child";
         const hadRepeatChild = !!snapshot.childAttrs?.["repeat"];
         const hadDueChild = !!snapshot.childAttrs?.["due"];
@@ -1401,14 +1709,24 @@ export default {
         if (surface === "Child") {
           // Rebuild the child attributes exactly as they were
           if (hadRepeatChild) {
-            await ensureChildAttr(blockUid, "repeat", snapshot.childAttrs["repeat"].value || "");
+            await ensureChildAttrForType(
+              blockUid,
+              "repeat",
+              snapshot.childAttrs["repeat"].value || "",
+              attrNames
+            );
           } else {
-            await removeChildAttr(blockUid, "repeat");
+            await removeChildAttrsForType(blockUid, "repeat", attrNames);
           }
           if (hadDueChild) {
-            await ensureChildAttr(blockUid, "due", snapshot.childAttrs["due"].value || "");
+            await ensureChildAttrForType(
+              blockUid,
+              "due",
+              snapshot.childAttrs["due"].value || "",
+              attrNames
+            );
           } else {
-            await removeChildAttr(blockUid, "due");
+            await removeChildAttrsForType(blockUid, "due", attrNames);
           }
         } else {
           // Hidden: ensure repeat/due live in props (pills read from props)
@@ -1481,7 +1799,10 @@ export default {
 
     async function spawnNextOccurrence(prevBlock, meta, nextDueDate, set) {
       const nextDueStr = formatDate(nextDueDate, set);
-      const prevText = removeInlineAttributes(prevBlock.string || "", ["repeat", "due", "completed"]);
+      const removalKeys = [
+        ...new Set([...set.attrNames.repeatRemovalKeys, ...set.attrNames.dueRemovalKeys, "completed"]),
+      ];
+      const prevText = removeInlineAttributes(prevBlock.string || "", removalKeys);
 
       const seriesId = meta.rtId || shortId();
       if (!meta.rtId) await updateBlockProps(prevBlock.uid, { rt: { id: seriesId, tz: set.timezone } });
@@ -1517,8 +1838,8 @@ export default {
       await createBlock(targetPageUid, 0, taskLine, newUid);
 
       if (set.attributeSurface === "Child") {
-        await ensureChildAttr(newUid, "repeat", meta.repeat);
-        await ensureChildAttr(newUid, "due", nextDueStr);
+        await ensureChildAttrForType(newUid, "repeat", meta.repeat, set.attrNames);
+        await ensureChildAttrForType(newUid, "due", nextDueStr, set.attrNames);
       }
 
       await updateBlockProps(newUid, {
@@ -1689,8 +2010,14 @@ export default {
 
     function computeNextDue(meta, set, depth = 0, ruleOverride = null) {
       const rule = ruleOverride || parseRuleText(meta.repeat);
+      if (rule) {
+        clearRepeatParseFailure(meta?.uid || null);
+      }
       if (!rule) {
         console.warn(`[RecurringTasks] Unable to parse repeat rule "${meta.repeat}"`);
+        if (set?.attributeSurface === "Child") {
+          noteRepeatParseFailure(meta?.uid || null);
+        }
         return null;
       }
       const base = set.advanceFrom === "completion" ? todayLocal() : meta.due || todayLocal();
@@ -1880,16 +2207,22 @@ export default {
       return source;
     }
 
-    async function ensureInlineAttribute(block, key, value) {
+    async function ensureInlineAttribute(block, key, value, options = {}) {
       if (!block || !block.uid) return;
       const original = block.string || "";
-      const keyEsc = escapeRegExp(key);
-      const hasAttr = new RegExp(`${keyEsc}::`, "i").test(original);
-      if (!hasAttr) return;
-      const next = replaceAttributeInString(original, key, value);
-      if (next && next !== original) {
-        await updateBlockString(block.uid, next);
-        block.string = next;
+      const candidateKeys = Array.from(new Set([key, ...(options.aliases || [])]));
+      let current = original;
+      for (const candidate of candidateKeys) {
+        const keyEsc = escapeRegExp(candidate);
+        const hasAttr = new RegExp(`${keyEsc}::`, "i").test(current);
+        if (!hasAttr) continue;
+        const next = replaceAttributeInString(current, candidate, value);
+        if (next && next !== current) {
+          await updateBlockString(block.uid, next);
+          block.string = next;
+          current = next;
+        }
+        return;
       }
     }
 
@@ -1962,6 +2295,28 @@ export default {
         closeOnClick: true,
         displayMode: 2
       });
+    }
+
+    function noteRepeatParseFailure(uid) {
+      if (!uid || invalidRepeatToasted.has(uid)) return;
+      invalidRepeatToasted.add(uid);
+      toast("Could not parse the task recurrence pattern. Please check your task and review the README for supported patterns.");
+    }
+
+    function clearRepeatParseFailure(uid) {
+      if (!uid) return;
+      invalidRepeatToasted.delete(uid);
+    }
+
+    function noteDueParseFailure(uid) {
+      if (!uid || invalidDueToasted.has(uid)) return;
+      invalidDueToasted.add(uid);
+      toast("Could not parse the task due date. Please ensure it uses Roam's standard date format (e.g. [[November 8th, 2025]]).");
+    }
+
+    function clearDueParseFailure(uid) {
+      if (!uid) return;
+      invalidDueToasted.delete(uid);
     }
 
     // ========================= Hidden pills UI =========================
@@ -2233,6 +2588,9 @@ export default {
       if (prev === "Child" && next === "Hidden") {
         migratingChildToHidden = true;
       }
+      if (next === "Child" && prev !== "Child") {
+        needsChildPopulate = true;
+      }
       lastAttrSurface = next;
       if (pendingSurfaceSync) {
         clearTimeout(pendingSurfaceSync);
@@ -2244,15 +2602,17 @@ export default {
       }
     }
 
+    function handleAttributeNameChange() {
+      repeatOverrides.clear();
+      scheduleSurfaceSync(lastAttrSurface);
+    }
+
     function scheduleSurfaceSync(surface) {
       if (pendingSurfaceSync) clearTimeout(pendingSurfaceSync);
       pendingSurfaceSync = setTimeout(() => {
         pendingSurfaceSync = null;
         const current = lastAttrSurface || surface || "Child";
         void syncPillsForSurface(current);
-        if (current === "Child") {
-          void populateChildAttrsFromProps();
-        }
       }, 0);
     }
 
@@ -2333,14 +2693,17 @@ export default {
         migratingChildToHidden = false;
       } else {
         clearAllPills();
-        if (surface === "Child") {
-          void populateChildAttrsFromProps();
+        if (surface === "Child" && needsChildPopulate) {
+          needsChildPopulate = false;
+          await populateChildAttrsFromProps({ force: true });
         }
       }
     }
 
-    async function populateChildAttrsFromProps() {
-      if (lastAttrSurface !== "Child" || childAttrMigrationRunning) return;
+    async function populateChildAttrsFromProps(options = {}) {
+      const force = !!options.force;
+      if (childAttrMigrationRunning) return;
+      if (!force && lastAttrSurface !== "Child") return;
       childAttrMigrationRunning = true;
       try {
         const set = S();
@@ -2356,13 +2719,28 @@ export default {
           return;
         }
         for (const row of rows) {
-          if (lastAttrSurface !== "Child") break;
+          if (!force && lastAttrSurface !== "Child") break;
           const block = row?.[0];
           const uid = block?.uid;
           if (!uid) continue;
           const props = parseProps(block.props);
+          const childAttrMapFull = parseAttrsFromChildBlocks(block.children || []);
+          const canonicalRepeatKey = DEFAULT_REPEAT_ATTR.toLowerCase();
+          const canonicalDueKey = DEFAULT_DUE_ATTR.toLowerCase();
+          const hasCanonicalRepeatChild = !!childAttrMapFull[canonicalRepeatKey];
+          const hasCanonicalDueChild = !!childAttrMapFull[canonicalDueKey];
+          const hasCustomRepeatChild = !!childAttrMapFull[set.attrNames.repeatKey];
+          const hasCustomDueChild = !!childAttrMapFull[set.attrNames.dueKey];
           let repeatVal = typeof props.repeat === "string" && props.repeat ? props.repeat : null;
           let dueVal = typeof props.due === "string" && props.due ? props.due : null;
+          const storedRepeatLabelNorm =
+            normalizeAttrLabel(props?.rt?.attrRepeatLabel) ||
+            normalizeAttrLabel(props?.rt?.attrRepeat);
+          const storedDueLabelNorm =
+            normalizeAttrLabel(props?.rt?.attrDueLabel) ||
+            normalizeAttrLabel(props?.rt?.attrDue);
+          const currentRepeatLabelNorm = normalizeAttrLabel(set.attrNames.repeatAttr);
+          const currentDueLabelNorm = normalizeAttrLabel(set.attrNames.dueAttr);
           try {
             const meta = await readRecurringMeta(block, set);
             if (!repeatVal && typeof meta?.repeat === "string" && meta.repeat) {
@@ -2371,28 +2749,35 @@ export default {
             if (!repeatVal && typeof meta?.props?.repeat === "string" && meta.props.repeat) {
               repeatVal = meta.props.repeat;
             }
-            if (!repeatVal && typeof meta?.childAttrMap?.repeat?.value === "string") {
-              repeatVal = meta.childAttrMap.repeat.value;
-            }
+            // do not fall back to canonical child labels; only use configured ones
             if (!dueVal && typeof meta?.props?.due === "string" && meta.props.due) {
               dueVal = meta.props.due;
             }
             if (!dueVal && meta?.due instanceof Date && !Number.isNaN(meta.due.getTime())) {
               dueVal = formatDate(meta.due, set);
             }
-            if (!dueVal && typeof meta?.childAttrMap?.due?.value === "string") {
-              dueVal = meta.childAttrMap.due.value;
-            }
           } catch (err) {
             console.warn("[RecurringTasks] populateChildAttrsFromProps meta read failed", err);
+          }
+          if (set.attrNames.repeatAttr !== DEFAULT_REPEAT_ATTR && hasCanonicalRepeatChild && !hasCustomRepeatChild) {
+            repeatVal = null;
+          }
+          if (set.attrNames.dueAttr !== DEFAULT_DUE_ATTR && hasCanonicalDueChild && !hasCustomDueChild) {
+            dueVal = null;
+          }
+          if (repeatVal && storedRepeatLabelNorm && storedRepeatLabelNorm !== currentRepeatLabelNorm) {
+            repeatVal = null;
+          }
+          if (dueVal && storedDueLabelNorm && storedDueLabelNorm !== currentDueLabelNorm) {
+            dueVal = null;
           }
           if (!repeatVal && !dueVal) continue;
           try {
             if (repeatVal) {
-              await ensureChildAttr(uid, "repeat", repeatVal);
+              await ensureChildAttrForType(uid, "repeat", repeatVal, set.attrNames);
             }
             if (dueVal) {
-              await ensureChildAttr(uid, "due", dueVal);
+              await ensureChildAttrForType(uid, "due", dueVal, set.attrNames);
             }
           } catch (err) {
             console.warn("[RecurringTasks] populateChildAttrsFromProps sync failed", err);
@@ -2411,6 +2796,7 @@ export default {
       const seen = new Set();
       const set = S();
       if (set.attributeSurface !== "Hidden") return;
+      const attrNames = set.attrNames;
       ensurePillMenuStyles();
       for (const node of nodes) {
         try {
@@ -2455,36 +2841,92 @@ export default {
             schedule(120);
           }
 
+          const metaReadSet = migratingChildToHidden ? { ...set, attributeSurface: "Child" } : set;
+          if (migratingChildToHidden) {
+            await flushChildAttrSync(uid, { skipRefresh: true });
+          }
           const block = await getBlock(uid);
           if (!block) continue;
           if (isTaskInCodeBlock(block)) continue;
 
           const originalString = block.string;
           const props = parseProps(block.props);
-          const meta = await readRecurringMeta(block, set);
+          const propsAttrRepeatRaw = typeof props?.rt?.attrRepeat === "string" ? props.rt.attrRepeat : "";
+          const propsAttrRepeat = (propsAttrRepeatRaw || "").trim();
+          const propsAttrRepeatLabelRaw =
+            typeof props?.rt?.attrRepeatLabel === "string" ? props.rt.attrRepeatLabel : "";
+          const normalizedRepeatLabelFromProps =
+            normalizeAttrLabel(propsAttrRepeatLabelRaw) ||
+            normalizeAttrLabel(propsAttrRepeat) ||
+            DEFAULT_REPEAT_ATTR.toLowerCase();
+          const normalizedCurrentRepeatLabel = normalizeAttrLabel(attrNames.repeatAttr);
+          const propsRepeatMatchesCurrent = normalizedRepeatLabelFromProps === normalizedCurrentRepeatLabel;
+          const propsAttrDueRaw = typeof props?.rt?.attrDue === "string" ? props.rt.attrDue : "";
+          const propsAttrDue = propsAttrDueRaw.trim();
+          const propsAttrDueLabelRaw =
+            typeof props?.rt?.attrDueLabel === "string" ? props.rt.attrDueLabel : "";
+          const normalizedDueLabelFromProps =
+            normalizeAttrLabel(propsAttrDueLabelRaw) ||
+            normalizeAttrLabel(propsAttrDue) ||
+            DEFAULT_DUE_ATTR.toLowerCase();
+          const normalizedCurrentDueLabel = normalizeAttrLabel(attrNames.dueAttr);
+          const propsDueMatchesCurrent = normalizedDueLabelFromProps === normalizedCurrentDueLabel;
+          const hasCurrentRepeatChild = hasChildAttrLabel(block.children || [], attrNames.repeatAttr);
+          const storedRepeatChildLabel = propsAttrRepeat || null;
+          const hasStoredRepeatChild = storedRepeatChildLabel
+            ? hasChildAttrLabel(block.children || [], storedRepeatChildLabel)
+            : false;
+          const hasCurrentRepeatInline = hasInlineAttrLabel(block.string || "", attrNames.repeatAttr);
+          const hasAnyAttrChild = hasAnyAttributeChild(block.children || []);
+          if (migratingChildToHidden) {
+            if (!hasStoredRepeatChild) {
+              continue;
+            }
+            if (hasCurrentRepeatChild && propsAttrRepeat !== attrNames.repeatAttr) {
+              continue;
+            }
+            if (!propsRepeatMatchesCurrent) {
+              continue;
+            }
+          }
+          const meta = await readRecurringMeta(block, metaReadSet);
           if (!meta.repeat) continue;
+          if (!propsRepeatMatchesCurrent) {
+            continue;
+          }
+          if (hasAnyAttrChild && !hasCurrentRepeatChild && !hasStoredRepeatChild) {
+            continue;
+          }
           const inlineAttrs = parseAttrsFromBlockText(block.string || "");
-
+          const inlineRepeatVal = pickInlineAttr(inlineAttrs, attrNames.repeatAliases);
+          const inlineDueVal = pickInlineAttr(inlineAttrs, attrNames.dueAliases);
           if (set.attributeSurface === "Hidden") {
-          const childRepeatVal = meta.childAttrMap?.repeat?.value || null;
-          const childDueVal = meta.childAttrMap?.due?.value || null;
-          const cameFromChildSurface = migratingChildToHidden && !!childRepeatVal;
-          const inlineDueVal = inlineAttrs.due || null;
+          const childRepeatEntry = getMetaChildAttr(meta, "repeat", attrNames, {
+            allowFallback: !migratingChildToHidden && attrNames.repeatAttr === DEFAULT_REPEAT_ATTR,
+          });
+          const childDueEntry = getMetaChildAttr(meta, "due", attrNames, {
+            allowFallback: !migratingChildToHidden && attrNames.dueAttr === DEFAULT_DUE_ATTR,
+          });
+          const childRepeatVal = childRepeatEntry?.value || null;
+          const childDueVal = childDueEntry?.value || null;
+          const cameFromChildSurface = migratingChildToHidden && hasStoredRepeatChild;
+          const allowPropRepeatSource = !migratingChildToHidden && propsRepeatMatchesCurrent;
+          const allowPropDueSource = !migratingChildToHidden && propsDueMatchesCurrent;
           const repeatSource =
+            childRepeatVal ||
             (typeof meta.repeat === "string" && meta.repeat) ||
-            (typeof meta?.props?.repeat === "string" && meta.props.repeat) ||
-            inlineAttrs.repeat ||
-            meta.childAttrMap?.repeat?.value ||
+            inlineRepeatVal ||
+            (allowPropRepeatSource && typeof meta?.props?.repeat === "string" && meta.props.repeat) ||
             null;
           let dueSource = null;
-          if (typeof meta?.props?.due === "string" && meta.props.due) {
+          if (childDueVal) {
+            dueSource = childDueVal;
+          } else if (inlineDueVal) {
+            dueSource = inlineDueVal;
+          } else if (allowPropDueSource && typeof meta?.props?.due === "string" && meta.props.due) {
             dueSource = meta.props.due;
-          } else if (meta.due instanceof Date && !Number.isNaN(meta.due.getTime())) {
+          } else if (allowPropDueSource && meta.due instanceof Date && !Number.isNaN(meta.due.getTime())) {
             dueSource = formatDate(meta.due, set);
-          } else if (inlineAttrs.due) {
-            dueSource = inlineAttrs.due;
-          } else if (typeof meta.childAttrMap?.due?.value === "string" && meta.childAttrMap.due.value) {
-            dueSource = meta.childAttrMap.due.value;
           }
           if (cameFromChildSurface && !childDueVal && !inlineDueVal) {
             dueSource = null;
@@ -2502,7 +2944,10 @@ export default {
             repeatOverrides.delete(uid);
             meta.due = null;
           }
-          const cleaned = removeInlineAttributes(block.string || "", ["repeat", "due"]);
+          const inlineRemovalKeys = [
+            ...new Set([...attrNames.repeatRemovalKeys, ...attrNames.dueRemovalKeys]),
+          ];
+          const cleaned = removeInlineAttributes(block.string || "", inlineRemovalKeys);
           if (cleaned !== block.string) {
             await updateBlockString(uid, cleaned);
             block.string = cleaned;
@@ -2510,17 +2955,17 @@ export default {
             schedule(100);      // after first paint
             // schedule(200);  // later retry if lagging
           }
-          await removeChildAttr(uid, "repeat");
+          await removeChildAttrsForType(uid, "repeat", attrNames);
           // Wait a beat so Roam registers the removal before due updates fire
           await delay(30);
-          await removeChildAttr(uid, "due");
+          await removeChildAttrsForType(uid, "due", attrNames);
           const childAttrMap = { ...(meta.childAttrMap || {}) };
-          delete childAttrMap.repeat;
-          delete childAttrMap.due;
+          for (const key of getAttrAliases("repeat", attrNames)) delete childAttrMap[key];
+          for (const key of getAttrAliases("due", attrNames)) delete childAttrMap[key];
           meta.childAttrMap = childAttrMap;
         }
 
-          const humanRepeat = meta.repeat || inlineAttrs.repeat || "";
+          const humanRepeat = meta.repeat || inlineRepeatVal || "";
           const dueDate = meta.due || null;
           const dueDisplay = dueDate ? formatFriendlyDate(dueDate, set) : null;
           const tooltip = dueDate
@@ -2619,6 +3064,7 @@ export default {
       const block = await getBlock(uid);
       if (!block) return;
       const meta = await readRecurringMeta(block, set);
+      const attrNames = set.attrNames;
       const contextSnapshot = prepareDueChangeContext(block, meta, set);
       const current = meta.repeat || "";
       const priorDue = contextSnapshot.previousDueDate;
@@ -2639,38 +3085,36 @@ export default {
       });
       if (!next || next === current) return;
       const normalized = normalizeRepeatRuleText(next) || next.trim();
-      const rule = parseRuleText(normalized);
-      const metaForCalc = { ...meta, repeat: normalized };
-      const anchorMeta = { ...metaForCalc, due: metaForCalc.due || todayLocal() };
-      let newDueDate = null;
-      if (rule) {
-        const anchorSet = { ...set, advanceFrom: "Due" };
-        newDueDate = computeNextDue(anchorMeta, anchorSet, 0, rule);
-      }
-      const dueDateToPersist = newDueDate || priorDue || null;
+      const dueDateToPersist = priorDue || null;
       const updates = { repeat: normalized };
       if (dueDateToPersist) {
         updates.due = formatDate(dueDateToPersist, set);
       }
       await updateBlockProps(uid, updates);
       if (set.attributeSurface === "Child") {
+        const repeatRes = await ensureChildAttrForType(uid, "repeat", normalized, attrNames);
         meta.childAttrMap = meta.childAttrMap || {};
-        const repeatRes = await ensureChildAttr(uid, "repeat", normalized);
-        meta.childAttrMap.repeat = { uid: repeatRes.uid, value: normalized };
+        setMetaChildAttr(meta, "repeat", { uid: repeatRes.uid, value: normalized }, attrNames);
         if (dueDateToPersist) {
-          const dueRes = await ensureChildAttr(uid, "due", updates.due);
-          meta.childAttrMap.due = { uid: dueRes.uid, value: updates.due };
-        } else if (meta.childAttrMap.due) {
-          await removeChildAttr(uid, "due");
-          delete meta.childAttrMap.due;
+          const dueRes = await ensureChildAttrForType(uid, "due", updates.due, attrNames);
+          setMetaChildAttr(meta, "due", { uid: dueRes.uid, value: updates.due }, attrNames);
+        } else {
+          await removeChildAttrsForType(uid, "due", attrNames);
+          clearMetaChildAttr(meta, "due", attrNames);
         }
       }
-      await ensureInlineAttribute(block, "repeat", normalized);
-      if (dueDateToPersist) await ensureInlineAttribute(block, "due", updates.due);
+      await ensureInlineAttrForType(block, "repeat", normalized, attrNames);
+      if (dueDateToPersist) {
+        await ensureInlineAttrForType(block, "due", updates.due, attrNames);
+      }
       meta.repeat = normalized;
       meta.due = dueDateToPersist || null;
       mergeRepeatOverride(uid, { repeat: normalized, due: dueDateToPersist || null });
-      const relocation = await relocateBlockForDue(block, dueDateToPersist || null, set, meta);
+      const currentLocation = captureBlockLocation(block);
+      const relocation = {
+        moved: false,
+        targetUid: currentLocation.parentUid,
+      };
       span.textContent = `↻ ${normalized}`;
       span.title = `Repeat rule: ${normalized}`;
       const pill = span.closest(".rt-pill");
@@ -2725,6 +3169,7 @@ export default {
       const block = await getBlock(uid);
       if (!block) return;
       const meta = await readRecurringMeta(block, set);
+      const attrNames = set.attrNames;
       const contextSnapshot = prepareDueChangeContext(block, meta, set);
       const due = meta.due;
       if (!due) return;
@@ -2745,13 +3190,15 @@ export default {
         await updateBlockProps(uid, { due: nextStr });
         let dueChildInfo = null;
         if (set.attributeSurface === "Child") {
-          dueChildInfo = await ensureChildAttr(uid, "due", nextStr);
+          dueChildInfo = await ensureChildAttrForType(uid, "due", nextStr, attrNames);
         }
-        await ensureInlineAttribute(block, "due", nextStr);
+        await ensureInlineAttrForType(block, "due", nextStr, attrNames);
         meta.due = parsed;
         if (set.attributeSurface === "Child") {
           meta.childAttrMap = meta.childAttrMap || {};
-          meta.childAttrMap.due = { value: nextStr, uid: dueChildInfo?.uid || meta.childAttrMap.due?.uid || null };
+          const existingEntry = getMetaChildAttr(meta, "due", attrNames, { allowFallback: true });
+          const storedUid = dueChildInfo?.uid || existingEntry?.uid || null;
+          setMetaChildAttr(meta, "due", { value: nextStr, uid: storedUid }, attrNames);
         }
         mergeRepeatOverride(uid, { due: parsed });
         const relocation = await relocateBlockForDue(block, parsed, set, meta);
@@ -2890,13 +3337,16 @@ export default {
       const next = addDaysLocal(base, days);
       const nextStr = formatDate(next, set);
       await updateBlockProps(uid, { due: nextStr });
+      const attrNames = set.attrNames;
       let dueChildInfo = null;
       if (set.attributeSurface === "Child") {
-        dueChildInfo = await ensureChildAttr(uid, "due", nextStr);
+        dueChildInfo = await ensureChildAttrForType(uid, "due", nextStr, attrNames);
         meta.childAttrMap = meta.childAttrMap || {};
-        meta.childAttrMap.due = { value: nextStr, uid: dueChildInfo?.uid || meta.childAttrMap.due?.uid || null };
+        const existingEntry = getMetaChildAttr(meta, "due", attrNames, { allowFallback: true });
+        const storedUid = dueChildInfo?.uid || existingEntry?.uid || null;
+        setMetaChildAttr(meta, "due", { value: nextStr, uid: storedUid }, attrNames);
       }
-      await ensureInlineAttribute(block, "due", nextStr);
+      await ensureInlineAttrForType(block, "due", nextStr, attrNames);
       meta.due = next;
       mergeRepeatOverride(uid, { due: next });
       const relocation = await relocateBlockForDue(block, next, set, meta);
@@ -2944,16 +3394,16 @@ export default {
       }
       const nextStr = formatDate(base, set);
       await updateBlockProps(uid, { due: nextStr });
+      const attrNames = set.attrNames;
       let dueChildInfo = null;
       if (set.attributeSurface === "Child") {
-        dueChildInfo = await ensureChildAttr(uid, "due", nextStr);
+        dueChildInfo = await ensureChildAttrForType(uid, "due", nextStr, attrNames);
         meta.childAttrMap = meta.childAttrMap || {};
-        meta.childAttrMap.due = {
-          value: nextStr,
-          uid: dueChildInfo?.uid || meta.childAttrMap.due?.uid || null,
-        };
+        const existingEntry = getMetaChildAttr(meta, "due", attrNames, { allowFallback: true });
+        const storedUid = dueChildInfo?.uid || existingEntry?.uid || null;
+        setMetaChildAttr(meta, "due", { value: nextStr, uid: storedUid }, attrNames);
       }
-      await ensureInlineAttribute(block, "due", nextStr);
+      await ensureInlineAttrForType(block, "due", nextStr, attrNames);
       meta.due = base;
       mergeRepeatOverride(uid, { due: base });
       const relocation = await relocateBlockForDue(block, base, set, meta);
@@ -3006,16 +3456,16 @@ export default {
       }
       const nextStr = formatDate(parsed, set);
       await updateBlockProps(uid, { due: nextStr });
+      const attrNames = set.attrNames;
       let dueChildInfo = null;
       if (set.attributeSurface === "Child") {
-        dueChildInfo = await ensureChildAttr(uid, "due", nextStr);
+        dueChildInfo = await ensureChildAttrForType(uid, "due", nextStr, attrNames);
         meta.childAttrMap = meta.childAttrMap || {};
-        meta.childAttrMap.due = {
-          value: nextStr,
-          uid: dueChildInfo?.uid || meta.childAttrMap.due?.uid || null,
-        };
+        const existingEntry = getMetaChildAttr(meta, "due", attrNames, { allowFallback: true });
+        const storedUid = dueChildInfo?.uid || existingEntry?.uid || null;
+        setMetaChildAttr(meta, "due", { value: nextStr, uid: storedUid }, attrNames);
       }
-      await ensureInlineAttribute(block, "due", nextStr);
+      await ensureInlineAttrForType(block, "due", nextStr, attrNames);
       meta.due = parsed;
       mergeRepeatOverride(uid, { due: parsed });
       const relocation = await relocateBlockForDue(block, parsed, set, meta);
@@ -3065,16 +3515,16 @@ export default {
       }
       const nextStr = formatDate(nextDue, set);
       await updateBlockProps(uid, { due: nextStr });
+      const attrNames = set.attrNames;
       let dueChildInfo = null;
       if (set.attributeSurface === "Child") {
-        dueChildInfo = await ensureChildAttr(uid, "due", nextStr);
+        dueChildInfo = await ensureChildAttrForType(uid, "due", nextStr, attrNames);
         meta.childAttrMap = meta.childAttrMap || {};
-        meta.childAttrMap.due = {
-          value: nextStr,
-          uid: dueChildInfo?.uid || meta.childAttrMap.due?.uid || null,
-        };
+        const existingEntry = getMetaChildAttr(meta, "due", attrNames, { allowFallback: true });
+        const storedUid = dueChildInfo?.uid || existingEntry?.uid || null;
+        setMetaChildAttr(meta, "due", { value: nextStr, uid: storedUid }, attrNames);
       }
-      await ensureInlineAttribute(block, "due", nextStr);
+      await ensureInlineAttrForType(block, "due", nextStr, attrNames);
       meta.due = nextDue;
       mergeRepeatOverride(uid, { due: nextDue });
       const relocation = await relocateBlockForDue(block, nextDue, set, meta);
@@ -3145,7 +3595,8 @@ export default {
       await setBlockProps(uid, props);
       if (set.attributeSurface === "Child") {
         const childMap = parseAttrsFromChildBlocks(block.children || []);
-        for (const key of ["repeat", "due", "rt-processed"]) {
+        const removalKeys = [set.attrNames.repeatKey, set.attrNames.dueKey, "rt-processed"];
+        for (const key of removalKeys) {
           const info = childMap[key];
           if (info?.uid) {
             try {
@@ -3160,7 +3611,9 @@ export default {
           }
         }
       }
-      const cleaned = removeInlineAttributes(block.string || "", ["repeat", "due"]);
+      const cleaned = removeInlineAttributes(block.string || "", [
+        ...new Set([...set.attrNames.repeatRemovalKeys, ...set.attrNames.dueRemovalKeys]),
+      ]);
       if (cleaned !== block.string) {
         await updateBlockString(uid, cleaned);
       }
@@ -3368,7 +3821,11 @@ export default {
       if (!m) return;
 
       const key = m[1].trim().toLowerCase();
-      if (key !== "repeat" && key !== "due") return;
+      const attrNames = set.attrNames;
+      let attrType = null;
+      if (key === attrNames.repeatKey) attrType = "repeat";
+      else if (key === attrNames.dueKey) attrType = "due";
+      if (!attrType) return;
 
       // Get parent task uid
       const parentUid = await getParentUid(uid);
@@ -3379,7 +3836,7 @@ export default {
       const srcType = evt.type;
       childEditDebounce.set(parentUid, setTimeout(() => {
         childEditDebounce.delete(parentUid);
-        void syncChildAttrToParent(parentUid, key, { sourceEvent: srcType });
+        void syncChildAttrToParent(parentUid, attrType, { sourceEvent: srcType, suppressToast: true });
       }, srcType === "blur" ? 0 : 250));
     }
 
@@ -3393,18 +3850,22 @@ export default {
       return res?.[0]?.[0] || null;
     }
 
-    async function syncChildAttrToParent(parentUid, key, opts = {}) {
+    async function syncChildAttrToParent(parentUid, attrType, opts = {}) {
       const sourceEvent = opts?.sourceEvent || "input";
+      const suppressToast = !!opts?.suppressToast;
       const set = S();
       const parent = await getBlock(parentUid);
       if (!parent) return;
-      if (deletingChildAttrs.has(`${parentUid}::${key}`)) {
+      const attrNames = set.attrNames;
+      const attrKey = getAttrKey(attrType, attrNames);
+      if (deletingChildAttrs.has(`${parentUid}::${attrKey}`)) {
         return;
       }
 
       // read current child values
       const childMap = parseAttrsFromChildBlocks(parent.children || []);
-      const info = childMap[key];
+      const attrLabel = getAttrLabel(attrType, attrNames).toLowerCase();
+      const info = childMap[attrLabel] || null;
       const rawValue = (info?.value || "").trim();
 
       // If empty, only remove after a blur (don't spam while user is typing).
@@ -3413,18 +3874,18 @@ export default {
           return; // wait until editing finishes
         }
         const props = parseProps(parent.props);
-        if (props[key] !== undefined) {
-          delete props[key];
+        if (props[attrType] !== undefined) {
+          delete props[attrType];
           await setBlockProps(parentUid, props);
         }
-        await ensureInlineAttribute(parent, key, ""); // no-op unless inline exists
+        await ensureInlineAttrForType(parent, attrType, "", attrNames); // no-op unless inline exists
         // Quietly remove on blur; no toast to avoid noise.
         void syncPillsForSurface(lastAttrSurface);
         return;
       }
 
       // Normalize and write to props
-      if (key === "repeat") {
+      if (attrType === "repeat") {
         const normalized = normalizeRepeatRuleText(rawValue) || rawValue;
         const props = parseProps(parent.props);
         if (props.repeat !== normalized) {
@@ -3434,14 +3895,13 @@ export default {
             console.warn("[RecurringTasks] syncChildAttrToParent repeat update failed", err);
             return;
           }
-          const existingChildUid = typeof info?.uid === "string" ? info.uid.trim() : "";
-          if (!existingChildUid) {
-            await ensureChildAttr(parentUid, "repeat", normalized);
+          await ensureChildAttrForType(parentUid, "repeat", normalized, attrNames);
+          await ensureInlineAttrForType(parent, "repeat", normalized, attrNames);
+          if (!suppressToast) {
+            toast(`Repeat → ${normalized}`);
           }
-          await ensureInlineAttribute(parent, "repeat", normalized);
-          toast(`Repeat → ${normalized}`);
         }
-      } else if (key === "due") {
+      } else if (attrType === "due") {
         const props = parseProps(parent.props);
         if (props.due !== rawValue) {
           try {
@@ -3450,17 +3910,28 @@ export default {
             console.warn("[RecurringTasks] syncChildAttrToParent due update failed", err);
             return;
           }
-          const existingChildUid = typeof info?.uid === "string" ? info.uid.trim() : "";
-          if (!existingChildUid) {
-            await ensureChildAttr(parentUid, "due", rawValue);
+          await ensureChildAttrForType(parentUid, "due", rawValue, attrNames);
+          await ensureInlineAttrForType(parent, "due", rawValue, attrNames);
+          if (!suppressToast) {
+            toast(`Due → ${rawValue}`);
           }
-          await ensureInlineAttribute(parent, "due", rawValue);
-          toast(`Due → ${rawValue}`);
         }
       }
 
-      // Refresh pills if needed
-      void syncPillsForSurface(lastAttrSurface);
+      // Refresh pills if needed (only relevant when pills are visible)
+      if (!opts?.skipRefresh && lastAttrSurface === "Hidden") {
+        void syncPillsForSurface("Hidden");
+      }
+    }
+
+    async function flushChildAttrSync(parentUid, options = {}) {
+      if (childEditDebounce.has(parentUid)) {
+        clearTimeout(childEditDebounce.get(parentUid));
+        childEditDebounce.delete(parentUid);
+      }
+      const baseOpts = { sourceEvent: "flush", skipRefresh: true, suppressToast: true };
+      await syncChildAttrToParent(parentUid, "repeat", { ...baseOpts, ...options });
+      await syncChildAttrToParent(parentUid, "due", { ...baseOpts, ...options });
     }
 
     // ========================= Housekeeping =========================
@@ -3474,15 +3945,51 @@ export default {
     }
   },
 
-  onunload: () => {
-    if (typeof window !== "undefined") {
-      try {
-        window.__RecurringTasksCleanup?.();
-      } finally {
-        delete window.__RecurringTasksCleanup;
+  onunload: async () => {
+    let toastEl = null;
+    try {
+      const surface = latestHelpers?.getAttrSurface?.();
+      const shouldRestore =
+        surface === "Hidden" && typeof latestHelpers?.populateChildAttrsFromProps === "function";
+      if (shouldRestore) {
+        const toastId = `rt-uninstall-${Date.now()}`;
+        iziToast.info({
+          id: toastId,
+          theme: "light",
+          color: "black",
+          class: "recTasks-info",
+          timeout: false,
+          close: false,
+          drag: false,
+          overlay: false,
+          position: "center",
+          message: "Restoring repeat/due child attributes… this may take a moment.",
+          onOpening: (_instance, element) => {
+            toastEl = element;
+          },
+        });
+        try {
+          await latestHelpers.populateChildAttrsFromProps({ force: true });
+        } catch (err) {
+          console.warn("[RecurringTasks] child attr restore during unload failed", err);
+        } finally {
+          if (toastEl) {
+            iziToast.hide({ transitionOut: "fadeOut" }, toastEl);
+            toastEl = null;
+          }
+        }
       }
-    };
+    } finally {
+      if (typeof window !== "undefined") {
+        try {
+          window.__RecurringTasksCleanup?.();
+        } finally {
+          delete window.__RecurringTasksCleanup;
+        }
+      }
 
-    window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: "Convert TODO to Recurring Task" });
+      window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: "Convert TODO to Recurring Task" });
+      latestHelpers = null;
+    }
   },
 };

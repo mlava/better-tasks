@@ -3,6 +3,10 @@
 Bring true recurring task automation to Roam Research!  
 This extension automatically recognizes and manages TODO items that include `repeat::` and/or `due::` attributes, generating the next instance when a task is completed.
 
+**Note**: this extension is in active development and should be considered an early beta release. Please let me know of any bugs or unexpected behaviours in Slack  - https://app.slack.com/client/TNEAEL9QW/
+
+**Note 2:** for now, I've switched off the Hidden Mode feature to stabilise core functions. Please ignore that section of the README below. 
+
 ---
 
 ## 📘 Quick Overview
