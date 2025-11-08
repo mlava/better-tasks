@@ -1,13 +1,17 @@
 # 🌀 Recurring Tasks for Roam Research
 
-Bring true recurring task automation to Roam Research!  
+Bring true recurring task automation to Roam Research!
+
 This extension automatically recognizes and manages TODO items that match defined repeat pattern and due date attributes, generating the next instance when a task is completed.
 
-**Note**: this extension is in active development and should be considered an early beta release. Please let me know of any bugs or unexpected behaviours in Slack  - https://app.slack.com/client/TNEAEL9QW/
+**Note 1:** 
+This extension is in active development and should be considered an early beta release. Please let me know of any bugs or unexpected behaviours in Slack  - https://app.slack.com/client/TNEAEL9QW/
 
-**Note 2:** for now, I've switched off the Hidden Mode feature to stabilise core functions. Please ignore that section of the README below. 
+**Note 2:** 
+For now, I've switched off the Hidden Mode feature to stabilise core functions. Please ignore that section of the README below. 
 
-**Note 3:** the settings pane for the extension allows you to use whatever name for the repeat and due date atttributes you choose. The extension defaults to using 'attrRepeat_RT' and 'attrDue_RT' for the recurrence pattern and due date respectively. If you happen to already use these attributes for other purposes, the extension will recognise and attempt to use them if you don't set alternatives in the settings. Using 'frequency' and 'when' for example, would prevent the extension from acting on anything for which you already use 'attrRepeat_RT' and 'attrDue_RT'.
+**Note 3:** 
+The settings pane for the extension allows you to use whatever name for the repeat and due date atttributes you choose. The extension defaults to using 'attrRepeat_RT' and 'attrDue_RT' for the recurrence pattern and due date respectively. If you happen to already use these attributes for other purposes, the extension will recognise and attempt to use them if you don't set alternatives in the settings. Using 'frequency' and 'when' for example, would prevent the extension from acting on anything for which you already use 'attrRepeat_RT' and 'attrDue_RT'.
 
 ---
 
