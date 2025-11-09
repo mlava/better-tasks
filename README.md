@@ -203,8 +203,6 @@ Separators like commas, `/`, `&`, and the word **and** are supported. Abbreviati
 | `first Monday of May (every year)` | yearly: 1st Monday in May |
 | `annually` \| `yearly` | once per year on the anchor date |
 
----
-
 #### Notes
 - **Abbreviations & aliases**: `Mon/Mon./Monday`, `Thu/Thurs/Thursday`, `MWF`, `TTh` are accepted.  
 - **Ranges**: `Mon–Fri` (or `Mon-Fri`) expands to all included days.  
