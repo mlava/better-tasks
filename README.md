@@ -94,6 +94,10 @@ Label for a child block attribute for due date
 ### Confirm Before Spawning Next Task
 If enabled, shows a confirmation dialog (“Spawn next occurrence?”) when you complete a recurring TODO.
 
+### First day of the week
+Tells Recurring Tasks which weekday your graph treats as the start of the week (matches Roam’s regional preference).  
+Weekly rules that span multiple days or intervals (e.g., `every 2 weeks on Sat & Sun`, `Mon-Fri`) interpret ranges using this anchor. Default is **Monday**.
+
 ---
 
 ## 🧩 Pills and Menus

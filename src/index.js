@@ -4,6 +4,7 @@ const DEFAULT_REPEAT_ATTR = "attrRepeat_RT";
 const DEFAULT_DUE_ATTR = "attrDue_RT";
 const ADVANCE_ATTR = "attrAdvance_RT";
 const INSTALL_TOAST_KEY = "rt-intro-toast";
+const WEEK_START_OPTIONS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 let lastAttrNames = null;
 
@@ -52,6 +53,12 @@ export default {
           name: "Confirm before spawning next task",
           description: "Ask for confirmation when a recurring task is completed",
           action: { type: "switch" },
+        },
+        {
+          id: "rt-week-start",
+          name: "First day of the week",
+          description: "Used to align weekly schedules with your graph preference",
+          action: { type: "select", items: WEEK_START_OPTIONS },
         },
       ],
     };
@@ -131,7 +138,7 @@ export default {
         toast("Repeat rule is required.");
         return;
       }
-      if (!parseRuleText(normalizedRepeat)) {
+      if (!parseRuleText(normalizedRepeat, set)) {
         toast("Unable to understand that repeat rule.");
         return;
       }
@@ -224,7 +231,7 @@ export default {
         toast("Repeat rule is required.");
         return;
       }
-      if (!parseRuleText(normalizedRepeat)) {
+      if (!parseRuleText(normalizedRepeat, set)) {
         toast("Unable to understand that repeat rule.");
         return;
       }
@@ -275,6 +282,12 @@ export default {
       scheduleSurfaceSync(set.attributeSurface);
     }
 
+    function getWeekStartSetting() {
+      const raw = extensionAPI.settings.get("rt-week-start");
+      if (typeof raw === "string" && WEEK_START_OPTIONS.includes(raw)) return raw;
+      return "Monday";
+    }
+
     function S(attrNamesOverride = null) {
       const attrSurface = extensionAPI.settings.get("rt-attribute-surface") || "Child";
       if (attrSurface !== lastAttrSurface) {
@@ -298,6 +311,8 @@ export default {
       } catch (_) {
         locale = "en-US";
       }
+      const weekStartLabel = getWeekStartSetting();
+      const weekStartCode = dowFromAlias(weekStartLabel) || "MO";
       return {
         destination: extensionAPI.settings.get("rt-destination") || "DNP",
         dnpHeading: extensionAPI.settings.get("rt-dnp-heading") || "Tasks",
@@ -308,6 +323,8 @@ export default {
         timezone: tz,
         locale,
         attrNames,
+        weekStart: weekStartLabel,
+        weekStartCode,
       };
     }
 
@@ -997,7 +1014,7 @@ export default {
                   resolvedMeta.due = overrideDue;
                   resolvedMeta.props = { ...(resolvedMeta.props || {}), due: formatDate(overrideDue, set) };
                 }
-                const overrideRule = overrideRepeat ? parseRuleText(overrideRepeat) : null;
+                const overrideRule = overrideRepeat ? parseRuleText(overrideRepeat, setWithAdvance) : null;
                 const nextDueCandidate =
                   overrideDue && overrideDue instanceof Date && !Number.isNaN(overrideDue.getTime())
                     ? overrideDue
@@ -1978,6 +1995,7 @@ export default {
       saturday: "saturday",
     };
     const DOW_ORDER = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
+    const DEFAULT_WEEK_START_CODE = "MO";
 
     function ordFromText(value) {
       if (!value) return null;
@@ -1996,16 +2014,65 @@ export default {
       return DOW_MAP[norm] || null;
     }
 
+    function normalizeWeekStartCode(value) {
+      if (typeof value === "string") {
+        const code = dowFromAlias(value);
+        if (code) return code;
+      }
+      if (typeof value === "string" && DOW_ORDER.includes(value.toUpperCase())) {
+        return value.toUpperCase();
+      }
+      return DEFAULT_WEEK_START_CODE;
+    }
+
+    function getDowOrderForWeekStart(weekStartCode) {
+      const code = weekStartCode && DOW_ORDER.includes(weekStartCode) ? weekStartCode : DEFAULT_WEEK_START_CODE;
+      const idx = DOW_ORDER.indexOf(code);
+      if (idx <= 0) return DOW_ORDER;
+      return [...DOW_ORDER.slice(idx), ...DOW_ORDER.slice(0, idx)];
+    }
+
+    function dayOffsetFromWeekStart(dowCode, weekStartCode) {
+      if (!dowCode) return 0;
+      const order = getDowOrderForWeekStart(weekStartCode);
+      const idx = order.indexOf(dowCode);
+      return idx >= 0 ? idx : 0;
+    }
+
+    function getOrderedWeekdayOffsets(byDay, weekStartCode) {
+      const order = getDowOrderForWeekStart(weekStartCode);
+      const seen = new Set();
+      const offsets = [];
+      for (const code of Array.isArray(byDay) ? byDay : []) {
+        if (typeof code !== "string") continue;
+        const idx = order.indexOf(code);
+        if (idx === -1 || seen.has(code)) continue;
+        seen.add(code);
+        offsets.push(idx);
+      }
+      offsets.sort((a, b) => a - b);
+      return offsets;
+    }
+
+    function startOfWeek(date, weekStartCode) {
+      const target = weekStartCode && DOW_IDX.includes(weekStartCode) ? weekStartCode : DEFAULT_WEEK_START_CODE;
+      let cursor = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
+      for (let i = 0; i < 7 && DOW_IDX[cursor.getDay()] !== target; i++) {
+        cursor = addDaysLocal(cursor, -1);
+      }
+      return cursor;
+    }
+
     function monthFromText(x) {
       if (!x) return null;
       const m = MONTH_MAP[x.toLowerCase()];
       return m || null;
     }
-    function expandDowRange(startISO, endISO) {
-      const s = DOW_ORDER.indexOf(startISO), e = DOW_ORDER.indexOf(endISO);
+    function expandDowRange(startISO, endISO, dowOrder = DOW_ORDER) {
+      const s = dowOrder.indexOf(startISO), e = dowOrder.indexOf(endISO);
       if (s === -1 || e === -1) return [];
-      if (s <= e) return DOW_ORDER.slice(s, e + 1);
-      return [...DOW_ORDER.slice(s), ...DOW_ORDER.slice(0, e + 1)]; // wrap
+      if (s <= e) return dowOrder.slice(s, e + 1);
+      return [...dowOrder.slice(s), ...dowOrder.slice(0, e + 1)]; // wrap
     }
     function splitList(str) {
       return str
@@ -2022,14 +2089,15 @@ export default {
       return null;
     }
     // Turn mixed text, ranges, and shorthands into ISO DOW array
-    function normalizeByDayList(raw) {
+    function normalizeByDayList(raw, weekStartCode = DEFAULT_WEEK_START_CODE) {
       const tokens = splitList(raw.replace(/[-–—]/g, "-"));
+      const dowOrder = getDowOrderForWeekStart(weekStartCode);
       let out = [];
       for (const tok of tokens) {
         if (tok.includes("-")) {
           const [a, b] = tok.split("-");
           const A = dowFromAlias(a), B = dowFromAlias(b);
-          if (A && B) { out.push(...expandDowRange(A, B)); continue; }
+          if (A && B) { out.push(...expandDowRange(A, B, dowOrder)); continue; }
         }
         const set = parseAbbrevSet(tok);
         if (set) { out.push(...set); continue; }
@@ -2059,14 +2127,17 @@ export default {
     }
 
     // === Merged + extended parser ===
-    function parseRuleText(s) {
+    function parseRuleText(s, options = {}) {
       if (!s) return null;
       const t = s.trim().replace(/\s+/g, " ").toLowerCase();
+      const weekStartCode = normalizeWeekStartCode(
+        options.weekStartCode || options.weekStart || getWeekStartSetting()
+      );
       const ordinalHint = /\b(first|second|third|fourth|fifth|last|day|month)\b/.test(t) || /\d/.test(t);
       if (!ordinalHint) {
         const quickSet = parseAbbrevSet(t);
         if (quickSet) return { kind: "WEEKLY", interval: 1, byDay: quickSet };
-        const looseDays = normalizeByDayList(t);
+        const looseDays = normalizeByDayList(t, weekStartCode);
         if (looseDays.length) return { kind: "WEEKLY", interval: 1, byDay: looseDays };
       }
 
@@ -2112,26 +2183,26 @@ export default {
       // 5) Weekly with "on …"
       let weeklyOn = t.match(/^(?:every week|weekly)\s+on\s+(.+)$/);
       if (weeklyOn) {
-        const byDay = normalizeByDayList(weeklyOn[1]);
+        const byDay = normalizeByDayList(weeklyOn[1], weekStartCode);
         return { kind: "WEEKLY", interval: 1, byDay: byDay.length ? byDay : null };
       }
       // 5b) "every N weeks (on …)?"
       m = t.match(/^every (\d+)\s*weeks?(?:\s*on\s*(.+))?$/);
       if (m) {
         const interval = parseInt(m[1], 10);
-        const byDay = m[2] ? normalizeByDayList(m[2]) : null;
+        const byDay = m[2] ? normalizeByDayList(m[2], weekStartCode) : null;
         return { kind: "WEEKLY", interval, byDay: (byDay && byDay.length) ? byDay : null };
       }
       // 5c) "weekly on …"
       m = t.match(/^weekly on (.+)$/);
       if (m) {
-        const byDay = normalizeByDayList(m[1]);
+        const byDay = normalizeByDayList(m[1], weekStartCode);
         if (byDay.length) return { kind: "WEEKLY", interval: 1, byDay };
       }
       // 5d) Bare "every <list/range/shorthand>"
       if (t.startsWith("every ")) {
         const after = t.slice(6).trim();
-        const byDay = normalizeByDayList(after);
+        const byDay = normalizeByDayList(after, weekStartCode);
         if (byDay.length) return { kind: "WEEKLY", interval: 1, byDay };
         // also accept "every monday(s)" etc. via your earlier path already handled above
       }
@@ -2274,7 +2345,7 @@ export default {
     }
 
     function computeNextDue(meta, set, depth = 0, ruleOverride = null) {
-      const rule = ruleOverride || parseRuleText(meta.repeat);
+      const rule = ruleOverride || parseRuleText(meta.repeat, set);
       if (rule) {
         clearRepeatParseFailure(meta?.uid || null);
       }
@@ -2295,7 +2366,7 @@ export default {
           next = nextWeekday(base);
           break;
         case "WEEKLY":
-          next = nextWeekly(base, rule);
+          next = nextWeekly(base, rule, set);
           break;
         case "MONTHLY_DAY": {
           const interval = resolveMonthlyInterval(rule);
@@ -2349,15 +2420,22 @@ export default {
       while (isWeekend(x)) x = addDaysLocal(x, 1);
       return x;
     }
-    function nextWeekly(base, rule) {
-      const interval = rule.interval || 1;
-      if (!rule.byDay || rule.byDay.length === 0) return addDaysLocal(base, 7 * interval);
-      for (let i = 1; i <= 7 * interval + 7; i++) {
-        const cand = addDaysLocal(base, i);
-        const dow = DOW_IDX[cand.getDay()];
-        if (rule.byDay.includes(dow)) return cand;
+    function nextWeekly(base, rule, set) {
+      const interval = Math.max(1, rule.interval || 1);
+      const weekStartCode =
+        (set && (set.weekStartCode || normalizeWeekStartCode(set.weekStart))) || DEFAULT_WEEK_START_CODE;
+      if (!rule.byDay || rule.byDay.length === 0) {
+        return addDaysLocal(base, 7 * interval);
       }
-      return addDaysLocal(base, 7 * interval);
+      const offsets = getOrderedWeekdayOffsets(rule.byDay, weekStartCode);
+      if (!offsets.length) return addDaysLocal(base, 7 * interval);
+      const weekAnchor = startOfWeek(base, weekStartCode);
+      for (const offset of offsets) {
+        const candidate = addDaysLocal(weekAnchor, offset);
+        if (candidate > base) return candidate;
+      }
+      const nextAnchor = addDaysLocal(weekAnchor, 7 * interval);
+      return addDaysLocal(nextAnchor, offsets[0]);
     }
     function nextMonthOnDay(base, day, interval = 1) {
       const step = Number.isFinite(interval) && interval > 0 ? Math.trunc(interval) : 1;
