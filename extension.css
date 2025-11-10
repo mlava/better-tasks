@@ -120,6 +120,7 @@
 .recTasks>.iziToast-body>.iziToast-inputs>.iziToast-inputs-child, 
 .recTasks2>.iziToast-body>.iziToast-inputs>.iziToast-inputs-child {
     color: black !important;
+    margin: 6px 6px !important;
 }
 
 .recTasks>.iziToast-body .iziToast-icon.ico-question, 
