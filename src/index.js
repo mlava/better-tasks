@@ -1,16 +1,76 @@
 import iziToast from "izitoast";
 
-const DEFAULT_REPEAT_ATTR = "attrRepeat_RT";
-const DEFAULT_DUE_ATTR = "attrDue_RT";
-const DEFAULT_START_ATTR = "attrStart_RT";
-const DEFAULT_DEFER_ATTR = "attrDefer_RT";
-const ADVANCE_ATTR = "attrAdvance_RT";
+const DEFAULT_REPEAT_ATTR = "RT_attrRepeat";
+const DEFAULT_START_ATTR = "RT_attrStart";
+const DEFAULT_DEFER_ATTR = "RT_attrDefer";
+const DEFAULT_DUE_ATTR = "RT_attrDue";
+const ADVANCE_ATTR = "RT_attrAdvance";
 const INSTALL_TOAST_KEY = "rt-intro-toast";
+const START_ICON = "⏱";
+const DEFER_ICON = "⏳";
+const DUE_ICON = "📅";
 const WEEK_START_OPTIONS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 let lastAttrNames = null;
-
 let latestHelpers = null;
+
+const DOW_MAP = {
+  sunday: "SU",
+  monday: "MO",
+  tuesday: "TU",
+  wednesday: "WE",
+  thursday: "TH",
+  friday: "FR",
+  saturday: "SA",
+};
+const DOW_IDX = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+const ORD_MAP = { "1st": 1, "first": 1, "2nd": 2, "second": 2, "3rd": 3, "third": 3, "4th": 4, "fourth": 4, "last": -1 };
+const DOW_ALIASES = {
+  su: "sunday",
+  sun: "sunday",
+  sunday: "sunday",
+  mo: "monday",
+  mon: "monday",
+  monday: "monday",
+  tu: "tuesday",
+  tue: "tuesday",
+  tues: "tuesday",
+  tuesday: "tuesday",
+  we: "wednesday",
+  wed: "wednesday",
+  wednesday: "wednesday",
+  th: "thursday",
+  thu: "thursday",
+  thur: "thursday",
+  thurs: "thursday",
+  thursday: "thursday",
+  fr: "friday",
+  fri: "friday",
+  friday: "friday",
+  sa: "saturday",
+  sat: "saturday",
+  saturday: "saturday",
+};
+const DOW_ORDER = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
+const DEFAULT_WEEK_START_CODE = "MO";
+const MONTH_MAP = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+};
+const MONTH_KEYWORD_INTERVAL_LOOKUP = {
+  quarterly: 3,
+  "every quarter": 3,
+  semiannual: 6,
+  "semi annual": 6,
+  semiannually: 6,
+  "semi annually": 6,
+  "semi-annual": 6,
+  "semi-annually": 6,
+  "twice a year": 6,
+  "twice-a-year": 6,
+  "twice per year": 6,
+  "twice-per-year": 6,
+};
 
 export default {
   onload: ({ extensionAPI }) => {
@@ -29,15 +89,6 @@ export default {
           description: "Create under this heading on DNP when destination is DNP under heading",
           action: { type: "input", placeholder: "Tasks" },
         },
-        // placeholder for future feature - hidden mode
-        /*
-        {
-          id: "rt-attribute-surface",
-          name: "Show repeat/due as",
-          description: "Where to display human-visible repeat/due",
-          action: { type: "select", items: ["Child", "Hidden"], onChange: handleAttributeSurfaceChange },
-        },
-        */
         {
           id: "rt-repeat-attr",
           name: "Repeat attribute name",
@@ -82,7 +133,7 @@ export default {
     const introSeen = extensionAPI.settings.get(INSTALL_TOAST_KEY);
     if (!introSeen) {
       toast(
-        "This extension automatically recognises {{[[TODO]]}} tasks in your graph and uses attributes to determine a recurrence pattern and due date. By default, it uses 'attrRepeat_RT' and 'attrDue_RT' as those attributes. These can be changed in the extension settings.<BR><BR>If you already happen to use 'attrRepeat_RT' and/or 'attrDue_RT' attributes for other functions in your graph, please change the defaults in Roam Depot Settings for this extension BEFORE testing it's functionality to avoid any unexpected behaviour."
+        "This extension automatically recognises {{[[TODO]]}} tasks in your graph and uses attributes to determine a recurrence pattern and due date. By default, it uses 'RT_attrRepeat' and 'RT_attrDue' as those attributes. These can be changed in the extension settings.<BR><BR>If you already happen to use 'RT_attrRepeat' and/or 'RT_attrDue' attributes for other functions in your graph, please change the defaults in Roam Depot Settings for this extension BEFORE testing it's functionality to avoid any unexpected behaviour."
       );
       extensionAPI.settings.set(INSTALL_TOAST_KEY, "1");
     }
@@ -437,8 +488,20 @@ export default {
       return "Monday";
     }
 
+    function enforceChildAttrSurface(api = extensionAPI) {
+      try {
+        const stored = api?.settings?.get("rt-attribute-surface");
+        if (stored !== "Child") {
+          api?.settings?.set("rt-attribute-surface", "Child");
+        }
+      } catch (err) {
+        console.warn("[RecurringTasks] failed to enforce Child attribute surface", err);
+      }
+      return "Child";
+    }
+
     function S(attrNamesOverride = null) {
-      const attrSurface = extensionAPI.settings.get("rt-attribute-surface") || "Child";
+      const attrSurface = enforceChildAttrSurface(extensionAPI);
       if (attrSurface !== lastAttrSurface) {
         lastAttrSurface = attrSurface;
         scheduleSurfaceSync(attrSurface);
@@ -483,7 +546,6 @@ export default {
     const invalidDueToasted = new Set();
     const deletingChildAttrs = new Set();
     let childAttrMigrationRunning = false;
-    let migratingChildToHidden = false;
     let needsChildPopulate = false;
 
     function normalizeOverrideEntry(entry) {
@@ -876,6 +938,42 @@ export default {
       return result;
     }
     const pendingPillTimers = new Map();
+
+    function clearPendingPillTimer(uid) {
+      if (!uid) return;
+      const timer = pendingPillTimers.get(uid);
+      if (timer) {
+        clearTimeout(timer);
+        pendingPillTimers.delete(uid);
+      }
+    }
+
+    function schedulePillRefresh(mainEl, uid = null, delay = 60) {
+      if (!mainEl) return;
+      const targetUid = uid || findBlockUidFromElement(mainEl);
+      if (!targetUid) return;
+      clearPendingPillTimer(targetUid);
+      const timer = setTimeout(() => {
+        pendingPillTimers.delete(targetUid);
+        void decorateBlockPills(mainEl);
+      }, delay);
+      pendingPillTimers.set(targetUid, timer);
+    }
+
+    function findMainForChildrenContainer(childrenEl) {
+      if (!childrenEl) return null;
+      const prev = childrenEl.previousElementSibling;
+      if (prev?.classList?.contains("rm-block-main")) {
+        return prev;
+      }
+      const container = childrenEl.closest?.(".roam-block-container, .roam-block");
+      if (!container) return null;
+      return (
+        container.querySelector?.(":scope > .rm-block-main") ||
+        container.querySelector?.(".rm-block-main") ||
+        null
+      );
+    }
     const childEditDebounce = new Map(); // parentUid -> timer
     let observer = null;
     let observerReinitTimer = null;
@@ -883,13 +981,13 @@ export default {
     let lastAttrSurface = null;
     let pendingSurfaceSync = null;
 
-    lastAttrSurface = extensionAPI.settings.get("rt-attribute-surface") || "Child";
+    lastAttrSurface = enforceChildAttrSurface(extensionAPI);
     void syncPillsForSurface(lastAttrSurface);
     initiateObserver();
     window.addEventListener("hashchange", handleHashChange);
 
     latestHelpers = {
-      getAttrSurface: () => lastAttrSurface || extensionAPI.settings.get("rt-attribute-surface") || "Child",
+      getAttrSurface: () => lastAttrSurface || enforceChildAttrSurface(extensionAPI),
       populateChildAttrsFromProps,
     };
 
@@ -1065,9 +1163,46 @@ export default {
       const targetNode2 = document.getElementById("right-sidebar");
       if (!targetNode1 && !targetNode2) return;
 
-      const obsConfig = { attributes: false, childList: true, subtree: true };
+      const obsConfig = {
+        attributes: true,
+        attributeFilter: ["class", "style", "open", "aria-expanded"],
+        childList: true,
+        subtree: true,
+      };
       const callback = async function (mutationsList, obs) {
         for (const mutation of mutationsList) {
+          if (mutation.type === "attributes") {
+            const target = mutation.target;
+            if (!(target instanceof HTMLElement)) {
+              continue;
+            }
+            const attrName = mutation.attributeName;
+            const isCaret =
+              target.classList?.contains("rm-caret") ||
+              target.classList?.contains("rm-caret-container");
+            const isChildContainer =
+              target.classList?.contains("rm-block__children") ||
+              target.classList?.contains("rm-block-children");
+            if (!isCaret && !isChildContainer && attrName !== "open") {
+              continue;
+            }
+            let main = null;
+            if (isCaret) {
+              main = target.closest?.(".rm-block-main") || null;
+            } else if (isChildContainer) {
+              main = findMainForChildrenContainer(target);
+            } else if (attrName === "open") {
+              if (target.classList?.contains("rm-block-main")) {
+                main = target;
+              } else if (target.classList?.contains("roam-block-container") || target.classList?.contains("roam-block")) {
+                main = target.querySelector?.(":scope > .rm-block-main") || null;
+              }
+            }
+            if (main) {
+              schedulePillRefresh(main, null, 40);
+            }
+            continue;
+          }
           if (!mutation.addedNodes || mutation.addedNodes.length === 0) continue;
 
           for (const node of mutation.addedNodes) {
@@ -1205,17 +1340,18 @@ export default {
       observer = new MutationObserver(callback);
       if (targetNode1) observer.observe(targetNode1, obsConfig);
       if (targetNode2) observer.observe(targetNode2, obsConfig);
-      const surface = lastAttrSurface || extensionAPI.settings.get("rt-attribute-surface") || "Child";
+      const surface = lastAttrSurface || enforceChildAttrSurface(extensionAPI);
       lastAttrSurface = surface;
       void syncPillsForSurface(surface);
     }
 
     async function getBlock(uid) {
       const res = await window.roamAlphaAPI.q(`
-        [:find (pull ?b [:block/uid :block/string :block/props :block/order
-                         {:block/children [:block/uid :block/string]}
-                         {:block/page [:block/uid :node/title]}
-                         {:block/parents [:block/uid]}])
+        [:find
+          (pull ?b [:block/uid :block/string :block/props :block/order :block/open
+                    {:block/children [:block/uid :block/string]}
+                    {:block/page [:block/uid :node/title]}
+                    {:block/parents [:block/uid]}])
          :where [?b :block/uid "${uid}"]]`);
       return res?.[0]?.[0] || null;
     }
@@ -1705,6 +1841,15 @@ export default {
     function normalizeAttrLabel(value) {
       if (typeof value !== "string") return "";
       return value.trim().replace(/:+$/, "").toLowerCase();
+    }
+
+    function isChildrenVisible(el) {
+      if (!el) return false;
+      if (el.childElementCount === 0) return false;
+      if (el.style?.display === "none" || el.style?.visibility === "hidden") return false;
+      const computed = typeof window !== "undefined" && window.getComputedStyle ? window.getComputedStyle(el) : null;
+      if (computed && (computed.display === "none" || computed.visibility === "hidden")) return false;
+      return el.offsetHeight > 0;
     }
 
     function buildAttrConfig(settingId, defaultName) {
@@ -2327,176 +2472,6 @@ export default {
       }
       // Fallback: ISO style
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    }
-
-    // === Small helpers (no overlap with your existing ones) ===
-    const DOW_MAP = {
-      sunday: "SU",
-      monday: "MO",
-      tuesday: "TU",
-      wednesday: "WE",
-      thursday: "TH",
-      friday: "FR",
-      saturday: "SA",
-    };
-    const DOW_IDX = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
-    const ORD_MAP = { "1st": 1, "first": 1, "2nd": 2, "second": 2, "3rd": 3, "third": 3, "4th": 4, "fourth": 4, "last": -1 };
-    const DOW_ALIASES = {
-      su: "sunday",
-      sun: "sunday",
-      sunday: "sunday",
-      mo: "monday",
-      mon: "monday",
-      monday: "monday",
-      tu: "tuesday",
-      tue: "tuesday",
-      tues: "tuesday",
-      tuesday: "tuesday",
-      we: "wednesday",
-      wed: "wednesday",
-      wednesday: "wednesday",
-      th: "thursday",
-      thu: "thursday",
-      thur: "thursday",
-      thurs: "thursday",
-      thursday: "thursday",
-      fr: "friday",
-      fri: "friday",
-      friday: "friday",
-      sa: "saturday",
-      sat: "saturday",
-      saturday: "saturday",
-    };
-    const DOW_ORDER = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
-    const DEFAULT_WEEK_START_CODE = "MO";
-
-    function ordFromText(value) {
-      if (!value) return null;
-      const numeric = Number(value.replace(/(st|nd|rd|th)$/i, ""));
-      if (!Number.isNaN(numeric) && numeric >= 1 && numeric <= 31) return numeric;
-      return ORD_MAP[value.toLowerCase()] ?? null;
-    }
-    const MONTH_MAP = {
-      january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
-      july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
-    };
-
-    function dowFromAlias(token) {
-      if (!token) return null;
-      const norm = (DOW_ALIASES[token.toLowerCase()] || token).toLowerCase();
-      return DOW_MAP[norm] || null;
-    }
-
-    function normalizeWeekStartCode(value) {
-      if (typeof value === "string") {
-        const code = dowFromAlias(value);
-        if (code) return code;
-      }
-      if (typeof value === "string" && DOW_ORDER.includes(value.toUpperCase())) {
-        return value.toUpperCase();
-      }
-      return DEFAULT_WEEK_START_CODE;
-    }
-
-    function getDowOrderForWeekStart(weekStartCode) {
-      const code = weekStartCode && DOW_ORDER.includes(weekStartCode) ? weekStartCode : DEFAULT_WEEK_START_CODE;
-      const idx = DOW_ORDER.indexOf(code);
-      if (idx <= 0) return DOW_ORDER;
-      return [...DOW_ORDER.slice(idx), ...DOW_ORDER.slice(0, idx)];
-    }
-
-    function dayOffsetFromWeekStart(dowCode, weekStartCode) {
-      if (!dowCode) return 0;
-      const order = getDowOrderForWeekStart(weekStartCode);
-      const idx = order.indexOf(dowCode);
-      return idx >= 0 ? idx : 0;
-    }
-
-    function getOrderedWeekdayOffsets(byDay, weekStartCode) {
-      const order = getDowOrderForWeekStart(weekStartCode);
-      const seen = new Set();
-      const offsets = [];
-      for (const code of Array.isArray(byDay) ? byDay : []) {
-        if (typeof code !== "string") continue;
-        const idx = order.indexOf(code);
-        if (idx === -1 || seen.has(code)) continue;
-        seen.add(code);
-        offsets.push(idx);
-      }
-      offsets.sort((a, b) => a - b);
-      return offsets;
-    }
-
-    function startOfWeek(date, weekStartCode) {
-      const target = weekStartCode && DOW_IDX.includes(weekStartCode) ? weekStartCode : DEFAULT_WEEK_START_CODE;
-      let cursor = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
-      for (let i = 0; i < 7 && DOW_IDX[cursor.getDay()] !== target; i++) {
-        cursor = addDaysLocal(cursor, -1);
-      }
-      return cursor;
-    }
-
-    function monthFromText(x) {
-      if (!x) return null;
-      const m = MONTH_MAP[x.toLowerCase()];
-      return m || null;
-    }
-    function expandDowRange(startISO, endISO, dowOrder = DOW_ORDER) {
-      const s = dowOrder.indexOf(startISO), e = dowOrder.indexOf(endISO);
-      if (s === -1 || e === -1) return [];
-      if (s <= e) return dowOrder.slice(s, e + 1);
-      return [...dowOrder.slice(s), ...dowOrder.slice(0, e + 1)]; // wrap
-    }
-    function splitList(str) {
-      return str
-        .replace(/&/g, ",")
-        .replace(/\band\b/gi, ",")
-        .split(/[,\s/]+/)
-        .filter(Boolean);
-    }
-    // Recognize MWF / TTh sets
-    function parseAbbrevSet(token) {
-      const t = token.toLowerCase();
-      if (t === "mwf") return ["MO", "WE", "FR"];
-      if (t === "tth" || t === "tu/th" || t === "t/th") return ["TU", "TH"];
-      return null;
-    }
-    // Turn mixed text, ranges, and shorthands into ISO DOW array
-    function normalizeByDayList(raw, weekStartCode = DEFAULT_WEEK_START_CODE) {
-      const tokens = splitList(raw.replace(/[-–—]/g, "-"));
-      const dowOrder = getDowOrderForWeekStart(weekStartCode);
-      let out = [];
-      for (const tok of tokens) {
-        if (tok.includes("-")) {
-          const [a, b] = tok.split("-");
-          const A = dowFromAlias(a), B = dowFromAlias(b);
-          if (A && B) { out.push(...expandDowRange(A, B, dowOrder)); continue; }
-        }
-        const set = parseAbbrevSet(tok);
-        if (set) { out.push(...set); continue; }
-        const d = dowFromAlias(tok);
-        if (d) { out.push(d); continue; }
-      }
-      const seen = new Set();
-      return out.filter(d => (seen.has(d) ? false : (seen.add(d), true)));
-    }
-    const MONTH_KEYWORD_INTERVAL_LOOKUP = {
-      quarterly: 3,
-      "every quarter": 3,
-      semiannual: 6,
-      "semi annual": 6,
-      semiannually: 6,
-      "semi annually": 6,
-      "semi-annual": 6,
-      "semi-annually": 6,
-      "twice a year": 6,
-      "twice-a-year": 6,
-      "twice per year": 6,
-      "twice-per-year": 6,
-    };
-
-    function keywordIntervalFromText(text) {
-      return MONTH_KEYWORD_INTERVAL_LOOKUP[text] || null;
     }
 
     // === Merged + extended parser ===
@@ -3376,12 +3351,15 @@ export default {
       return new Promise((resolve) => {
         let settled = false;
         let current = typeof initial === "string" ? initial : "";
+        let inputEl = null;
         const finish = (value) => {
           if (settled) return;
           settled = true;
           resolve(value);
         };
-        const inputHtml = `<input type="date" value="${escapeHtml(current)}" />`;
+        const dateInputClass = `rt-inline-date-${Date.now()}`;
+        const inputHtml = `<input type="date" class="${dateInputClass}" value="${escapeHtml(current)}" />`;
+        const shortcutSet = S();
         iziToast.question({
           theme: "light",
           color: "black",
@@ -3408,7 +3386,12 @@ export default {
             [
               "<button>Save</button>",
               (instance, toastInstance, _button, _e, inputs) => {
-                const val = inputs?.[0]?.value?.trim();
+                const raw =
+                  inputEl?.value ??
+                  inputs?.[0]?.value ??
+                  current ??
+                  "";
+                const val = raw.trim();
                 instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
                 finish(val || null);
               },
@@ -3425,6 +3408,7 @@ export default {
           onOpening: (_instance, toastEl) => {
             const input = toastEl.querySelector(`.${dateInputClass}`);
             if (!input) return;
+            inputEl = input;
             let row = input.parentElement;
             if (!row || !row.classList.contains("rt-date-inline-wrap")) {
               row = document.createElement("div");
@@ -3440,9 +3424,9 @@ export default {
               btn.textContent = label;
               btn.addEventListener("click", () => {
                 const date = addDaysLocal(todayLocal(), offsetDays);
-                const iso = formatIsoDate(date, setSnapshot);
+                const iso = formatIsoDate(date, shortcutSet);
                 input.value = iso;
-                snapshot.dueIso = iso;
+                current = iso;
                 input.dispatchEvent(new Event("input", { bubbles: true }));
               });
               return btn;
@@ -3913,8 +3897,21 @@ export default {
           float: right;
         }
         .rt-pill-repeat,
-        .rt-pill-due {
+        .rt-pill-due,
+        .rt-pill-start,
+        .rt-pill-defer {
           cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .rt-pill-icon {
+          font-size: 11px;
+          line-height: 1;
+          opacity: 0.8;
+        }
+        .rt-pill-text {
+          line-height: 1.2;
         }
         .rt-pill-menu-btn {
           margin-left: 6px;
@@ -3929,29 +3926,40 @@ export default {
       document.head.appendChild(style);
     }
 
+    function renderPillDateSpan(span, { icon, text, label, tooltip }) {
+      if (!span) return;
+      span.textContent = "";
+      if (icon) {
+        const iconEl = document.createElement("span");
+        iconEl.className = "rt-pill-icon";
+        iconEl.textContent = icon;
+        iconEl.setAttribute("aria-hidden", "true");
+        span.appendChild(iconEl);
+      }
+      const textEl = document.createElement("span");
+      textEl.className = "rt-pill-text";
+      textEl.textContent = text;
+      span.appendChild(textEl);
+      if (tooltip) span.title = tooltip;
+      if (label) span.setAttribute("aria-label", `${label}: ${text}`);
+    }
+
     async function syncPillsForSurface(surface) {
       if (!surface) return;
-      if (surface === "Hidden") {
-        clearAllPills(false);
-        ensurePillStyles();
-        const root = document.body || document;
-        if (root) {
-          try {
-            const once = () => Promise.resolve(decorateBlockPills(root));
-            await once();
-            await new Promise((resolve) => requestAnimationFrame(() => once().then(resolve, resolve)));
-            await new Promise((resolve) => setTimeout(() => once().then(resolve, resolve), 50));
-          } catch (err) {
-            console.warn("[RecurringTasks] pill decoration failed", err);
-          }
-        }
-        migratingChildToHidden = false;
-      } else {
-        clearAllPills();
-        if (surface === "Child" && needsChildPopulate) {
-          needsChildPopulate = false;
-          await populateChildAttrsFromProps({ force: true });
-        }
+      if (surface === "Child" && needsChildPopulate) {
+        needsChildPopulate = false;
+        await populateChildAttrsFromProps({ force: true });
+      }
+      ensurePillStyles();
+      const root = document.body || document;
+      if (!root) return;
+      try {
+        const once = () => Promise.resolve(decorateBlockPills(root));
+        await once();
+        await new Promise((resolve) => requestAnimationFrame(() => once().then(resolve, resolve)));
+        await new Promise((resolve) => setTimeout(() => once().then(resolve, resolve), 50));
+      } catch (err) {
+        console.warn("[RecurringTasks] pill decoration failed", err);
       }
     }
 
@@ -4096,7 +4104,6 @@ export default {
         : Array.from(rootEl.querySelectorAll?.(selector) || []);
       const seen = new Set();
       const set = S();
-      if (set.attributeSurface !== "Hidden") return;
       const attrNames = set.attrNames;
       ensurePillMenuStyles();
       for (const node of nodes) {
@@ -4114,171 +4121,77 @@ export default {
             findBlockUidFromElement(node) ||
             normalizeUid(node.getAttribute?.("data-uid") || node.dataset?.uid);
           if (!uid) continue;
-          if (pendingPillTimers.has(uid)) {
-            clearTimeout(pendingPillTimers.get(uid));
-            pendingPillTimers.delete(uid);
-          }
-          const schedule = (delay = 0) => {
-            if (pendingPillTimers.has(uid)) {
-              clearTimeout(pendingPillTimers.get(uid));
-              pendingPillTimers.delete(uid);
-            }
-            const timer = setTimeout(() => {
-              pendingPillTimers.delete(uid);
-              void decorateBlockPills(main);
-            }, delay);
-            pendingPillTimers.set(uid, timer);
-          };
+          clearPendingPillTimer(uid);
 
           if (seen.has(uid)) {
             if (main.querySelector?.(".rt-pill-wrap")) continue;
-            schedule(60);
+            schedulePillRefresh(main, uid, 60);
             continue;
           }
           seen.add(uid);
 
           const isFocused = !!main.querySelector?.(".rm-block__input--active, .rm-block__input--focused");
           if (isFocused) {
-            schedule(120);
+            schedulePillRefresh(main, uid, 120);
           }
 
-          const metaReadSet = migratingChildToHidden ? { ...set, attributeSurface: "Child" } : set;
-          if (migratingChildToHidden) {
-            await flushChildAttrSync(uid, { skipRefresh: true });
-          }
           const block = await getBlock(uid);
           if (!block) continue;
           if (isTaskInCodeBlock(block)) continue;
 
           const originalString = block.string;
-          const props = parseProps(block.props);
-          const propsAttrRepeatRaw = typeof props?.rt?.attrRepeat === "string" ? props.rt.attrRepeat : "";
-          const propsAttrRepeat = (propsAttrRepeatRaw || "").trim();
-          const propsAttrRepeatLabelRaw =
-            typeof props?.rt?.attrRepeatLabel === "string" ? props.rt.attrRepeatLabel : "";
-          const normalizedRepeatLabelFromProps =
-            normalizeAttrLabel(propsAttrRepeatLabelRaw) ||
-            normalizeAttrLabel(propsAttrRepeat) ||
-            DEFAULT_REPEAT_ATTR.toLowerCase();
-          const normalizedCurrentRepeatLabel = normalizeAttrLabel(attrNames.repeatAttr);
-          const propsRepeatMatchesCurrent = normalizedRepeatLabelFromProps === normalizedCurrentRepeatLabel;
-          const propsAttrDueRaw = typeof props?.rt?.attrDue === "string" ? props.rt.attrDue : "";
-          const propsAttrDue = propsAttrDueRaw.trim();
-          const propsAttrDueLabelRaw =
-            typeof props?.rt?.attrDueLabel === "string" ? props.rt.attrDueLabel : "";
-          const normalizedDueLabelFromProps =
-            normalizeAttrLabel(propsAttrDueLabelRaw) ||
-            normalizeAttrLabel(propsAttrDue) ||
-            DEFAULT_DUE_ATTR.toLowerCase();
-          const normalizedCurrentDueLabel = normalizeAttrLabel(attrNames.dueAttr);
-          const propsDueMatchesCurrent = normalizedDueLabelFromProps === normalizedCurrentDueLabel;
-          const hasCurrentRepeatChild = hasChildAttrLabel(block.children || [], attrNames.repeatAttr);
-          const storedRepeatChildLabel = propsAttrRepeat || null;
-          const hasStoredRepeatChild = storedRepeatChildLabel
-            ? hasChildAttrLabel(block.children || [], storedRepeatChildLabel)
-            : false;
-          const hasCurrentRepeatInline = hasInlineAttrLabel(block.string || "", attrNames.repeatAttr);
-          const hasAnyAttrChild = hasAnyAttributeChild(block.children || []);
-          if (migratingChildToHidden) {
-            if (!hasStoredRepeatChild) {
-              continue;
-            }
-            if (hasCurrentRepeatChild && propsAttrRepeat !== attrNames.repeatAttr) {
-              continue;
-            }
-            if (!propsRepeatMatchesCurrent) {
-              continue;
-            }
-          }
-          const meta = await readRecurringMeta(block, metaReadSet);
-          if (!meta.repeat) continue;
-          if (!propsRepeatMatchesCurrent) {
-            continue;
-          }
-          if (hasAnyAttrChild && !hasCurrentRepeatChild && !hasStoredRepeatChild) {
+          const meta = await readRecurringMeta(block, set);
+          if (!meta.repeat) {
+            main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
             continue;
           }
           const inlineAttrs = parseAttrsFromBlockText(block.string || "");
           const inlineRepeatVal = pickInlineAttr(inlineAttrs, attrNames.repeatAliases);
           const inlineDueVal = pickInlineAttr(inlineAttrs, attrNames.dueAliases);
-          if (set.attributeSurface === "Hidden") {
-            const childRepeatEntry = getMetaChildAttr(meta, "repeat", attrNames, {
-              allowFallback: !migratingChildToHidden && attrNames.repeatAttr === DEFAULT_REPEAT_ATTR,
-            });
-            const childDueEntry = getMetaChildAttr(meta, "due", attrNames, {
-              allowFallback: !migratingChildToHidden && attrNames.dueAttr === DEFAULT_DUE_ATTR,
-            });
-            const childRepeatVal = childRepeatEntry?.value || null;
-            const childDueVal = childDueEntry?.value || null;
-            const cameFromChildSurface = migratingChildToHidden && hasStoredRepeatChild;
-            const allowPropRepeatSource = !migratingChildToHidden && propsRepeatMatchesCurrent;
-            const allowPropDueSource = !migratingChildToHidden && propsDueMatchesCurrent;
-            const repeatSource =
-              childRepeatVal ||
-              (typeof meta.repeat === "string" && meta.repeat) ||
-              inlineRepeatVal ||
-              (allowPropRepeatSource && typeof meta?.props?.repeat === "string" && meta.props.repeat) ||
-              null;
-            let dueSource = null;
-            if (childDueVal) {
-              dueSource = childDueVal;
-            } else if (inlineDueVal) {
-              dueSource = inlineDueVal;
-            } else if (allowPropDueSource && typeof meta?.props?.due === "string" && meta.props.due) {
-              dueSource = meta.props.due;
-            } else if (allowPropDueSource && meta.due instanceof Date && !Number.isNaN(meta.due.getTime())) {
-              dueSource = formatDate(meta.due, set);
-            }
-            if (cameFromChildSurface && !childDueVal && !inlineDueVal) {
-              dueSource = null;
-              meta.due = null;
-            }
-            await updateBlockProps(uid, {
-              repeat: repeatSource || undefined,
-              due: dueSource || undefined,
-            });
-            if (repeatSource) meta.repeat = repeatSource;
-            if (dueSource) {
-              const parsed = parseRoamDate(dueSource);
-              meta.due = parsed instanceof Date && !Number.isNaN(parsed.getTime()) ? parsed : meta.due;
-            } else if (cameFromChildSurface) {
-              repeatOverrides.delete(uid);
-              meta.due = null;
-            }
-            const inlineRemovalKeys = [
-              ...new Set([
-                ...attrNames.repeatRemovalKeys,
-                ...attrNames.dueRemovalKeys,
-                ...attrNames.startRemovalKeys,
-                ...attrNames.deferRemovalKeys,
-              ]),
-            ];
-            const cleaned = removeInlineAttributes(block.string || "", inlineRemovalKeys);
-            if (cleaned !== block.string) {
-              await updateBlockString(uid, cleaned);
-              block.string = cleaned;
-              schedule(0);       // next tick
-              schedule(100);      // after first paint
-              // schedule(200);  // later retry if lagging
-            }
-            await removeChildAttrsForType(uid, "repeat", attrNames);
-            // Wait a beat so Roam registers the removal before due updates fire
-            await delay(30);
-            await removeChildAttrsForType(uid, "due", attrNames);
-            const childAttrMap = { ...(meta.childAttrMap || {}) };
-            for (const key of getAttrAliases("repeat", attrNames)) delete childAttrMap[key];
-            for (const key of getAttrAliases("due", attrNames)) delete childAttrMap[key];
-            for (const key of getAttrAliases("start", attrNames)) delete childAttrMap[key];
-            for (const key of getAttrAliases("defer", attrNames)) delete childAttrMap[key];
-            meta.childAttrMap = childAttrMap;
+          const inlineStartVal = pickInlineAttr(inlineAttrs, attrNames.startAliases);
+          const inlineDeferVal = pickInlineAttr(inlineAttrs, attrNames.deferAliases);
+
+          const caret = main.querySelector?.(".rm-caret");
+          const caretClosed = caret?.classList?.contains("rm-caret-right");
+          const caretOpen = caret?.classList?.contains("rm-caret-down");
+          const inlineCaretOpen = caret?.getAttribute?.("aria-expanded") === "true";
+          const inlineCaretClosed = caret?.getAttribute?.("aria-expanded") === "false";
+          const childrenContainer =
+            main.querySelector?.(":scope > .rm-block__children") ||
+            main.querySelector?.(":scope > .rm-block-children");
+          const childrenVisible = isChildrenVisible(childrenContainer);
+          const isOpen =
+            block.open === true ||
+            inlineCaretOpen ||
+            caretOpen ||
+            childrenVisible
+              ? true
+              : block.open === false || inlineCaretClosed || caretClosed
+                ? false
+                : childrenContainer
+                  ? childrenVisible
+                  : false;
+
+          main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
+
+          if (isOpen) {
+            continue;
           }
 
           const humanRepeat = meta.repeat || inlineRepeatVal || "";
-          const dueDate = meta.due || null;
+          const startDate = meta.start || (inlineStartVal ? parseRoamDate(inlineStartVal) : null);
+          const deferDate = meta.defer || (inlineDeferVal ? parseRoamDate(inlineDeferVal) : null);
+          const dueDate =
+            meta.due ||
+            (inlineDueVal ? parseRoamDate(inlineDueVal) : null);
+          const startDisplay = startDate ? formatFriendlyDate(startDate, set) : null;
+          const deferDisplay = deferDate ? formatFriendlyDate(deferDate, set) : null;
           const dueDisplay = dueDate ? formatFriendlyDate(dueDate, set) : null;
-          const tooltip = dueDate
-            ? `Next occurrence: ${formatIsoDate(dueDate, set)}`
-            : "Recurring task";
+          const tooltipParts = [];
+          if (startDate) tooltipParts.push(`Start: ${formatIsoDate(startDate, set)}`);
+          if (deferDate) tooltipParts.push(`Defer: ${formatIsoDate(deferDate, set)}`);
+          if (dueDate) tooltipParts.push(`Next: ${formatIsoDate(dueDate, set)}`);
+          const tooltip = tooltipParts.length ? tooltipParts.join(" • ") : "Recurring task";
 
           main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
 
@@ -4293,6 +4206,8 @@ export default {
             e.stopPropagation();
           });
 
+          let startSpan = null;
+          let deferSpan = null;
           let dueSpan = null;
 
           const pill = document.createElement("span");
@@ -4308,6 +4223,8 @@ export default {
             const target = e.target;
             if (
               target === repeatSpan ||
+              (startSpan && target === startSpan) ||
+              (deferSpan && target === deferSpan) ||
               (dueSpan && target === dueSpan) ||
               target === menuBtn
             ) {
@@ -4328,6 +4245,50 @@ export default {
 
           pill.appendChild(repeatSpan);
 
+          if (startDisplay) {
+            const sep = document.createElement("span");
+            sep.className = "rt-pill-separator";
+            sep.textContent = " · ";
+            pill.appendChild(sep);
+
+            startSpan = document.createElement("span");
+            startSpan.className = "rt-pill-start";
+            renderPillDateSpan(startSpan, {
+              icon: START_ICON,
+              text: startDisplay,
+              label: "Start",
+              tooltip: `Start: ${formatIsoDate(startDate, set)}`,
+            });
+            startSpan.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleStartClick(e, { uid, set, span: startSpan });
+            });
+            pill.appendChild(startSpan);
+          }
+
+          if (deferDisplay) {
+            const sep = document.createElement("span");
+            sep.className = "rt-pill-separator";
+            sep.textContent = " · ";
+            pill.appendChild(sep);
+
+            deferSpan = document.createElement("span");
+            deferSpan.className = "rt-pill-defer";
+            renderPillDateSpan(deferSpan, {
+              icon: DEFER_ICON,
+              text: deferDisplay,
+              label: "Defer",
+              tooltip: `Defer: ${formatIsoDate(deferDate, set)}`,
+            });
+            deferSpan.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleDeferClick(e, { uid, set, span: deferSpan });
+            });
+            pill.appendChild(deferSpan);
+          }
+
           if (dueDisplay) {
             const sep = document.createElement("span");
             sep.className = "rt-pill-separator";
@@ -4336,8 +4297,12 @@ export default {
 
             dueSpan = document.createElement("span");
             dueSpan.className = "rt-pill-due";
-            dueSpan.textContent = `Next: ${dueDisplay}`;
-            dueSpan.title = tooltip;
+            renderPillDateSpan(dueSpan, {
+              icon: DUE_ICON,
+              text: dueDisplay,
+              label: "Next",
+              tooltip: `Next occurrence: ${formatIsoDate(dueDate, set)}`,
+            });
             dueSpan.addEventListener("click", (e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -4425,19 +4390,23 @@ export default {
       };
       span.textContent = `↻ ${normalized}`;
       span.title = `Repeat rule: ${normalized}`;
-      const pill = span.closest(".rt-pill");
-      if (pill) {
-        const dueSpanEl = pill.querySelector(".rt-pill-due");
-        if (dueDateToPersist && dueSpanEl) {
-          const friendly = formatFriendlyDate(dueDateToPersist, set);
-          const tooltip = `Next occurrence: ${formatIsoDate(dueDateToPersist, set)}`;
-          dueSpanEl.textContent = `Next: ${friendly}`;
-          dueSpanEl.title = tooltip;
-          pill.title = tooltip;
-        } else {
-          pill.title = `Repeat rule: ${normalized}`;
+        const pill = span.closest(".rt-pill");
+        if (pill) {
+          const dueSpanEl = pill.querySelector(".rt-pill-due");
+          if (dueDateToPersist && dueSpanEl) {
+            const friendly = formatFriendlyDate(dueDateToPersist, set);
+            const tooltip = `Next occurrence: ${formatIsoDate(dueDateToPersist, set)}`;
+            renderPillDateSpan(dueSpanEl, {
+              icon: DUE_ICON,
+              text: friendly,
+              label: "Next",
+              tooltip,
+            });
+            pill.title = tooltip;
+          } else {
+            pill.title = `Repeat rule: ${normalized}`;
+          }
         }
-      }
       toast(`Repeat → ${normalized}`);
       const dueChanged =
         (priorDue ? priorDue.getTime() : null) !== (dueDateToPersist ? dueDateToPersist.getTime() : null);
@@ -4470,6 +4439,69 @@ export default {
         });
       }
       void syncPillsForSurface(lastAttrSurface);
+    }
+
+    async function handleStartClick(event, context) {
+      await handleFlexibleDateAttrClick(event, { ...context, type: "start" });
+    }
+
+    async function handleDeferClick(event, context) {
+      await handleFlexibleDateAttrClick(event, { ...context, type: "defer" });
+    }
+
+    async function handleFlexibleDateAttrClick(event, context) {
+      const { type, uid, set, span } = context;
+      if (!type || !uid || !set) return;
+      const block = await getBlock(uid);
+      if (!block) return;
+      const meta = await readRecurringMeta(block, set);
+      const attrNames = set.attrNames;
+      const currentDate = type === "start" ? meta.start : meta.defer;
+      if (!(currentDate instanceof Date) || Number.isNaN(currentDate.getTime())) return;
+
+      const label = type === "start" ? "Start" : "Defer";
+      if (event.altKey || event.metaKey || event.ctrlKey) {
+        const existing = formatIsoDate(currentDate, set);
+        const nextIso = await promptForDate({
+          title: `Edit ${label} Date`,
+          message: `Select the ${label.toLowerCase()} date`,
+          initial: existing,
+        });
+        if (!nextIso) return;
+        const parsed = parseRoamDate(nextIso);
+        if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) {
+          toast("Couldn't parse that date.");
+          return;
+        }
+        const nextStr = formatDate(parsed, set);
+        await updateBlockProps(uid, { [type]: nextStr });
+        let childInfo = null;
+        if (set.attributeSurface === "Child") {
+          childInfo = await ensureChildAttrForType(uid, type, nextStr, attrNames);
+        }
+        await ensureInlineAttrForType(block, type, nextStr, attrNames);
+        meta.childAttrMap = meta.childAttrMap || {};
+        if (set.attributeSurface === "Child") {
+          const existingEntry = getMetaChildAttr(meta, type, attrNames, { allowFallback: true });
+          const storedUid = childInfo?.uid || existingEntry?.uid || null;
+          setMetaChildAttr(meta, type, { value: nextStr, uid: storedUid }, attrNames);
+        }
+        meta[type] = parsed;
+        if (span) {
+          const friendly = formatFriendlyDate(parsed, set);
+          renderPillDateSpan(span, {
+            icon: type === "start" ? START_ICON : DEFER_ICON,
+            text: friendly,
+            label,
+            tooltip: `${label}: ${formatIsoDate(parsed, set)}`,
+          });
+        }
+        toast(`${label} → [[${formatRoamDateTitle(parsed)}]]`);
+        void syncPillsForSurface(lastAttrSurface);
+        return;
+      }
+
+      await openDatePage(currentDate);
     }
 
     async function handleDueClick(event, context) {
@@ -4510,8 +4542,13 @@ export default {
         }
         mergeRepeatOverride(uid, { due: parsed });
         const relocation = await relocateBlockForDue(block, parsed, set, meta);
-        span.textContent = `Next: ${formatFriendlyDate(parsed, set)}`;
-        span.title = `Next occurrence: ${formatIsoDate(parsed, set)}`;
+        const friendly = formatFriendlyDate(parsed, set);
+        renderPillDateSpan(span, {
+          icon: DUE_ICON,
+          text: friendly,
+          label: "Next",
+          tooltip: `Next occurrence: ${formatIsoDate(parsed, set)}`,
+        });
         const pill = span.closest(".rt-pill");
         if (pill) pill.title = span.title;
         const dueChanged =
@@ -4545,11 +4582,17 @@ export default {
         return;
       }
       if (event.shiftKey) {
-        await snoozeDueByDays(uid, set, 1);
+        await snoozeDeferByDays(uid, set, 1);
         return;
       }
-      const dnpTitle = toDnpTitle(due);
+      await openDatePage(due);
+    }
+
+    async function openDatePage(date) {
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return;
+      const dnpTitle = toDnpTitle(date);
       const dnpUid = await getOrCreatePageUid(dnpTitle);
+      if (!dnpUid) return;
       window.roamAlphaAPI.ui.mainWindow.openPage({ page: { uid: dnpUid } });
     }
 
@@ -4625,10 +4668,10 @@ export default {
               await handler();
             });
           };
-          attach('[data-action="snooze-1"]', () => snoozeDueByDays(uid, set, 1));
-          attach('[data-action="snooze-3"]', () => snoozeDueByDays(uid, set, 3));
-          attach('[data-action="snooze-next-mon"]', () => snoozeToNextMonday(uid, set));
-          attach('[data-action="snooze-pick"]', () => snoozePickDate(uid, set));
+          attach('[data-action="snooze-1"]', () => snoozeDeferByDays(uid, set, 1));
+          attach('[data-action="snooze-3"]', () => snoozeDeferByDays(uid, set, 3));
+          attach('[data-action="snooze-next-mon"]', () => snoozeDeferToNextMonday(uid, set));
+          attach('[data-action="snooze-pick"]', () => snoozePickDeferDate(uid, set));
           attach('[data-action="skip"]', () => skipOccurrence(uid, set));
           attach('[data-action="generate"]', () => generateNextNow(uid, set));
           attach('[data-action="end"]', () => endRecurrence(uid, set));
@@ -4636,121 +4679,53 @@ export default {
       });
     }
 
-    async function snoozeDueByDays(uid, set, days) {
+    async function updateDeferDate(uid, set, targetDate, options = {}) {
+      if (!(targetDate instanceof Date) || Number.isNaN(targetDate.getTime())) return;
+      const block = options.block || (await getBlock(uid));
+      if (!block) return;
+      const meta = options.meta || (await readRecurringMeta(block, set));
+      const attrNames = set.attrNames;
+      const nextStr = formatDate(targetDate, set);
+      await updateBlockProps(uid, { defer: nextStr });
+      if (set.attributeSurface === "Child") {
+        const deferChildInfo = await ensureChildAttrForType(uid, "defer", nextStr, attrNames);
+        meta.childAttrMap = meta.childAttrMap || {};
+        const existingEntry = getMetaChildAttr(meta, "defer", attrNames, { allowFallback: true });
+        const storedUid = deferChildInfo?.uid || existingEntry?.uid || null;
+        setMetaChildAttr(meta, "defer", { value: nextStr, uid: storedUid }, attrNames);
+      }
+      await ensureInlineAttrForType(block, "defer", nextStr, attrNames);
+      meta.defer = targetDate;
+      toast(options.toastMessage || `Snoozed to [[${formatRoamDateTitle(targetDate)}]]`);
+      void syncPillsForSurface(lastAttrSurface);
+    }
+
+    async function snoozeDeferByDays(uid, set, days) {
       const block = await getBlock(uid);
       if (!block) return;
       const meta = await readRecurringMeta(block, set);
-      const contextSnapshot = prepareDueChangeContext(block, meta, set);
-      const base = meta.due || todayLocal();
+      const base = meta.defer || todayLocal();
       const next = addDaysLocal(base, days);
-      const nextStr = formatDate(next, set);
-      await updateBlockProps(uid, { due: nextStr });
-      const attrNames = set.attrNames;
-      let dueChildInfo = null;
-      if (set.attributeSurface === "Child") {
-        dueChildInfo = await ensureChildAttrForType(uid, "due", nextStr, attrNames);
-        meta.childAttrMap = meta.childAttrMap || {};
-        const existingEntry = getMetaChildAttr(meta, "due", attrNames, { allowFallback: true });
-        const storedUid = dueChildInfo?.uid || existingEntry?.uid || null;
-        setMetaChildAttr(meta, "due", { value: nextStr, uid: storedUid }, attrNames);
-      }
-      await ensureInlineAttrForType(block, "due", nextStr, attrNames);
-      meta.due = next;
-      mergeRepeatOverride(uid, { due: next });
-      const relocation = await relocateBlockForDue(block, next, set, meta);
-      const dueChanged =
-        (contextSnapshot.previousDueDate ? contextSnapshot.previousDueDate.getTime() : null) !== next.getTime();
-      if (dueChanged || relocation.moved) {
-        registerDueUndoAction({
-          blockUid: uid,
-          message: `Snoozed to ${formatRoamDateTitle(next)}`,
-          setSnapshot: { ...set },
-          previousDueDate: contextSnapshot.previousDueDate
-            ? new Date(contextSnapshot.previousDueDate.getTime())
-            : null,
-          previousDueStr: contextSnapshot.previousDueStr || null,
-          previousInlineDue: contextSnapshot.previousInlineDue,
-          hadInlineDue: contextSnapshot.hadInlineDue,
-          previousInlineRepeat: contextSnapshot.previousInlineRepeat,
-          hadInlineRepeat: contextSnapshot.hadInlineRepeat,
-          previousChildDue: contextSnapshot.previousChildDue,
-          previousChildDueUid: contextSnapshot.previousChildDueUid || null,
-          hadChildDue: contextSnapshot.hadChildDue,
-          previousChildRepeat: contextSnapshot.previousChildRepeat,
-          previousChildRepeatUid: contextSnapshot.previousChildRepeatUid || null,
-          previousParentUid: contextSnapshot.previousParentUid,
-          previousOrder: contextSnapshot.previousOrder,
-          newDue: new Date(next.getTime()),
-          newDueStr: nextStr,
-          newParentUid: relocation.targetUid,
-          wasMoved: relocation.moved,
-          snapshot: contextSnapshot.snapshot,
-        });
-      }
-      void syncPillsForSurface(lastAttrSurface);
+      await updateDeferDate(uid, set, next, { block, meta });
     }
 
-    async function snoozeToNextMonday(uid, set) {
+    async function snoozeDeferToNextMonday(uid, set) {
       const block = await getBlock(uid);
       if (!block) return;
       const meta = await readRecurringMeta(block, set);
-      const contextSnapshot = prepareDueChangeContext(block, meta, set);
-      let base = meta.due || todayLocal();
+      let cursor = meta.defer || todayLocal();
       for (let i = 0; i < 7; i++) {
-        base = addDaysLocal(base, 1);
-        if (base.getDay() === 1) break;
+        cursor = addDaysLocal(cursor, 1);
+        if (cursor.getDay() === 1) break;
       }
-      const nextStr = formatDate(base, set);
-      await updateBlockProps(uid, { due: nextStr });
-      const attrNames = set.attrNames;
-      let dueChildInfo = null;
-      if (set.attributeSurface === "Child") {
-        dueChildInfo = await ensureChildAttrForType(uid, "due", nextStr, attrNames);
-        meta.childAttrMap = meta.childAttrMap || {};
-        const existingEntry = getMetaChildAttr(meta, "due", attrNames, { allowFallback: true });
-        const storedUid = dueChildInfo?.uid || existingEntry?.uid || null;
-        setMetaChildAttr(meta, "due", { value: nextStr, uid: storedUid }, attrNames);
-      }
-      await ensureInlineAttrForType(block, "due", nextStr, attrNames);
-      meta.due = base;
-      mergeRepeatOverride(uid, { due: base });
-      const relocation = await relocateBlockForDue(block, base, set, meta);
-      const dueChanged =
-        (contextSnapshot.previousDueDate ? contextSnapshot.previousDueDate.getTime() : null) !== base.getTime();
-      if (dueChanged || relocation.moved) {
-        registerDueUndoAction({
-          blockUid: uid,
-          message: `Due date changed to ${formatRoamDateTitle(base)}`,
-          setSnapshot: { ...set },
-          previousDueDate: contextSnapshot.previousDueDate ? new Date(contextSnapshot.previousDueDate.getTime()) : null,
-          previousDueStr: contextSnapshot.previousDueStr || null,
-          previousInlineDue: contextSnapshot.previousInlineDue,
-          hadInlineDue: contextSnapshot.hadInlineDue,
-          previousInlineRepeat: contextSnapshot.previousInlineRepeat,
-          hadInlineRepeat: contextSnapshot.hadInlineRepeat,
-          previousChildDue: contextSnapshot.previousChildDue,
-          previousChildDueUid: contextSnapshot.previousChildDueUid || null,
-          hadChildDue: contextSnapshot.hadChildDue,
-          previousChildRepeat: contextSnapshot.previousChildRepeat,
-          previousChildRepeatUid: contextSnapshot.previousChildRepeatUid || null,
-          previousParentUid: contextSnapshot.previousParentUid,
-          previousOrder: contextSnapshot.previousOrder,
-          newDue: new Date(base.getTime()),
-          newDueStr: nextStr,
-          newParentUid: relocation.targetUid,
-          wasMoved: relocation.moved,
-          snapshot: contextSnapshot.snapshot,
-        });
-      }
-      void syncPillsForSurface(lastAttrSurface);
+      await updateDeferDate(uid, set, cursor, { block, meta });
     }
 
-    async function snoozePickDate(uid, set) {
+    async function snoozePickDeferDate(uid, set) {
       const block = await getBlock(uid);
       if (!block) return;
       const meta = await readRecurringMeta(block, set);
-      const contextSnapshot = prepareDueChangeContext(block, meta, set);
-      const initial = meta.due ? formatIsoDate(meta.due, set) : "";
+      const initial = meta.defer ? formatIsoDate(meta.defer, set) : "";
       const nextIso = await promptForDate({
         title: "Snooze until",
         message: "Select the date to resume this task",
@@ -4762,49 +4737,7 @@ export default {
         toast("Couldn't parse that date.");
         return;
       }
-      const nextStr = formatDate(parsed, set);
-      await updateBlockProps(uid, { due: nextStr });
-      const attrNames = set.attrNames;
-      let dueChildInfo = null;
-      if (set.attributeSurface === "Child") {
-        dueChildInfo = await ensureChildAttrForType(uid, "due", nextStr, attrNames);
-        meta.childAttrMap = meta.childAttrMap || {};
-        const existingEntry = getMetaChildAttr(meta, "due", attrNames, { allowFallback: true });
-        const storedUid = dueChildInfo?.uid || existingEntry?.uid || null;
-        setMetaChildAttr(meta, "due", { value: nextStr, uid: storedUid }, attrNames);
-      }
-      await ensureInlineAttrForType(block, "due", nextStr, attrNames);
-      meta.due = parsed;
-      mergeRepeatOverride(uid, { due: parsed });
-      const relocation = await relocateBlockForDue(block, parsed, set, meta);
-      const dueChanged =
-        (contextSnapshot.previousDueDate ? contextSnapshot.previousDueDate.getTime() : null) !== parsed.getTime();
-      if (dueChanged || relocation.moved) {
-        registerDueUndoAction({
-          blockUid: uid,
-          message: `Due date changed to ${formatRoamDateTitle(parsed)}`,
-          setSnapshot: { ...set },
-          previousDueDate: contextSnapshot.previousDueDate ? new Date(contextSnapshot.previousDueDate.getTime()) : null,
-          previousDueStr: contextSnapshot.previousDueStr || null,
-          previousInlineDue: contextSnapshot.previousInlineDue,
-          hadInlineDue: contextSnapshot.hadInlineDue,
-          previousInlineRepeat: contextSnapshot.previousInlineRepeat,
-          hadInlineRepeat: contextSnapshot.hadInlineRepeat,
-          previousChildDue: contextSnapshot.previousChildDue,
-          previousChildDueUid: contextSnapshot.previousChildDueUid || null,
-          hadChildDue: contextSnapshot.hadChildDue,
-          previousChildRepeat: contextSnapshot.previousChildRepeat,
-          previousChildRepeatUid: contextSnapshot.previousChildRepeatUid || null,
-          previousParentUid: contextSnapshot.previousParentUid,
-          previousOrder: contextSnapshot.previousOrder,
-          newDue: new Date(parsed.getTime()),
-          newDueStr: nextStr,
-          newParentUid: relocation.targetUid,
-          wasMoved: relocation.moved,
-          snapshot: contextSnapshot.snapshot,
-        });
-      }
-      void syncPillsForSurface(lastAttrSurface);
+      await updateDeferDate(uid, set, parsed, { block, meta });
     }
 
     async function skipOccurrence(uid, set) {
@@ -5302,3 +5235,107 @@ export default {
     }
   },
 };
+
+function ordFromText(value) {
+  if (!value) return null;
+  const numeric = Number(value.replace(/(st|nd|rd|th)$/i, ""));
+  if (!Number.isNaN(numeric) && numeric >= 1 && numeric <= 31) return numeric;
+  return ORD_MAP[value.toLowerCase()] ?? null;
+}
+
+function dowFromAlias(token) {
+  if (!token) return null;
+  const norm = (DOW_ALIASES[token.toLowerCase()] || token).toLowerCase();
+  return DOW_MAP[norm] || null;
+}
+
+function normalizeWeekStartCode(value) {
+  if (typeof value === "string") {
+    const code = dowFromAlias(value);
+    if (code) return code;
+  }
+  if (typeof value === "string" && DOW_ORDER.includes(value.toUpperCase())) {
+    return value.toUpperCase();
+  }
+  return DEFAULT_WEEK_START_CODE;
+}
+
+function getDowOrderForWeekStart(weekStartCode) {
+  const code = weekStartCode && DOW_ORDER.includes(weekStartCode) ? weekStartCode : DEFAULT_WEEK_START_CODE;
+  const idx = DOW_ORDER.indexOf(code);
+  if (idx <= 0) return DOW_ORDER;
+  return [...DOW_ORDER.slice(idx), ...DOW_ORDER.slice(0, idx)];
+}
+
+function getOrderedWeekdayOffsets(byDay, weekStartCode) {
+  const order = getDowOrderForWeekStart(weekStartCode);
+  const seen = new Set();
+  const offsets = [];
+  for (const code of Array.isArray(byDay) ? byDay : []) {
+    if (typeof code !== "string") continue;
+    const idx = order.indexOf(code);
+    if (idx === -1 || seen.has(code)) continue;
+    seen.add(code);
+    offsets.push(idx);
+  }
+  offsets.sort((a, b) => a - b);
+  return offsets;
+}
+
+function startOfWeek(date, weekStartCode) {
+  const target = weekStartCode && DOW_IDX.includes(weekStartCode) ? weekStartCode : DEFAULT_WEEK_START_CODE;
+  let cursor = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
+  for (let i = 0; i < 7 && DOW_IDX[cursor.getDay()] !== target; i++) {
+    cursor = addDaysLocal(cursor, -1);
+  }
+  return cursor;
+}
+
+function monthFromText(x) {
+  if (!x) return null;
+  const m = MONTH_MAP[x.toLowerCase()];
+  return m || null;
+}
+function expandDowRange(startISO, endISO, dowOrder = DOW_ORDER) {
+  const s = dowOrder.indexOf(startISO), e = dowOrder.indexOf(endISO);
+  if (s === -1 || e === -1) return [];
+  if (s <= e) return dowOrder.slice(s, e + 1);
+  return [...dowOrder.slice(s), ...dowOrder.slice(0, e + 1)]; // wrap
+}
+function splitList(str) {
+  return str
+    .replace(/&/g, ",")
+    .replace(/\band\b/gi, ",")
+    .split(/[,\s/]+/)
+    .filter(Boolean);
+}
+// Recognize MWF / TTh sets
+function parseAbbrevSet(token) {
+  const t = token.toLowerCase();
+  if (t === "mwf") return ["MO", "WE", "FR"];
+  if (t === "tth" || t === "tu/th" || t === "t/th") return ["TU", "TH"];
+  return null;
+}
+// Turn mixed text, ranges, and shorthands into ISO DOW array
+function normalizeByDayList(raw, weekStartCode = DEFAULT_WEEK_START_CODE) {
+  const tokens = splitList(raw.replace(/[-–—]/g, "-"));
+  const dowOrder = getDowOrderForWeekStart(weekStartCode);
+  let out = [];
+  for (const tok of tokens) {
+    if (tok.includes("-")) {
+      const [a, b] = tok.split("-");
+      const A = dowFromAlias(a), B = dowFromAlias(b);
+      if (A && B) { out.push(...expandDowRange(A, B, dowOrder)); continue; }
+    }
+    const set = parseAbbrevSet(tok);
+    if (set) { out.push(...set); continue; }
+    const d = dowFromAlias(tok);
+    if (d) { out.push(d); continue; }
+  }
+  const seen = new Set();
+  return out.filter(d => (seen.has(d) ? false : (seen.add(d), true)));
+}
+
+function keywordIntervalFromText(text) {
+  return MONTH_KEYWORD_INTERVAL_LOOKUP[text] || null;
+}
