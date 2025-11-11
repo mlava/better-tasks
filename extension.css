@@ -1,3 +1,7 @@
+input[type="text"], input[type="date"] {
+    font-weight: normal !important;
+}
+
 /* izitoast css */
 .recTasks,
 .recTasks-info, .recTasks2  {

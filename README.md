@@ -37,6 +37,8 @@ due:: [[2025-11-07]]
 completed:: [[2025-10-24]]
 ```
 
+Optionally include `start::` (when the task becomes available) and/or `defer::` (when it should resurface). These labels are configurable in settings; defaults are `attrStart_RT` and `attrDefer_RT`.
+
 ### 🔹 Child Block Style
 
 If you prefer to keep the task text clean, choose “Child” mode. The repeat and due info will appear as sub-blocks:
@@ -90,6 +92,12 @@ Label for a child block attribute for the recurrence pattern
 
 ### Due attribute name
 Label for a child block attribute for due date
+
+### Start attribute name
+Label for the optional “start/available on” date attribute (default `attrStart_RT`)
+
+### Defer attribute name
+Label for the optional “defer/snooze until” date attribute (default `attrDefer_RT`)
 
 ### Confirm Before Spawning Next Task
 If enabled, shows a confirmation dialog (“Spawn next occurrence?”) when you complete a recurring TODO.

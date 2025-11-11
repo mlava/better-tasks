@@ -2,6 +2,8 @@ import iziToast from "izitoast";
 
 const DEFAULT_REPEAT_ATTR = "attrRepeat_RT";
 const DEFAULT_DUE_ATTR = "attrDue_RT";
+const DEFAULT_START_ATTR = "attrStart_RT";
+const DEFAULT_DEFER_ATTR = "attrDefer_RT";
 const ADVANCE_ATTR = "attrAdvance_RT";
 const INSTALL_TOAST_KEY = "rt-intro-toast";
 const WEEK_START_OPTIONS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -39,19 +41,31 @@ export default {
         {
           id: "rt-repeat-attr",
           name: "Repeat attribute name",
-          description: "Inline/child attribute label for the repeat rule",
+          description: "Label for the recurrence rule attribute",
           action: { type: "input", placeholder: DEFAULT_REPEAT_ATTR, onChange: handleAttributeNameChange },
+        },
+        {
+          id: "rt-start-attr",
+          name: "Start attribute name",
+          description: "Label for start/available date attribute",
+          action: { type: "input", placeholder: DEFAULT_START_ATTR, onChange: handleAttributeNameChange },
+        },
+        {
+          id: "rt-defer-attr",
+          name: "Defer attribute name",
+          description: "Label for defer/snooze date attribute",
+          action: { type: "input", placeholder: DEFAULT_DEFER_ATTR, onChange: handleAttributeNameChange },
         },
         {
           id: "rt-due-attr",
           name: "Due attribute name",
-          description: "Inline/child attribute label for due dates",
+          description: "Label for due date attribute",
           action: { type: "input", placeholder: DEFAULT_DUE_ATTR, onChange: handleAttributeNameChange },
         },
         {
           id: "rt-confirm",
           name: "Confirm before spawning next task",
-          description: "Ask for confirmation when a recurring task is completed",
+          description: "Ask for confirmation before spawning when a recurring task is completed",
           action: { type: "switch" },
         },
         {
@@ -123,12 +137,31 @@ export default {
       const attrNames = resolveAttributeNames();
       const childRepeatEntry = pickChildAttr(childAttrs, attrNames.repeatAliases);
       const childDueEntry = pickChildAttr(childAttrs, attrNames.dueAliases);
+      const childStartEntry = pickChildAttr(childAttrs, attrNames.startAliases);
+      const childDeferEntry = pickChildAttr(childAttrs, attrNames.deferAliases);
       const inlineRepeatVal = pickInlineAttr(inlineAttrs, attrNames.repeatAliases);
       const inlineDueVal = pickInlineAttr(inlineAttrs, attrNames.dueAliases);
+      const inlineStartVal = pickInlineAttr(inlineAttrs, attrNames.startAliases);
+      const inlineDeferVal = pickInlineAttr(inlineAttrs, attrNames.deferAliases);
+      const removalKeys = [
+        ...new Set([
+          ...attrNames.repeatRemovalKeys,
+          ...attrNames.dueRemovalKeys,
+          ...attrNames.startRemovalKeys,
+          ...attrNames.deferRemovalKeys,
+        ]),
+      ];
+      const baseWithoutAttrs = removeInlineAttributes(fstring, removalKeys);
+      const initialTaskText = baseWithoutAttrs.replace(/^\{\{\[\[(?:TODO|DONE)\]\]\}\}\s*/i, "").trim();
 
       const promptResult = await promptForRepeatAndDue({
+        includeTaskText: true,
+        forceTaskInput: true,
+        taskText: initialTaskText,
         repeat: props.repeat || childRepeatEntry?.value || inlineRepeatVal || "",
         due: props.due || childDueEntry?.value || inlineDueVal || "",
+        start: props.start || childStartEntry?.value || inlineStartVal || "",
+        defer: props.defer || childDeferEntry?.value || inlineDeferVal || "",
       });
       if (!promptResult) return;
 
@@ -145,11 +178,12 @@ export default {
 
       let dueDate = null;
       let dueStr = null;
-      if (promptResult.due) {
+      const promptDueSource = promptResult.due || "";
+      if (promptDueSource) {
         dueDate =
           promptResult.dueDate instanceof Date && !Number.isNaN(promptResult.dueDate.getTime())
             ? new Date(promptResult.dueDate.getTime())
-            : parseRoamDate(promptResult.due);
+            : parseRoamDate(promptDueSource);
         if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) {
           toast("Couldn't parse that due date.");
           return;
@@ -157,9 +191,47 @@ export default {
         dueStr = formatDate(dueDate, set);
       }
 
-      const removalKeys = [...new Set([...attrNames.repeatRemovalKeys, ...attrNames.dueRemovalKeys])];
-      const baseWithoutAttrs = removeInlineAttributes(fstring, removalKeys);
-      const todoString = normalizeToTodoMacro(baseWithoutAttrs);
+      const startSourceFromPrompt = promptResult.start || "";
+      const startFallbackSource = props.start || childStartEntry?.value || inlineStartVal || "";
+      const startSource = startSourceFromPrompt || startFallbackSource;
+      let startDate = null;
+      let startStr = null;
+      if (startSource) {
+        startDate =
+          promptResult.startDate instanceof Date && startSourceFromPrompt
+            ? new Date(promptResult.startDate.getTime())
+            : parseRoamDate(startSource);
+        if (!(startDate instanceof Date) || Number.isNaN(startDate.getTime())) {
+          toast("Couldn't parse that start date.");
+          return;
+        }
+        startStr = formatDate(startDate, set);
+      }
+
+      const deferSourceFromPrompt = promptResult.defer || "";
+      const deferFallbackSource = props.defer || childDeferEntry?.value || inlineDeferVal || "";
+      const deferSource = deferSourceFromPrompt || deferFallbackSource;
+      let deferDate = null;
+      let deferStr = null;
+      if (deferSource) {
+        deferDate =
+          promptResult.deferDate instanceof Date && deferSourceFromPrompt
+            ? new Date(promptResult.deferDate.getTime())
+            : parseRoamDate(deferSource);
+        if (!(deferDate instanceof Date) || Number.isNaN(deferDate.getTime())) {
+          toast("Couldn't parse that defer date.");
+          return;
+        }
+        deferStr = formatDate(deferDate, set);
+      }
+
+      const cleanedTaskText = removeInlineAttributes(
+        (typeof promptResult.taskText === "string" && promptResult.taskText
+          ? promptResult.taskText
+          : initialTaskText) || "",
+        removalKeys
+      ).trim();
+      const todoString = normalizeToTodoMacro(cleanedTaskText);
       if (todoString !== fstring) {
         await updateBlockString(fuid, todoString);
       }
@@ -171,6 +243,10 @@ export default {
       const propsPatch = { repeat: normalizedRepeat, rt: rtProps };
       if (dueStr) propsPatch.due = dueStr;
       else propsPatch.due = undefined;
+      if (startStr) propsPatch.start = startStr;
+      else propsPatch.start = undefined;
+      if (deferStr) propsPatch.defer = deferStr;
+      else propsPatch.defer = undefined;
 
       await updateBlockProps(fuid, propsPatch);
 
@@ -182,13 +258,25 @@ export default {
         } else {
           await removeChildAttrsForType(fuid, "due", attrNamesForWrite);
         }
+        if (startStr) {
+          await ensureChildAttrForType(fuid, "start", startStr, attrNamesForWrite);
+        } else {
+          await removeChildAttrsForType(fuid, "start", attrNamesForWrite);
+        }
+        if (deferStr) {
+          await ensureChildAttrForType(fuid, "defer", deferStr, attrNamesForWrite);
+        } else {
+          await removeChildAttrsForType(fuid, "defer", attrNamesForWrite);
+        }
       } else {
         await removeChildAttrsForType(fuid, "repeat", attrNamesForWrite);
         await removeChildAttrsForType(fuid, "due", attrNamesForWrite);
+        await removeChildAttrsForType(fuid, "start", attrNamesForWrite);
+        await removeChildAttrsForType(fuid, "defer", attrNamesForWrite);
       }
 
       repeatOverrides.delete(fuid);
-      toast("Recurring TODO ready");
+      toast("Created recurring TODO");
       scheduleSurfaceSync(set.attributeSurface);
     }
 
@@ -212,16 +300,30 @@ export default {
       const attrNames = resolveAttributeNames();
       const childRepeatEntry = pickChildAttr(childAttrs, attrNames.repeatAliases);
       const childDueEntry = pickChildAttr(childAttrs, attrNames.dueAliases);
+      const childStartEntry = pickChildAttr(childAttrs, attrNames.startAliases);
+      const childDeferEntry = pickChildAttr(childAttrs, attrNames.deferAliases);
       const inlineRepeatVal = pickInlineAttr(inlineAttrs, attrNames.repeatAliases);
       const inlineDueVal = pickInlineAttr(inlineAttrs, attrNames.dueAliases);
-      const removalKeys = [...new Set([...attrNames.repeatRemovalKeys, ...attrNames.dueRemovalKeys])];
+      const inlineStartVal = pickInlineAttr(inlineAttrs, attrNames.startAliases);
+      const inlineDeferVal = pickInlineAttr(inlineAttrs, attrNames.deferAliases);
+      const removalKeys = [
+        ...new Set([
+          ...attrNames.repeatRemovalKeys,
+          ...attrNames.dueRemovalKeys,
+          ...attrNames.startRemovalKeys,
+          ...attrNames.deferRemovalKeys,
+        ]),
+      ];
       const baseWithoutAttrs = removeInlineAttributes(block.string || "", removalKeys);
-      const initialTaskText = normalizeToTodoMacro(baseWithoutAttrs).replace(/^{{\[\[TODO\]\]}}\s*/i, "");
+      const initialTaskText = baseWithoutAttrs.replace(/^\{\{\[\[(?:TODO|DONE)\]\]\}\}\s*/i, "").trim();
       const promptResult = await promptForRepeatAndDue({
         includeTaskText: true,
+        forceTaskInput: true,
         taskText: initialTaskText,
         repeat: props.repeat || childRepeatEntry?.value || inlineRepeatVal || "",
         due: props.due || childDueEntry?.value || inlineDueVal || "",
+        start: props.start || childStartEntry?.value || inlineStartVal || "",
+        defer: props.defer || childDeferEntry?.value || inlineDeferVal || "",
       });
       if (!promptResult) return;
 
@@ -238,11 +340,12 @@ export default {
 
       let dueDate = null;
       let dueStr = null;
-      if (promptResult.due) {
+      const promptDueSource = promptResult.due || "";
+      if (promptDueSource) {
         dueDate =
           promptResult.dueDate instanceof Date && !Number.isNaN(promptResult.dueDate.getTime())
             ? new Date(promptResult.dueDate.getTime())
-            : parseRoamDate(promptResult.due);
+            : parseRoamDate(promptDueSource);
         if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) {
           toast("Couldn't parse that due date.");
           return;
@@ -250,9 +353,45 @@ export default {
         dueStr = formatDate(dueDate, set);
       }
 
+      const startSourceFromPrompt = promptResult.start || "";
+      const startFallbackSource = props.start || childStartEntry?.value || inlineStartVal || "";
+      const startSource = startSourceFromPrompt || startFallbackSource;
+      let startDate = null;
+      let startStr = null;
+      if (startSource) {
+        startDate =
+          promptResult.startDate instanceof Date && startSourceFromPrompt
+            ? new Date(promptResult.startDate.getTime())
+            : parseRoamDate(startSource);
+        if (!(startDate instanceof Date) || Number.isNaN(startDate.getTime())) {
+          toast("Couldn't parse that start date.");
+          return;
+        }
+        startStr = formatDate(startDate, set);
+      }
+
+      const deferSourceFromPrompt = promptResult.defer || "";
+      const deferFallbackSource = props.defer || childDeferEntry?.value || inlineDeferVal || "";
+      const deferSource = deferSourceFromPrompt || deferFallbackSource;
+      let deferDate = null;
+      let deferStr = null;
+      if (deferSource) {
+        deferDate =
+          promptResult.deferDate instanceof Date && deferSourceFromPrompt
+            ? new Date(promptResult.deferDate.getTime())
+            : parseRoamDate(deferSource);
+        if (!(deferDate instanceof Date) || Number.isNaN(deferDate.getTime())) {
+          toast("Couldn't parse that defer date.");
+          return;
+        }
+        deferStr = formatDate(deferDate, set);
+      }
+
       const taskTextInput =
-        typeof promptResult.taskText === "string" ? promptResult.taskText : initialTaskText;
-      const cleanedTaskText = removeInlineAttributes(taskTextInput, removalKeys);
+        typeof promptResult.taskText === "string" && promptResult.taskText
+          ? promptResult.taskText
+          : initialTaskText;
+      const cleanedTaskText = removeInlineAttributes(taskTextInput || "", removalKeys).trim();
       const todoString = normalizeToTodoMacro(cleanedTaskText);
       if (todoString !== (block.string || "")) {
         await updateBlockString(fuid, todoString);
@@ -265,6 +404,10 @@ export default {
       const propsPatch = { repeat: normalizedRepeat, rt: rtProps };
       if (dueStr) propsPatch.due = dueStr;
       else propsPatch.due = undefined;
+      if (startStr) propsPatch.start = startStr;
+      else propsPatch.start = undefined;
+      if (deferStr) propsPatch.defer = deferStr;
+      else propsPatch.defer = undefined;
 
       await updateBlockProps(fuid, propsPatch);
 
@@ -272,9 +415,15 @@ export default {
         await ensureChildAttrForType(fuid, "repeat", normalizedRepeat, set.attrNames);
         if (dueStr) await ensureChildAttrForType(fuid, "due", dueStr, set.attrNames);
         else await removeChildAttrsForType(fuid, "due", set.attrNames);
+        if (startStr) await ensureChildAttrForType(fuid, "start", startStr, set.attrNames);
+        else await removeChildAttrsForType(fuid, "start", set.attrNames);
+        if (deferStr) await ensureChildAttrForType(fuid, "defer", deferStr, set.attrNames);
+        else await removeChildAttrsForType(fuid, "defer", set.attrNames);
       } else {
         await removeChildAttrsForType(fuid, "repeat", set.attrNames);
         await removeChildAttrsForType(fuid, "due", set.attrNames);
+        await removeChildAttrsForType(fuid, "start", set.attrNames);
+        await removeChildAttrsForType(fuid, "defer", set.attrNames);
       }
 
       repeatOverrides.delete(fuid);
@@ -1105,6 +1254,10 @@ export default {
           attrDue: attrSnapshot.dueAttr,
           attrRepeatLabel: attrSnapshot.repeatAttr,
           attrDueLabel: attrSnapshot.dueAttr,
+          attrStart: attrSnapshot.startAttr,
+          attrStartLabel: attrSnapshot.startAttr,
+          attrDefer: attrSnapshot.deferAttr,
+          attrDeferLabel: attrSnapshot.deferAttr,
         };
       }
       const current = await window.roamAlphaAPI.q(
@@ -1179,11 +1332,21 @@ export default {
         attrSurface !== "Child" && attrNames.repeatAttr === DEFAULT_REPEAT_ATTR;
       const allowDueFallback =
         attrSurface !== "Child" && attrNames.dueAttr === DEFAULT_DUE_ATTR;
+      const allowStartFallback =
+        attrSurface !== "Child" && attrNames.startAttr === DEFAULT_START_ATTR;
+      const allowDeferFallback =
+        attrSurface !== "Child" && attrNames.deferAttr === DEFAULT_DEFER_ATTR;
       const repeatChild = pickChildAttr(childAttrMap, attrNames.repeatAliases, {
         allowFallback: allowRepeatFallback,
       });
       const dueChild = pickChildAttr(childAttrMap, attrNames.dueAliases, {
         allowFallback: allowDueFallback,
+      });
+      const startChild = pickChildAttr(childAttrMap, attrNames.startAliases, {
+        allowFallback: allowStartFallback,
+      });
+      const deferChild = pickChildAttr(childAttrMap, attrNames.deferAliases, {
+        allowFallback: allowDeferFallback,
       });
       const processedChild = childAttrMap["rt-processed"];
       const inlineAttrs = parseAttrsFromBlockText(block.string || "");
@@ -1193,27 +1356,51 @@ export default {
       const inlineDue = pickInlineAttr(inlineAttrs, attrNames.dueAliases, {
         allowFallback: allowDueFallback,
       });
+      const inlineStart = pickInlineAttr(inlineAttrs, attrNames.startAliases, {
+        allowFallback: allowStartFallback,
+      });
+      const inlineDefer = pickInlineAttr(inlineAttrs, attrNames.deferAliases, {
+        allowFallback: allowDeferFallback,
+      });
 
       const canonicalRepeatKey = DEFAULT_REPEAT_ATTR.toLowerCase();
       const canonicalDueKey = DEFAULT_DUE_ATTR.toLowerCase();
+      const canonicalStartKey = DEFAULT_START_ATTR.toLowerCase();
+      const canonicalDeferKey = DEFAULT_DEFER_ATTR.toLowerCase();
       const hasCanonicalRepeatSignal =
         !!childAttrMap[canonicalRepeatKey] || inlineAttrs[canonicalRepeatKey] != null;
       const hasCanonicalDueSignal =
         !!childAttrMap[canonicalDueKey] || inlineAttrs[canonicalDueKey] != null;
+      const hasCanonicalStartSignal =
+        !!childAttrMap[canonicalStartKey] || inlineAttrs[canonicalStartKey] != null;
+      const hasCanonicalDeferSignal =
+        !!childAttrMap[canonicalDeferKey] || inlineAttrs[canonicalDeferKey] != null;
       const hasCustomRepeatSignal =
         !!childAttrMap[attrNames.repeatKey] || inlineAttrs[attrNames.repeatKey] != null;
       const hasCustomDueSignal =
         !!childAttrMap[attrNames.dueKey] || inlineAttrs[attrNames.dueKey] != null;
+      const hasCustomStartSignal =
+        !!childAttrMap[attrNames.startKey] || inlineAttrs[attrNames.startKey] != null;
+      const hasCustomDeferSignal =
+        !!childAttrMap[attrNames.deferKey] || inlineAttrs[attrNames.deferKey] != null;
       const propsRepeatMatches =
         attrNames.repeatAttr === DEFAULT_REPEAT_ATTR ||
         props.rt?.attrRepeat === attrNames.repeatAttr;
       const propsDueMatches =
         attrNames.dueAttr === DEFAULT_DUE_ATTR || props.rt?.attrDue === attrNames.dueAttr;
+      const propsStartMatches =
+        attrNames.startAttr === DEFAULT_START_ATTR || props.rt?.attrStart === attrNames.startAttr;
+      const propsDeferMatches =
+        attrNames.deferAttr === DEFAULT_DEFER_ATTR || props.rt?.attrDefer === attrNames.deferAttr;
       const allowPropsRepeat = propsRepeatMatches || hasCustomRepeatSignal;
       const allowPropsDue = propsDueMatches || hasCustomDueSignal;
+      const allowPropsStart = propsStartMatches || hasCustomStartSignal || hasCanonicalStartSignal;
+      const allowPropsDefer = propsDeferMatches || hasCustomDeferSignal || hasCanonicalDeferSignal;
 
       let repeatText = null;
       let dueDate = null;
+      let startDate = null;
+      let deferDate = null;
       let processedTs = rt.processed ? Number(rt.processed) : null;
 
       if (attrSurface === "Child") {
@@ -1230,6 +1417,20 @@ export default {
           }
         } else {
           clearDueParseFailure(block?.uid || null);
+        }
+        const startSource = startChild?.value || inlineStart || null;
+        if (startSource) {
+          const parsed = parseRoamDate(startSource);
+          if (parsed instanceof Date && !Number.isNaN(parsed.getTime())) {
+            startDate = parsed;
+          }
+        }
+        const deferSource = deferChild?.value || inlineDefer || null;
+        if (deferSource) {
+          const parsed = parseRoamDate(deferSource);
+          if (parsed instanceof Date && !Number.isNaN(parsed.getTime())) {
+            deferDate = parsed;
+          }
         }
         if (processedChild?.value) {
           const parsed = Number(processedChild.value);
@@ -1255,6 +1456,30 @@ export default {
           const parsed = parseRoamDate(dueSource);
           if (parsed) dueDate = parsed;
         }
+        let startSource = null;
+        if (allowPropsStart && typeof props.start === "string" && props.start) {
+          startSource = props.start;
+        } else if (inlineStart) {
+          startSource = inlineStart;
+        } else if (startChild?.value) {
+          startSource = startChild.value;
+        }
+        if (startSource) {
+          const parsed = parseRoamDate(startSource);
+          if (parsed) startDate = parsed;
+        }
+        let deferSource = null;
+        if (allowPropsDefer && typeof props.defer === "string" && props.defer) {
+          deferSource = props.defer;
+        } else if (inlineDefer) {
+          deferSource = inlineDefer;
+        } else if (deferChild?.value) {
+          deferSource = deferChild.value;
+        }
+        if (deferSource) {
+          const parsed = parseRoamDate(deferSource);
+          if (parsed) deferDate = parsed;
+        }
         if (!processedTs && processedChild?.value) {
           const parsed = Number(processedChild.value);
           if (!Number.isNaN(parsed)) processedTs = parsed;
@@ -1279,6 +1504,8 @@ export default {
         uid: block.uid,
         repeat: repeatText,
         due: dueDate,
+        start: startDate,
+        defer: deferDate,
         childAttrMap,
         processedTs: processedTs || null,
         rtId: rt.id || null,
@@ -1309,6 +1536,8 @@ export default {
       const attrNames = set?.attrNames || resolveAttributeNames();
       const inlineRepeat = pickInlineAttr(inlineAttrs, attrNames.repeatAliases);
       const inlineDue = pickInlineAttr(inlineAttrs, attrNames.dueAliases);
+      const inlineStart = pickInlineAttr(inlineAttrs, attrNames.startAliases);
+      const inlineDefer = pickInlineAttr(inlineAttrs, attrNames.deferAliases);
       const valueSources = [
         inlineRepeat,
         metaCandidate?.props?.repeat,
@@ -1332,6 +1561,36 @@ export default {
           const parsed = parseRoamDate(value);
           if (parsed) {
             fallbackMeta.due = parsed;
+            break;
+          }
+        }
+      }
+      const startSources = [
+        inlineStart,
+        metaCandidate?.props?.start,
+        baseMeta?.props?.start,
+        baseMeta?.start,
+      ];
+      for (const value of startSources) {
+        if (value) {
+          const parsed = parseRoamDate(value);
+          if (parsed) {
+            fallbackMeta.start = parsed;
+            break;
+          }
+        }
+      }
+      const deferSources = [
+        inlineDefer,
+        metaCandidate?.props?.defer,
+        baseMeta?.props?.defer,
+        baseMeta?.defer,
+      ];
+      for (const value of deferSources) {
+        if (value) {
+          const parsed = parseRoamDate(value);
+          if (parsed) {
+            fallbackMeta.defer = parsed;
             break;
           }
         }
@@ -1369,6 +1628,10 @@ export default {
             out.repeat = value;
           } else if (key === attrNames.dueKey && out.due == null) {
             out.due = value;
+          } else if (key === attrNames.startKey && out.start == null) {
+            out.start = value;
+          } else if (key === attrNames.deferKey && out.defer == null) {
+            out.defer = value;
           }
         }
       }
@@ -1395,6 +1658,10 @@ export default {
             out.repeat = out[key];
           } else if (key === attrNames.dueKey && out.due == null) {
             out.due = out[key];
+          } else if (key === attrNames.startKey && out.start == null) {
+            out.start = out[key];
+          } else if (key === attrNames.deferKey && out.defer == null) {
+            out.defer = out[key];
           }
         }
       }
@@ -1440,31 +1707,46 @@ export default {
       return value.trim().replace(/:+$/, "").toLowerCase();
     }
 
-    function resolveAttributeNames() {
-      const repeatAttr = sanitizeAttrName(
-        extensionAPI.settings.get("rt-repeat-attr") || DEFAULT_REPEAT_ATTR,
-        DEFAULT_REPEAT_ATTR
-      );
-      const dueAttr = sanitizeAttrName(
-        extensionAPI.settings.get("rt-due-attr") || DEFAULT_DUE_ATTR,
-        DEFAULT_DUE_ATTR
-      );
-      const repeatKey = repeatAttr.toLowerCase();
-      const dueKey = dueAttr.toLowerCase();
-      const repeatAliases = repeatKey === DEFAULT_REPEAT_ATTR ? [repeatKey] : [repeatKey];
-      const dueAliases = dueKey === DEFAULT_DUE_ATTR ? [dueKey] : [dueKey];
-      const repeatRemovalKeys =
-        repeatKey === DEFAULT_REPEAT_ATTR ? [DEFAULT_REPEAT_ATTR] : [repeatAttr];
-      const dueRemovalKeys = dueKey === DEFAULT_DUE_ATTR ? [DEFAULT_DUE_ATTR] : [dueAttr];
+    function buildAttrConfig(settingId, defaultName) {
+      const attr = sanitizeAttrName(extensionAPI.settings.get(settingId) || defaultName, defaultName);
+      const key = attr.toLowerCase();
+      const defaultKey = defaultName.toLowerCase();
+      const isDefault = key === defaultKey;
       return {
-        repeatAttr,
-        dueAttr,
-        repeatKey,
-        dueKey,
-        repeatAliases,
-        dueAliases,
-        repeatRemovalKeys,
-        dueRemovalKeys,
+        attr,
+        key,
+        aliases: [key],
+        removalKeys: isDefault ? [defaultName] : [attr],
+        defaultName,
+        canonicalKey: defaultKey,
+        isDefault,
+      };
+    }
+
+    function resolveAttributeNames() {
+      const repeat = buildAttrConfig("rt-repeat-attr", DEFAULT_REPEAT_ATTR);
+      const due = buildAttrConfig("rt-due-attr", DEFAULT_DUE_ATTR);
+      const start = buildAttrConfig("rt-start-attr", DEFAULT_START_ATTR);
+      const defer = buildAttrConfig("rt-defer-attr", DEFAULT_DEFER_ATTR);
+      const attrByType = { repeat, due, start, defer };
+      return {
+        repeatAttr: repeat.attr,
+        repeatKey: repeat.key,
+        repeatAliases: repeat.aliases,
+        repeatRemovalKeys: repeat.removalKeys,
+        dueAttr: due.attr,
+        dueKey: due.key,
+        dueAliases: due.aliases,
+        dueRemovalKeys: due.removalKeys,
+        startAttr: start.attr,
+        startKey: start.key,
+        startAliases: start.aliases,
+        startRemovalKeys: start.removalKeys,
+        deferAttr: defer.attr,
+        deferKey: defer.key,
+        deferAliases: defer.aliases,
+        deferRemovalKeys: defer.removalKeys,
+        attrByType,
       };
     }
 
@@ -1496,24 +1778,66 @@ export default {
       return null;
     }
 
+    const CHILD_ATTR_ORDER = { repeat: 0, start: 1, defer: 2, due: 3 };
+
+    function getAttrMeta(type, attrNames) {
+      if (!type || !attrNames) return null;
+      if (attrNames.attrByType && attrNames.attrByType[type]) {
+        return attrNames.attrByType[type];
+      }
+      switch (type) {
+        case "repeat":
+          return {
+            attr: attrNames.repeatAttr,
+            key: attrNames.repeatKey,
+            aliases: attrNames.repeatAliases,
+            removalKeys: attrNames.repeatRemovalKeys,
+          };
+        case "due":
+          return {
+            attr: attrNames.dueAttr,
+            key: attrNames.dueKey,
+            aliases: attrNames.dueAliases,
+            removalKeys: attrNames.dueRemovalKeys,
+          };
+        case "start":
+          return {
+            attr: attrNames.startAttr,
+            key: attrNames.startKey,
+            aliases: attrNames.startAliases,
+            removalKeys: attrNames.startRemovalKeys,
+          };
+        case "defer":
+          return {
+            attr: attrNames.deferAttr,
+            key: attrNames.deferKey,
+            aliases: attrNames.deferAliases,
+            removalKeys: attrNames.deferRemovalKeys,
+          };
+        default:
+          return null;
+      }
+    }
+
     function getAttrLabel(type, attrNames) {
-      return type === "repeat" ? attrNames.repeatAttr : attrNames.dueAttr;
+      return getAttrMeta(type, attrNames)?.attr || "";
     }
 
     function getAttrKey(type, attrNames) {
-      return type === "repeat" ? attrNames.repeatKey : attrNames.dueKey;
+      return getAttrMeta(type, attrNames)?.key || "";
     }
 
     function getAttrRemovalKeys(type, attrNames) {
-      return type === "repeat" ? attrNames.repeatRemovalKeys : attrNames.dueRemovalKeys;
+      return getAttrMeta(type, attrNames)?.removalKeys || [];
     }
 
     function getAttrAliases(type, attrNames) {
-      return type === "repeat" ? attrNames.repeatAliases : attrNames.dueAliases;
+      return getAttrMeta(type, attrNames)?.aliases || [];
     }
 
     async function ensureChildAttrForType(uid, type, value, attrNames) {
-      return ensureChildAttr(uid, getAttrLabel(type, attrNames), value);
+      const order = CHILD_ATTR_ORDER[type] ?? 0;
+      return ensureChildAttr(uid, getAttrLabel(type, attrNames), value, order);
     }
 
     async function removeChildAttrsForType(uid, type, attrNames) {
@@ -1609,7 +1933,7 @@ export default {
     }
 
     // ========================= Completion + next spawn =========================
-    async function ensureChildAttr(uid, key, value) {
+    async function ensureChildAttr(uid, key, value, order = 0) {
       const parent = await getBlock(uid);
       if (!parent) {
         return { created: false, uid: null, previousValue: null };
@@ -1620,13 +1944,15 @@ export default {
       const matchUid = typeof match?.uid === "string" ? match.uid.trim() : "";
       if (!matchUid) {
         const newUid = window.roamAlphaAPI.util.generateUID();
-        await createBlock(uid, 0, `${key}:: ${value}`, newUid);
+        await createBlock(uid, order, `${key}:: ${value}`, newUid);
+        await moveChildToOrder(uid, newUid, order);
         return { created: true, uid: newUid, previousValue: null };
       }
       const existingChild = await getBlock(matchUid);
       if (!existingChild) {
         const newUid = window.roamAlphaAPI.util.generateUID();
-        await createBlock(uid, 0, `${key}:: ${value}`, newUid);
+        await createBlock(uid, order, `${key}:: ${value}`, newUid);
+        await moveChildToOrder(uid, newUid, order);
         return { created: true, uid: newUid, previousValue: null };
       }
       const curVal =
@@ -1639,11 +1965,26 @@ export default {
         } catch (err) {
           console.warn("[RecurringTasks] ensureChildAttr update failed, recreating", err);
           const newUid = window.roamAlphaAPI.util.generateUID();
-          await createBlock(uid, 0, `${key}:: ${value}`, newUid);
+          await createBlock(uid, order, `${key}:: ${value}`, newUid);
+          await moveChildToOrder(uid, newUid, order);
           return { created: true, uid: newUid, previousValue: curVal };
         }
       }
+      await moveChildToOrder(uid, matchUid, order);
       return { created: false, uid: matchUid, previousValue: curVal };
+    }
+
+    async function moveChildToOrder(parentUid, childUid, order) {
+      if (!parentUid || !childUid || !Number.isFinite(order)) return;
+      const normalizedOrder = Math.max(0, Math.floor(order));
+      try {
+        await window.roamAlphaAPI.moveBlock({
+          location: { "parent-uid": parentUid, order: normalizedOrder },
+          block: { uid: childUid },
+        });
+      } catch (err) {
+        console.warn("[RecurringTasks] moveChildToOrder failed", err);
+      }
     }
 
     async function removeChildAttr(uid, key) {
@@ -1873,8 +2214,28 @@ export default {
 
     async function spawnNextOccurrence(prevBlock, meta, nextDueDate, set) {
       const nextDueStr = formatDate(nextDueDate, set);
+      const startOffsetMs =
+        meta?.start instanceof Date && meta?.due instanceof Date
+          ? meta.start.getTime() - meta.due.getTime()
+          : null;
+      const deferOffsetMs =
+        meta?.defer instanceof Date && meta?.due instanceof Date
+          ? meta.defer.getTime() - meta.due.getTime()
+          : null;
+      const nextStartDate =
+        startOffsetMs != null ? applyOffsetToDate(nextDueDate, startOffsetMs) : null;
+      const nextDeferDate =
+        deferOffsetMs != null ? applyOffsetToDate(nextDueDate, deferOffsetMs) : null;
+      const nextStartStr = nextStartDate ? formatDate(nextStartDate, set) : null;
+      const nextDeferStr = nextDeferDate ? formatDate(nextDeferDate, set) : null;
       const removalKeys = [
-        ...new Set([...set.attrNames.repeatRemovalKeys, ...set.attrNames.dueRemovalKeys, "completed"]),
+        ...new Set([
+          ...set.attrNames.repeatRemovalKeys,
+          ...set.attrNames.dueRemovalKeys,
+          ...set.attrNames.startRemovalKeys,
+          ...set.attrNames.deferRemovalKeys,
+          "completed",
+        ]),
       ];
       const prevText = removeInlineAttributes(prevBlock.string || "", removalKeys);
 
@@ -1914,6 +2275,16 @@ export default {
       if (set.attributeSurface === "Child") {
         await ensureChildAttrForType(newUid, "repeat", meta.repeat, set.attrNames);
         await ensureChildAttrForType(newUid, "due", nextDueStr, set.attrNames);
+        if (nextStartStr) {
+          await ensureChildAttrForType(newUid, "start", nextStartStr, set.attrNames);
+        } else {
+          await removeChildAttrsForType(newUid, "start", set.attrNames);
+        }
+        if (nextDeferStr) {
+          await ensureChildAttrForType(newUid, "defer", nextDeferStr, set.attrNames);
+        } else {
+          await removeChildAttrsForType(newUid, "defer", set.attrNames);
+        }
         const advanceEntry = meta.childAttrMap?.[ADVANCE_ATTR.toLowerCase()];
         if (advanceEntry?.value) {
           await ensureChildAttr(newUid, ADVANCE_ATTR, advanceEntry.value);
@@ -1923,6 +2294,8 @@ export default {
       await updateBlockProps(newUid, {
         repeat: meta.repeat,
         due: nextDueStr,
+        start: nextStartStr || undefined,
+        defer: nextDeferStr || undefined,
         rt: { id: shortId(), parent: seriesId, tz: set.timezone },
       });
 
@@ -2471,6 +2844,14 @@ export default {
       if (numeric < 1) return 1;
       if (numeric > lastDay) return lastDay;
       return numeric;
+    }
+
+    function applyOffsetToDate(base, offsetMs) {
+      if (!(base instanceof Date) || Number.isNaN(base.getTime())) return null;
+      if (!Number.isFinite(offsetMs)) return null;
+      const next = new Date(base.getTime() + offsetMs);
+      next.setHours(12, 0, 0, 0);
+      return next;
     }
 
     function advanceMonth(year, monthIndex, step) {
@@ -3076,7 +3457,7 @@ export default {
     }
 
     function promptForRepeatAndDue(initial = {}) {
-      const includeTaskText = !!initial.includeTaskText;
+      const includeTaskText = true;
       const setSnapshot = S();
       const snapshot = {
         repeat: typeof initial.repeat === "string" && initial.repeat ? initial.repeat : initial.repeatRaw || "",
@@ -3090,6 +3471,14 @@ export default {
             : includeTaskText && typeof initial.taskTextRaw === "string"
               ? initial.taskTextRaw
               : "",
+        start:
+          typeof initial.start === "string" && initial.start
+            ? initial.start
+            : initial.startText || initial.rawStart || "",
+        defer:
+          typeof initial.defer === "string" && initial.defer
+            ? initial.defer
+            : initial.deferText || initial.rawDefer || "",
       };
       const initialDueDate = snapshot.due ? parseRoamDate(snapshot.due) : null;
       const initialDueIso =
@@ -3099,6 +3488,22 @@ export default {
             ? snapshot.due
             : "";
       snapshot.dueIso = initialDueIso;
+      const initialStartDate = snapshot.start ? parseRoamDate(snapshot.start) : null;
+      const initialStartIso =
+        initialStartDate instanceof Date && !Number.isNaN(initialStartDate.getTime())
+          ? formatIsoDate(initialStartDate, setSnapshot)
+          : /^\d{4}-\d{2}-\d{2}$/.test(snapshot.start || "")
+            ? snapshot.start
+            : "";
+      snapshot.startIso = initialStartIso;
+      const initialDeferDate = snapshot.defer ? parseRoamDate(snapshot.defer) : null;
+      const initialDeferIso =
+        initialDeferDate instanceof Date && !Number.isNaN(initialDeferDate.getTime())
+          ? formatIsoDate(initialDeferDate, setSnapshot)
+          : /^\d{4}-\d{2}-\d{2}$/.test(snapshot.defer || "")
+            ? snapshot.defer
+            : "";
+      snapshot.deferIso = initialDeferIso;
       return new Promise((resolve) => {
         let settled = false;
         const finish = (value) => {
@@ -3106,33 +3511,43 @@ export default {
           settled = true;
           resolve(value);
         };
-        const taskInputHtml = `<input data-rt-field="task" type="text" placeholder="Task text" value="${escapeHtml(
+        const taskInputHtml = `<label class="rt-input-wrap">Task *<br/><input data-rt-field="task" type="text" placeholder="Task text" value="${escapeHtml(
           snapshot.task || ""
-        )}" />`;
-        const repeatInputHtml = `<input data-rt-field="repeat" type="text" placeholder="Repeat rule (required)" value="${escapeHtml(
+        )}" /></label>`;
+        const repeatInputHtml = `<label class="rt-input-wrap">Repeat *<br/><input data-rt-field="repeat" type="text" placeholder="Repeat rule (required)" value="${escapeHtml(
           snapshot.repeat || ""
-        )}" />`;
+        )}" /></label>`;
         const dateInputClass = `rt-date-input-${Date.now()}`;
-        const dueInputHtml = `<input data-rt-field="due" type="date" class="${dateInputClass}" value="${escapeHtml(
+        const startInputHtml = `<label class="rt-input-wrap">Start<br/><input data-rt-field="start" type="date" value="${escapeHtml(
+          snapshot.startIso || ""
+        )}" /></label>`;
+        const deferInputHtml = `<label class="rt-input-wrap">Defer<br/><input data-rt-field="defer" type="date" value="${escapeHtml(
+          snapshot.deferIso || ""
+        )}" /></label>`;
+        const dueInputHtml = `<label class="rt-input-wrap">Due<br/><input data-rt-field="due" type="date" class="${dateInputClass}" value="${escapeHtml(
           snapshot.dueIso || ""
-        )}" />`;
+        )}" /></label>`;
+        const fieldSelectors = {
+          task: 'input[data-rt-field="task"]',
+          repeat: 'input[data-rt-field="repeat"]',
+          due: 'input[data-rt-field="due"]',
+          start: 'input[data-rt-field="start"]',
+          defer: 'input[data-rt-field="defer"]',
+        };
         const promptMessage = includeTaskText
-          ? "Enter the task text, repeat rule, and optional due date."
-          : "Enter the repeat rule and, optionally, pick a due date.";
+          ? "Enter the task text, repeat rule, and optional dates."
+          : "Enter the repeat rule and optional dates.";
         const inputs = [];
-        const indexes = {};
         if (includeTaskText) {
-          indexes.task = inputs.length;
           inputs.push([
             taskInputHtml,
-            "keyup",
+            "input",
             function (_instance, _toast, input) {
               snapshot.task = input.value;
             },
             true,
           ]);
         }
-        indexes.repeat = inputs.length;
         const repeatConfig = [
           repeatInputHtml,
           "input",
@@ -3142,7 +3557,24 @@ export default {
         ];
         if (!includeTaskText) repeatConfig.push(true);
         inputs.push(repeatConfig);
-        indexes.due = inputs.length;
+        inputs.push([
+          startInputHtml,
+          "input",
+          function (_instance, _toast, input) {
+            if (input?.type === "date") {
+              snapshot.startIso = input.value;
+            }
+          },
+        ]);
+        inputs.push([
+          deferInputHtml,
+          "input",
+          function (_instance, _toast, input) {
+            if (input?.type === "date") {
+              snapshot.deferIso = input.value;
+            }
+          },
+        ]);
         inputs.push([
           dueInputHtml,
           "input",
@@ -3161,25 +3593,34 @@ export default {
           drag: false,
           timeout: false,
           close: true,
+          closeOnEscape: true,
           overlay: true,
-          title: "Recurring Task",
+          title: "Recurring Tasks",
+          icon: "",
+          iconText: "✓",
           message: promptMessage,
           inputs,
           buttons: [
             [
               "<button>Save</button>",
-              (instance, toastEl, _button, _event, inputs) => {
-                const repeatValue = inputs?.[indexes.repeat]?.value?.trim();
-                if (!repeatValue) {
-                  toast("Repeat rule is required.");
-                  inputs?.[indexes.repeat]?.focus?.();
+              (instance, toastEl) => {
+                const getFieldValue = (name) =>
+                  toastEl?.querySelector(fieldSelectors[name])?.value?.trim() || "";
+                const taskValue = includeTaskText ? getFieldValue("task") : "";
+                if (includeTaskText && !taskValue) {
+                  toast("Task text is required.");
+                  toastEl?.querySelector(fieldSelectors.task)?.focus?.();
                   return;
                 }
-                const dueIso = inputs?.[indexes.due]?.value?.trim() || "";
-                const taskValue =
-                  includeTaskText && indexes.task != null
-                    ? (inputs?.[indexes.task]?.value || "").trim()
-                    : undefined;
+                const repeatValue = getFieldValue("repeat");
+                if (!repeatValue) {
+                  toast("Repeat rule is required.");
+                  toastEl?.querySelector(fieldSelectors.repeat)?.focus?.();
+                  return;
+                }
+                const dueIso = getFieldValue("due");
+                const startIso = getFieldValue("start");
+                const deferIso = getFieldValue("defer");
                 const normalizedRepeat = normalizeRepeatRuleText(repeatValue) || repeatValue;
                 let dueText = null;
                 let dueDate = null;
@@ -3187,10 +3628,32 @@ export default {
                   dueDate = parseRoamDate(dueIso);
                   if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) {
                     toast("Couldn't parse that date.");
-                    inputs?.[indexes.due]?.focus?.();
+                    toastEl?.querySelector(fieldSelectors.due)?.focus?.();
                     return;
                   }
                   dueText = dueIso;
+                }
+                let startText = null;
+                let startDate = null;
+                if (startIso) {
+                  startDate = parseRoamDate(startIso);
+                  if (!(startDate instanceof Date) || Number.isNaN(startDate.getTime())) {
+                    toast("Couldn't parse that date.");
+                    toastEl?.querySelector(fieldSelectors.start)?.focus?.();
+                    return;
+                  }
+                  startText = startIso;
+                }
+                let deferText = null;
+                let deferDate = null;
+                if (deferIso) {
+                  deferDate = parseRoamDate(deferIso);
+                  if (!(deferDate instanceof Date) || Number.isNaN(deferDate.getTime())) {
+                    toast("Couldn't parse that date.");
+                    toastEl?.querySelector(fieldSelectors.defer)?.focus?.();
+                    return;
+                  }
+                  deferText = deferIso;
                 }
                 instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
                 finish({
@@ -3198,6 +3661,10 @@ export default {
                   repeatRaw: repeatValue,
                   due: dueText,
                   dueDate,
+                  start: startText,
+                  startDate,
+                  defer: deferText,
+                  deferDate,
                   taskText: includeTaskText ? taskValue : undefined,
                 });
               },
@@ -3346,6 +3813,8 @@ export default {
         uid: meta.uid,
         repeat: meta.repeat,
         due: meta.due ? new Date(meta.due.getTime()) : null,
+        start: meta.start ? new Date(meta.start.getTime()) : null,
+        defer: meta.defer ? new Date(meta.defer.getTime()) : null,
         childAttrMap: clonePlain(meta.childAttrMap || {}),
         props: clonePlain(meta.props || {}),
         advanceFrom: meta.advanceFrom || null,
@@ -3513,20 +3982,36 @@ export default {
           const childAttrMapFull = parseAttrsFromChildBlocks(block.children || []);
           const canonicalRepeatKey = DEFAULT_REPEAT_ATTR.toLowerCase();
           const canonicalDueKey = DEFAULT_DUE_ATTR.toLowerCase();
+          const canonicalStartKey = DEFAULT_START_ATTR.toLowerCase();
+          const canonicalDeferKey = DEFAULT_DEFER_ATTR.toLowerCase();
           const hasCanonicalRepeatChild = !!childAttrMapFull[canonicalRepeatKey];
           const hasCanonicalDueChild = !!childAttrMapFull[canonicalDueKey];
+          const hasCanonicalStartChild = !!childAttrMapFull[canonicalStartKey];
+          const hasCanonicalDeferChild = !!childAttrMapFull[canonicalDeferKey];
           const hasCustomRepeatChild = !!childAttrMapFull[set.attrNames.repeatKey];
           const hasCustomDueChild = !!childAttrMapFull[set.attrNames.dueKey];
+          const hasCustomStartChild = !!childAttrMapFull[set.attrNames.startKey];
+          const hasCustomDeferChild = !!childAttrMapFull[set.attrNames.deferKey];
           let repeatVal = typeof props.repeat === "string" && props.repeat ? props.repeat : null;
           let dueVal = typeof props.due === "string" && props.due ? props.due : null;
+          let startVal = typeof props.start === "string" && props.start ? props.start : null;
+          let deferVal = typeof props.defer === "string" && props.defer ? props.defer : null;
           const storedRepeatLabelNorm =
             normalizeAttrLabel(props?.rt?.attrRepeatLabel) ||
             normalizeAttrLabel(props?.rt?.attrRepeat);
           const storedDueLabelNorm =
             normalizeAttrLabel(props?.rt?.attrDueLabel) ||
             normalizeAttrLabel(props?.rt?.attrDue);
+          const storedStartLabelNorm =
+            normalizeAttrLabel(props?.rt?.attrStartLabel) ||
+            normalizeAttrLabel(props?.rt?.attrStart);
+          const storedDeferLabelNorm =
+            normalizeAttrLabel(props?.rt?.attrDeferLabel) ||
+            normalizeAttrLabel(props?.rt?.attrDefer);
           const currentRepeatLabelNorm = normalizeAttrLabel(set.attrNames.repeatAttr);
           const currentDueLabelNorm = normalizeAttrLabel(set.attrNames.dueAttr);
+          const currentStartLabelNorm = normalizeAttrLabel(set.attrNames.startAttr);
+          const currentDeferLabelNorm = normalizeAttrLabel(set.attrNames.deferAttr);
           try {
             const meta = await readRecurringMeta(block, set);
             if (!repeatVal && typeof meta?.repeat === "string" && meta.repeat) {
@@ -3542,6 +4027,18 @@ export default {
             if (!dueVal && meta?.due instanceof Date && !Number.isNaN(meta.due.getTime())) {
               dueVal = formatDate(meta.due, set);
             }
+            if (!startVal && typeof meta?.props?.start === "string" && meta.props.start) {
+              startVal = meta.props.start;
+            }
+            if (!startVal && meta?.start instanceof Date && !Number.isNaN(meta.start.getTime())) {
+              startVal = formatDate(meta.start, set);
+            }
+            if (!deferVal && typeof meta?.props?.defer === "string" && meta.props.defer) {
+              deferVal = meta.props.defer;
+            }
+            if (!deferVal && meta?.defer instanceof Date && !Number.isNaN(meta.defer.getTime())) {
+              deferVal = formatDate(meta.defer, set);
+            }
           } catch (err) {
             console.warn("[RecurringTasks] populateChildAttrsFromProps meta read failed", err);
           }
@@ -3551,19 +4048,37 @@ export default {
           if (set.attrNames.dueAttr !== DEFAULT_DUE_ATTR && hasCanonicalDueChild && !hasCustomDueChild) {
             dueVal = null;
           }
+          if (set.attrNames.startAttr !== DEFAULT_START_ATTR && hasCanonicalStartChild && !hasCustomStartChild) {
+            startVal = null;
+          }
+          if (set.attrNames.deferAttr !== DEFAULT_DEFER_ATTR && hasCanonicalDeferChild && !hasCustomDeferChild) {
+            deferVal = null;
+          }
           if (repeatVal && storedRepeatLabelNorm && storedRepeatLabelNorm !== currentRepeatLabelNorm) {
             repeatVal = null;
           }
           if (dueVal && storedDueLabelNorm && storedDueLabelNorm !== currentDueLabelNorm) {
             dueVal = null;
           }
-          if (!repeatVal && !dueVal) continue;
+          if (startVal && storedStartLabelNorm && storedStartLabelNorm !== currentStartLabelNorm) {
+            startVal = null;
+          }
+          if (deferVal && storedDeferLabelNorm && storedDeferLabelNorm !== currentDeferLabelNorm) {
+            deferVal = null;
+          }
+          if (!repeatVal && !dueVal && !startVal && !deferVal) continue;
           try {
             if (repeatVal) {
               await ensureChildAttrForType(uid, "repeat", repeatVal, set.attrNames);
             }
             if (dueVal) {
               await ensureChildAttrForType(uid, "due", dueVal, set.attrNames);
+            }
+            if (startVal) {
+              await ensureChildAttrForType(uid, "start", startVal, set.attrNames);
+            }
+            if (deferVal) {
+              await ensureChildAttrForType(uid, "defer", deferVal, set.attrNames);
             }
           } catch (err) {
             console.warn("[RecurringTasks] populateChildAttrsFromProps sync failed", err);
@@ -3731,7 +4246,12 @@ export default {
               meta.due = null;
             }
             const inlineRemovalKeys = [
-              ...new Set([...attrNames.repeatRemovalKeys, ...attrNames.dueRemovalKeys]),
+              ...new Set([
+                ...attrNames.repeatRemovalKeys,
+                ...attrNames.dueRemovalKeys,
+                ...attrNames.startRemovalKeys,
+                ...attrNames.deferRemovalKeys,
+              ]),
             ];
             const cleaned = removeInlineAttributes(block.string || "", inlineRemovalKeys);
             if (cleaned !== block.string) {
@@ -3748,6 +4268,8 @@ export default {
             const childAttrMap = { ...(meta.childAttrMap || {}) };
             for (const key of getAttrAliases("repeat", attrNames)) delete childAttrMap[key];
             for (const key of getAttrAliases("due", attrNames)) delete childAttrMap[key];
+            for (const key of getAttrAliases("start", attrNames)) delete childAttrMap[key];
+            for (const key of getAttrAliases("defer", attrNames)) delete childAttrMap[key];
             meta.childAttrMap = childAttrMap;
           }
 
