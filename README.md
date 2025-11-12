@@ -8,17 +8,13 @@ This extension automatically recognizes and manages TODO items that match define
 This extension is in active development and should be considered an early beta release. Please let me know of any bugs or unexpected behaviours in Slack  - https://app.slack.com/client/TNEAEL9QW/
 
 **Note 2:** 
-For now, I've switched off the Hidden Mode feature to stabilise core functions. Please ignore that section of the README below. 
-
-**Note 3:** 
 The settings pane for the extension allows you to use whatever name for the repeat and due date atttributes you choose. The extension defaults to using 'RT_attrRepeat' and 'RT_attrDue' for the recurrence pattern and due date respectively. If you happen to already use these attributes for other purposes, the extension will recognise and attempt to use them if you don't set alternatives in the settings. Using 'frequency' and 'when' for example, would prevent the extension from acting on anything for which you already use 'RT_attrRepeat' and 'RT_attrDue'.
 
 ---
 
 ## 📘 Quick Overview
 
-You can record a recurring task in **two styles** — both behave identically.  
-Choose your preferred mode under **Settings → Recurring Tasks → “Show repeat/due as”**.
+You can record a recurring task in **two styles** — both behave identically and the extension will keep the canonical copies in child blocks for reliability.
 
 ### 🔹 Inline Attribute Style
 
@@ -58,21 +54,21 @@ When completed:
   - completed:: [[2025-10-31]]
 ```
 
-### 🔹 Hidden Attribute (Pill) Style
+### 🔹 Inline Pill Indicators
 
-When set to “Hidden”, repeat/due are stored as hidden block properties.  
-You’ll see **visual pills** beside the checkbox for clarity:
+Regardless of how you enter the attributes, the extension emits a compact **pill** next to each recurring TODO whenever its child blocks are collapsed:
 
 ```
-☑️ Write weekly newsletter  ↻ every Friday · Next: Fri 7 Nov ⋯
+☑️ Write weekly newsletter  ↻ every Friday · ⏳ Mon 3 Nov · 📅 Fri 7 Nov ⋯
 ```
 
-- Hover a pill for details.
-- Click **↻** to **edit** the repeat rule. (**Alt+Click** copies it.)
-- Click **Next:** to open that date’s Daily Note Page.  
-  **Shift+Click** snoozes by +1 day.  
-  **Alt/Ctrl/Meta+Click** opens a date picker to change the due date.
-- Click **⋯** for more options (see below).
+- Pills disappear automatically when you expand the task (so you can edit the child blocks directly) and reappear when the block is collapsed.
+- Dates within the next 7 days show the weekday name (`Wed`, `Thu`); anything further out shows a short date (`Feb 26`), so you can scan upcoming items quickly.
+- **↻ Repeat pill** — Click to edit; **Alt+Click** copies the rule to the clipboard.
+- **⏱ Start / ⏳ Defer / 📅 Next** — Click to open the corresponding Daily Note Page.  
+  **Shift+Click** on the due pill snoozes +1 day.  
+  **Alt/Ctrl/Meta+Click** on any date pill opens a date picker to change that date.
+- **⋯ Menu** — Opens the full recurring-task menu (see below).
 
 ---
 
@@ -268,22 +264,16 @@ The `repeat::` attribute accepts **natural-language** patterns. Parsing is **cas
 
 - Any TODO with a `repeat::` value automatically becomes a recurring task.
 - Completing it will **spawn the next occurrence** (optionally after confirmation).
-- Hidden mode keeps your pages tidy with pills; Child mode keeps everything explicit.
+- Collapsing a recurring TODO shows its pill; expanding it reveals the underlying child blocks for editing.
 - Most actions (skip, snooze, edit) display an **Undo** toast.
 
 ---
 
 ## 🧰 Example Workflow
 
-1. Create a task:
-
-   ```markdown
-   {{[[TODO]]}} Send weekly update repeat:: every Friday due:: [[2025-11-07]]
-   ```
-
-2. Mark it done — the extension automatically creates the next task for `[[2025-11-14]]`.
-
-3. If you snooze or skip, the due date updates and pills reflect the change immediately.
+1. Draft the task (inline or empty block), then run **Convert TODO to Recurring Task** (or **Create a Recurring TODO** if you’re starting fresh). The dialog lets you enter the title, repeat rule, and optional due/start/defer dates; it stores the canonical data in child blocks and shows the inline pill.
+2. Mark it done — the extension automatically creates the next task on its start date (or due date if no start is provided) so it appears on the right Daily Note or page.
+3. If you snooze or skip via the pill menu, the defer/due child blocks update and the pill reflects the new dates immediately.
 
 ---
 
