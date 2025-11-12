@@ -20,7 +20,7 @@
 ## Phase 3 — Input Handling & UX Polish (Complete)
 - ✅ **Action:** Replace custom **Shift** key handling with **Roam native** behavior.
 - ✅ **Change:** Choose an **alternative modifier** (Alt/Option, Ctrl/Cmd, etc.) for Better Tasks actions.
-- **Follow-ups:**
+- ✅ **Follow-ups:**
   - ✅ Audit all shortcuts using Shift.
   - ✅ Implement new mapping.
   - ✅ Update tooltips, help text, and README.
@@ -35,7 +35,7 @@
 
 ## Phase 5 — Cleanup & Release
 - 🧹 Refactor code to use `bt-` namespace instead of `rt-` (for Better Tasks).
-- 🧹 Update documentation, README, and Roam Depot listing.
+- ✅ Update documentation, README, and Roam Depot listing.
 - 🧹 Validate with user testing and collect feedback before next iteration.
 
 ---
