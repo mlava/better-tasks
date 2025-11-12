@@ -14,26 +14,7 @@ The settings pane for the extension allows you to use whatever name for the repe
 
 ## 📘 Quick Overview
 
-You can record a recurring task in **two styles** — both behave identically and the extension will keep the canonical copies in child blocks for reliability.
-
-### 🔹 Inline Attribute Style
-
-Use Roam attributes directly within the task block:
-
-```markdown
-{{[[TODO]]}} Review project metrics repeat:: every weekday due:: [[2025-11-06]]
-```
-
-You can add other metadata such as completion date:
-
-```markdown
-{{[[DONE]]}} Send team update
-repeat:: every 2 weeks on Friday
-due:: [[2025-11-07]]
-completed:: [[2025-10-24]]
-```
-
-Optionally include `start::` (when the task becomes available) and/or `defer::` (when it should resurface). These labels are configurable in settings; defaults are `RT_attrStart` and `RT_attrDefer`.
+You can record a recurring task directly or by using a Command Palette command (Create a Recurring TODO) - both behave identically and all data is saved in child blocks for reliability.
 
 ### 🔹 Child Block Style
 
@@ -53,6 +34,8 @@ When completed:
   - due:: [[2025-11-07]]
   - completed:: [[2025-10-31]]
 ```
+
+Optionally include a start attribute `RT_attrStart::` (when the task becomes available) and/or defer attribute `RT_attrDefer::` (when it should resurface). These labels are configurable in settings; defaults are `RT_attrStart` and `RT_attrDefer`.
 
 ### 🔹 Inline Pill Indicators
 
@@ -87,27 +70,27 @@ Heading for **Under a Heading on DNP**
 ### Repeat attribute name
 Label for a child block attribute for the recurrence pattern
 
-### Due attribute name
-Label for a child block attribute for due date
-
 ### Start attribute name
 Label for the optional “start/available on” date attribute (default `RT_attrStart`)
 
 ### Defer attribute name
 Label for the optional “defer/snooze until” date attribute (default `RT_attrDefer`)
 
+### Due attribute name
+Label for the optional “due” date attribute (default `RT_attrDue`)
+
 ### Confirm Before Spawning Next Task
 If enabled, shows a confirmation dialog (“Spawn next occurrence?”) when you complete a recurring TODO.
 
 ### First day of the week
-Tells Recurring Tasks which weekday your graph treats as the start of the week (matches Roam’s regional preference).  
+Tells Recurring Tasks which weekday your graph treats as the start of the week, and allows you to match your Roam Research preference setting.  
 Weekly rules that span multiple days or intervals (e.g., `every 2 weeks on Sat & Sun`, `Mon-Fri`) interpret ranges using this anchor. Default is **Monday**.
 
 ---
 
 ## 🧩 Pills and Menus
 
-Each task with hidden attributes shows an inline “pill” next to its checkbox.
+Each task shows an inline “pill” next to its checkbox when the child blocks are collapsed.
 
 **Pill actions:**
 - **Repeat pill (↻)** — Click to edit; Alt+Click to copy rule text.
@@ -116,15 +99,15 @@ Each task with hidden attributes shows an inline “pill” next to its checkbox
 
 | Action | Description |
 |--------|--------------|
-| Snooze +1 day | Push due date forward 1 day |
-| Snooze +3 days | Push due date forward 3 days |
-| Snooze to next Monday | Move to the next Monday |
-| Snooze (pick date) | Choose a custom snooze date |
+| Snooze +1 day | Push start date forward 1 day |
+| Snooze +3 days | Push start date forward 3 days |
+| Snooze to next Monday | Move start to the next Monday |
+| Snooze (pick date) | Choose a custom start date |
 | Skip this occurrence | Jump directly to next repeat cycle |
 | Generate next now | Immediately create the next task |
 | End recurrence | Stop this task from recurring |
 
-All actions support **Undo** via a toast notification.
+All actions support **Undo** via a toast notification. If a start date isn't configured the buttons snooze the due date instead.
 
 ---
 
@@ -272,7 +255,7 @@ The `repeat::` attribute accepts **natural-language** patterns. Parsing is **cas
 
 ## 🧰 Example Workflow
 
-1. Draft the task (inline or empty block), then run **Convert TODO to Recurring Task** (or **Create a Recurring TODO** if you’re starting fresh). The dialog lets you enter the title, repeat rule, and optional due/start/defer dates; it stores the canonical data in child blocks and shows the inline pill.
+1. Draft the task (inline or empty block), then run **Convert TODO to Recurring Task** (or simply **Create a Recurring TODO** if you’re starting fresh). The toast lets you enter the title, repeat rule, and optional start/defer/due dates; it stores the canonical data in child blocks and shows the inline pill.
 2. Mark it done — the extension automatically creates the next task on its start date (or due date if no start is provided) so it appears on the right Daily Note or page.
 3. If you snooze or skip via the pill menu, the defer/due child blocks update and the pill reflects the new dates immediately.
 
