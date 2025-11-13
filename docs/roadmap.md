@@ -26,12 +26,14 @@
   - ✅ Update tooltips, help text, and README.
   - ✅ Add regression tests for key handling during task toggles and completions.
 
-## Phase 4 — Future Enhancements
-- ⏳ Implement dashboard view (filter tasks by availability, defer, and due).
+## Phase 4 — Dashboard & UI Enhancements (In Progress)
+- ✅ Implement dashboard view with filters, grouping, snooze actions, and completion controls.
+- ✅ Add topbar/command-palette toggles plus draggable positioning with persisted location.
+- ✅ Keep dashboard and inline pills in sync when tasks change inside Roam.
+- ✅ Add user setting for “first day of week” so repeat parsing respects graph preferences.
 - ⏳ Add project and context attribute support.
 - ⏳ Introduce priority and energy attributes.
-- ✅ Add user setting for “first day of week” (already present for repeats).
-- ⏳ Explore Smart UI components (task pills, hover info, snooze, etc.).
+- ⏳ Explore richer Smart UI components (hover cards, quick editors, etc.).
 
 ## Phase 5 — Cleanup & Release
 - 🧹 Refactor code to use `bt-` namespace instead of `rt-` (for Better Tasks).

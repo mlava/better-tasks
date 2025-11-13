@@ -1,22 +1,41 @@
-const webpack = require('webpack');
+const path = require("path");
 
 module.exports = {
-    entry: './src/index.js',
+    entry: "./src/index.js",
     output: {
-        filename: 'extension.js',
+        filename: "extension.js",
         path: __dirname,
         library: {
             type: "module",
-        }
+        },
     },
+    mode: "development",
     experiments: {
         outputModule: true,
     },
-    mode: 'development',
-    performance: {
-        hints: false,
+    module: {
+        rules: [
+            {
+                test: /\.[jt]sx?$/,
+                include: path.resolve(__dirname, "src"),
+                use: {
+                    loader: "babel-loader",
+                    options: {
+                        presets: ['@babel/preset-env', '@babel/preset-react'], // Use the presets for both modern JavaScript and React JSX
+                    },
+                },
+            },
+        ],
     },
     resolve: {
-        extensions: ['.js', '.jsx'], // This will allow you to import .jsx files without needing to add the extension
+        extensions: [".js", ".jsx", ".ts", ".tsx"],
+    },/*
+    externals: {
+        react: "React",
+        "react-dom": "ReactDOM",
+        "react-dom/client": "ReactDOM",
+    },*/
+    performance: {
+        hints: false,
     },
 };

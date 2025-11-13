@@ -1,4 +1,6 @@
 import iziToast from "izitoast";
+import { createRoot } from "react-dom/client";
+import DashboardApp from "./dashboard/App";
 
 const DEFAULT_REPEAT_ATTR = "BT_attrRepeat";
 const DEFAULT_START_ATTR = "BT_attrStart";
@@ -13,8 +15,11 @@ const DUE_ICON = "📅";
 const WEEK_START_OPTIONS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const PARENT_WRITE_DELAY_MS = 120;
 const TOAST_HIDE_DELAY_MS = 120;
+const DASHBOARD_TOPBAR_BUTTON_ID = "bt-dashboard-button";
 
 let lastAttrNames = null;
+let activeDashboardController = null;
+let topbarButtonObserver = null;
 
 const DOW_MAP = {
   sunday: "SU",
@@ -206,6 +211,14 @@ export default {
       label: "Create a Better Task",
       callback: () => createRecurringTODO(),
     });
+
+    activeDashboardController = createDashboardController(extensionAPI);
+    extensionAPI.ui.commandPalette.addCommand({
+      label: "Toggle Better Tasks Dashboard",
+      callback: () => activeDashboardController.toggle(),
+    });
+    ensureDashboardTopbarButton();
+    observeTopbarButton();
 
     // Placeholder for future feature - deconvert Better Tasks TODOs
     /* 
@@ -1173,163 +1186,10 @@ export default {
               : Array.from(node.querySelectorAll?.(".check-container input") || []);
 
             for (const input of inputs) {
-              if (!input?.control?.checked && !input?.checked) continue;
+              if (!(input?.control?.checked || input?.checked)) continue;
               const uid = findBlockUidFromCheckbox(input);
-              if (!uid) {
-                continue;
-              }
-
-              if (processedMap.has(uid)) {
-                continue;
-              }
-              processedMap.set(uid, Date.now());
-
-              try {
-                const set = S();
-                await flushChildAttrSync(uid);
-                await delay(60);
-                let block = await getBlock(uid);
-                await delay(60);
-                const refreshed = await getBlock(uid);
-                if (refreshed) block = refreshed;
-                if (!block) {
-                  processedMap.delete(uid);
-                  continue;
-                }
-
-                const meta = await readRecurringMeta(block, set);
-                const hasTimingOnly = !!meta?.hasTimingAttrs;
-                if (!meta.repeat && !hasTimingOnly) {
-                  processedMap.delete(uid);
-                  continue; // Not a scheduled task
-                }
-
-                const now = Date.now();
-                if (meta.processedTs && now - meta.processedTs < 4000) {
-                  processedMap.delete(uid);
-                  continue;
-                }
-
-                const isOneOff = !meta.repeat && hasTimingOnly;
-                if (isOneOff) {
-                  const snapshot = captureBlockSnapshot(block);
-                  try {
-                    const completion = await markCompleted(block, meta, set);
-                    processedMap.set(uid, completion.processedAt);
-                    const anchor =
-                      pickPlacementDate({ start: meta.start, defer: meta.defer, due: meta.due }) ||
-                      meta.due ||
-                      null;
-                    registerUndoAction({
-                      blockUid: uid,
-                      snapshot,
-                      completion,
-                      newBlockUid: null,
-                      nextDue: meta.due || null,
-                      nextAnchor: anchor,
-                      set,
-                      overrideEntry: null,
-                      toastMessage: "Task completion recorded",
-                    });
-                    repeatOverrides.delete(uid);
-                    void syncPillsForSurface(lastAttrSurface);
-                  } catch (err) {
-                    console.error("[RecurringTasks] one-off completion failed", err);
-                    await revertBlockCompletion(block);
-                    processedMap.delete(uid);
-                  }
-                  continue;
-                }
-
-                if (set.confirmBeforeSpawn) {
-                  const confirmed = await requestSpawnConfirmation(meta, set);
-                  if (!confirmed) {
-                    processedMap.delete(uid);
-                    continue;
-                  }
-                }
-
-                const snapshot = captureBlockSnapshot(block);
-                const overrideEntry = normalizeOverrideEntry(repeatOverrides.get(uid));
-                const overrideRepeat = overrideEntry?.repeat || null;
-                const overrideDue = overrideEntry?.due || null;
-                if (overrideRepeat) {
-                  meta.repeat = overrideRepeat;
-                  meta.props = { ...(meta.props || {}), repeat: overrideRepeat };
-                }
-                if (overrideDue) {
-                  meta.due = overrideDue;
-                  meta.props = { ...(meta.props || {}), due: formatDate(overrideDue, set) };
-                }
-                const advanceMode = await ensureAdvancePreference(uid, block, meta, set, input);
-                if (!advanceMode) {
-                  processedMap.delete(uid);
-                  continue;
-                }
-                meta.advanceFrom = advanceMode;
-                const setWithAdvance = { ...set, advanceFrom: advanceMode };
-                const completion = await markCompleted(block, meta, setWithAdvance);
-                processedMap.set(uid, completion.processedAt);
-
-                const { meta: resolvedMeta, block: resolvedBlock } = await resolveMetaAfterCompletion(
-                  snapshot,
-                  uid,
-                  meta,
-                  setWithAdvance
-                );
-                if (overrideRepeat) {
-                  resolvedMeta.repeat = overrideRepeat;
-                  resolvedMeta.props = { ...(resolvedMeta.props || {}), repeat: overrideRepeat };
-                }
-                if (overrideDue) {
-                  resolvedMeta.due = overrideDue;
-                  resolvedMeta.props = { ...(resolvedMeta.props || {}), due: formatDate(overrideDue, set) };
-                }
-                const overrideRule = overrideRepeat ? parseRuleText(overrideRepeat, setWithAdvance) : null;
-                const nextDueCandidate =
-                  overrideDue && overrideDue instanceof Date && !Number.isNaN(overrideDue.getTime())
-                    ? overrideDue
-                    : null;
-                const nextDue = nextDueCandidate || computeNextDue(resolvedMeta, setWithAdvance, 0, overrideRule);
-                if (!nextDue) {
-                  processedMap.delete(uid);
-                  continue;
-                }
-                const startOffsetMs =
-                  resolvedMeta.start instanceof Date && resolvedMeta.due instanceof Date
-                    ? resolvedMeta.start.getTime() - resolvedMeta.due.getTime()
-                    : null;
-                const deferOffsetMs =
-                  resolvedMeta.defer instanceof Date && resolvedMeta.due instanceof Date
-                    ? resolvedMeta.defer.getTime() - resolvedMeta.due.getTime()
-                    : null;
-                const nextStartDate =
-                  startOffsetMs != null ? applyOffsetToDate(nextDue, startOffsetMs) : null;
-                const nextDeferDate =
-                  deferOffsetMs != null ? applyOffsetToDate(nextDue, deferOffsetMs) : null;
-
-                const parentForSpawn = resolvedBlock || (await getBlock(uid)) || block;
-                const newUid = await spawnNextOccurrence(parentForSpawn, resolvedMeta, nextDue, setWithAdvance);
-                registerUndoAction({
-                  blockUid: uid,
-                  snapshot,
-                  completion,
-                  newBlockUid: newUid,
-                  nextDue,
-                  nextAnchor: pickPlacementDate({ start: nextStartDate, defer: nextDeferDate, due: nextDue }) || nextDue,
-                  set: setWithAdvance,
-                  overrideEntry: overrideEntry
-                    ? {
-                      ...(overrideEntry.repeat ? { repeat: overrideEntry.repeat } : {}),
-                      ...(overrideEntry.due ? { due: new Date(overrideEntry.due.getTime()) } : {}),
-                    }
-                    : null,
-                });
-                repeatOverrides.delete(uid);
-              } catch (err) {
-                console.error("[RecurringTasks] error:", err);
-                processedMap.delete(uid); // allow retry on failure
-              }
+              if (!uid) continue;
+              await processTaskCompletion(uid, { checkbox: input });
             }
           }
         }
@@ -1342,7 +1202,164 @@ export default {
       if (targetNode2) observer.observe(targetNode2, obsConfig);
       const surface = lastAttrSurface || enforceChildAttrSurface(extensionAPI);
       lastAttrSurface = surface;
-      void syncPillsForSurface(surface);
+    void syncPillsForSurface(surface);
+  }
+
+    async function processTaskCompletion(uid, options = {}) {
+      if (!uid) return null;
+      if (processedMap.has(uid)) {
+        return null;
+      }
+      processedMap.set(uid, Date.now());
+      const checkbox = options.checkbox || null;
+      try {
+        const set = S();
+        await flushChildAttrSync(uid);
+        await delay(60);
+        let block = await getBlock(uid);
+        await delay(60);
+        const refreshed = await getBlock(uid);
+        if (refreshed) block = refreshed;
+        if (!block) {
+          processedMap.delete(uid);
+          return null;
+        }
+
+        const meta = await readRecurringMeta(block, set);
+        const hasTimingOnly = !!meta?.hasTimingAttrs;
+        if (!meta.repeat && !hasTimingOnly) {
+          processedMap.delete(uid);
+          return null;
+        }
+
+        const now = Date.now();
+        if (meta.processedTs && now - meta.processedTs < 4000) {
+          processedMap.delete(uid);
+          return null;
+        }
+
+        const isOneOff = !meta.repeat && hasTimingOnly;
+        if (isOneOff) {
+          const snapshot = captureBlockSnapshot(block);
+          try {
+            const completion = await markCompleted(block, meta, set);
+            processedMap.set(uid, completion.processedAt);
+            const anchor =
+              pickPlacementDate({ start: meta.start, defer: meta.defer, due: meta.due }) || meta.due || null;
+            registerUndoAction({
+              blockUid: uid,
+              snapshot,
+              completion,
+              newBlockUid: null,
+              nextDue: meta.due || null,
+              nextAnchor: anchor,
+              set,
+              overrideEntry: null,
+              toastMessage: "Task completion recorded",
+            });
+            repeatOverrides.delete(uid);
+            void syncPillsForSurface(lastAttrSurface);
+            activeDashboardController?.notifyBlockChange?.(uid);
+            return { type: "one-off" };
+          } catch (err) {
+            console.error("[RecurringTasks] one-off completion failed", err);
+            await revertBlockCompletion(block);
+            processedMap.delete(uid);
+            return null;
+          }
+        }
+
+        if (set.confirmBeforeSpawn && !options.skipConfirmation) {
+          const confirmed = await requestSpawnConfirmation(meta, set);
+          if (!confirmed) {
+            processedMap.delete(uid);
+            return null;
+          }
+        }
+
+        const snapshot = captureBlockSnapshot(block);
+        const overrideEntry = normalizeOverrideEntry(repeatOverrides.get(uid));
+        const overrideRepeat = overrideEntry?.repeat || null;
+        const overrideDue = overrideEntry?.due || null;
+        if (overrideRepeat) {
+          meta.repeat = overrideRepeat;
+          meta.props = { ...(meta.props || {}), repeat: overrideRepeat };
+        }
+        if (overrideDue) {
+          meta.due = overrideDue;
+          meta.props = { ...(meta.props || {}), due: formatDate(overrideDue, set) };
+        }
+        const advanceMode = await ensureAdvancePreference(uid, block, meta, set, checkbox);
+        if (!advanceMode) {
+          processedMap.delete(uid);
+          return null;
+        }
+        meta.advanceFrom = advanceMode;
+        const setWithAdvance = { ...set, advanceFrom: advanceMode };
+        const completion = await markCompleted(block, meta, setWithAdvance);
+        processedMap.set(uid, completion.processedAt);
+
+        const { meta: resolvedMeta, block: resolvedBlock } = await resolveMetaAfterCompletion(
+          snapshot,
+          uid,
+          meta,
+          setWithAdvance
+        );
+        if (overrideRepeat) {
+          resolvedMeta.repeat = overrideRepeat;
+          resolvedMeta.props = { ...(resolvedMeta.props || {}), repeat: overrideRepeat };
+        }
+        if (overrideDue) {
+          resolvedMeta.due = overrideDue;
+          resolvedMeta.props = { ...(resolvedMeta.props || {}), due: formatDate(overrideDue, set) };
+        }
+        const overrideRule = overrideRepeat ? parseRuleText(overrideRepeat, setWithAdvance) : null;
+        const nextDueCandidate =
+          overrideDue && overrideDue instanceof Date && !Number.isNaN(overrideDue.getTime()) ? overrideDue : null;
+        const nextDue = nextDueCandidate || computeNextDue(resolvedMeta, setWithAdvance, 0, overrideRule);
+        if (!nextDue) {
+          processedMap.delete(uid);
+          return null;
+        }
+        const startOffsetMs =
+          resolvedMeta.start instanceof Date && resolvedMeta.due instanceof Date
+            ? resolvedMeta.start.getTime() - resolvedMeta.due.getTime()
+            : null;
+        const deferOffsetMs =
+          resolvedMeta.defer instanceof Date && resolvedMeta.due instanceof Date
+            ? resolvedMeta.defer.getTime() - resolvedMeta.due.getTime()
+            : null;
+        const nextStartDate = startOffsetMs != null ? applyOffsetToDate(nextDue, startOffsetMs) : null;
+        const nextDeferDate = deferOffsetMs != null ? applyOffsetToDate(nextDue, deferOffsetMs) : null;
+        const parentForSpawn = resolvedBlock || (await getBlock(uid)) || block;
+        const newUid = await spawnNextOccurrence(parentForSpawn, resolvedMeta, nextDue, setWithAdvance);
+        registerUndoAction({
+          blockUid: uid,
+          snapshot,
+          completion,
+          newBlockUid: newUid,
+          nextDue,
+          nextAnchor: pickPlacementDate({ start: nextStartDate, defer: nextDeferDate, due: nextDue }) || nextDue,
+          set: setWithAdvance,
+          overrideEntry: overrideEntry
+            ? {
+                ...(overrideEntry.repeat ? { repeat: overrideEntry.repeat } : {}),
+                ...(overrideEntry.due ? { due: new Date(overrideEntry.due.getTime()) } : {}),
+              }
+            : null,
+        });
+        repeatOverrides.delete(uid);
+        void syncPillsForSurface(lastAttrSurface);
+        activeDashboardController?.notifyBlockChange?.(uid);
+        if (newUid) {
+          activeDashboardController?.notifyBlockChange?.(newUid);
+        }
+        return { type: "recurring", nextUid: newUid };
+      } catch (err) {
+        console.error("[RecurringTasks] error:", err);
+        processedMap.delete(uid);
+        return null;
+      }
     }
 
     async function getBlock(uid) {
@@ -2439,6 +2456,10 @@ export default {
       processedMap.set(blockUid, Date.now());
       setTimeout(() => processedMap.delete(blockUid), 750);
       if (overrideEntry) mergeRepeatOverride(blockUid, overrideEntry);
+      activeDashboardController?.notifyBlockChange?.(blockUid);
+      if (newBlockUid) {
+        activeDashboardController?.removeTask?.(newBlockUid);
+      }
       toast("Changes un-done successfully");
       void syncPillsForSurface(lastAttrSurface);
     }
@@ -3204,8 +3225,10 @@ export default {
     }
 
     // ========================= Render helpers =========================
-    const DONE_MACRO_PREFIX_RE = /^\s*\{\{\s*(?:\[\[\s*(?:DONE)\s*\]\]|DONE)\s*\}\}\s*/i;
-    const DONE_WORD_PREFIX_RE = /^\s*DONE\s+/i;
+const TODO_MACRO_PREFIX_RE = /^\s*\{\{\s*(?:\[\[\s*TODO\s*\]\]|TODO)\s*\}\}\s*/i;
+const TODO_WORD_PREFIX_RE = /^\s*TODO\s+/i;
+const DONE_MACRO_PREFIX_RE = /^\s*\{\{\s*(?:\[\[\s*(?:DONE)\s*\]\]|DONE)\s*\}\}\s*/i;
+const DONE_WORD_PREFIX_RE = /^\s*DONE\s+/i;
 
     function normalizeToTodoMacro(s) {
       var t = s.replace(/^\s+/, "");
@@ -3216,11 +3239,41 @@ export default {
       return "{{[[TODO]]}} " + t;
     }
 
-    function isBlockCompleted(block) {
-      const text = (block?.string || "").trim();
-      if (!text) return false;
-      return DONE_MACRO_PREFIX_RE.test(text) || DONE_WORD_PREFIX_RE.test(text);
-    }
+function isBlockCompleted(block) {
+  const text = (block?.string || "").trim();
+  if (!text) return false;
+  return DONE_MACRO_PREFIX_RE.test(text) || DONE_WORD_PREFIX_RE.test(text);
+}
+
+function isTaskBlock(block) {
+  const text = (block?.string || "").trim();
+  if (!text) return false;
+  return (
+    TODO_MACRO_PREFIX_RE.test(text) ||
+    TODO_WORD_PREFIX_RE.test(text) ||
+    DONE_MACRO_PREFIX_RE.test(text) ||
+    DONE_WORD_PREFIX_RE.test(text)
+  );
+}
+
+function formatTodoStateString(text, state = "TODO") {
+  const base = normalizeToTodoMacro(text || "");
+  if (state === "DONE") {
+    return base.replace("{{[[TODO]]}}", "{{[[DONE]]}}");
+  }
+  return base;
+}
+
+async function setTaskTodoState(uid, state = "TODO") {
+  const block = await getBlock(uid);
+  if (!block) return;
+  const alreadyDone = isBlockCompleted(block);
+  if (state === "DONE" && alreadyDone) return;
+  if (state === "TODO" && !alreadyDone) return;
+  const next = formatTodoStateString(block.string || "", state);
+  if (next === block.string) return;
+  await updateBlockString(uid, next);
+}
 
     function removeInlineAttributes(text, keys) {
       if (!text) return text;
@@ -4143,6 +4196,7 @@ export default {
           const block = await getBlock(uid);
           if (!block) continue;
           if (isTaskInCodeBlock(block)) continue;
+          activeDashboardController?.notifyBlockChange?.(uid);
 
           const originalString = block.string;
           const meta = await readRecurringMeta(block, set);
@@ -4263,11 +4317,16 @@ export default {
             pill.appendChild(repeatSpan);
           }
 
-          if (startDisplay) {
+          const addSeparator = () => {
             const sep = document.createElement("span");
             sep.className = "rt-pill-separator";
             sep.textContent = " · ";
             pill.appendChild(sep);
+          };
+
+          if (startDisplay) {
+            if (repeatSpan) addSeparator();
+            else if (pill.childElementCount > 0) addSeparator();
 
             startSpan = document.createElement("span");
             startSpan.className = "rt-pill-start";
@@ -4287,10 +4346,8 @@ export default {
           }
 
           if (deferDisplay) {
-            const sep = document.createElement("span");
-            sep.className = "rt-pill-separator";
-            sep.textContent = " · ";
-            pill.appendChild(sep);
+            if (repeatSpan || startSpan) addSeparator();
+            else if (pill.childElementCount > 0) addSeparator();
 
             deferSpan = document.createElement("span");
             deferSpan.className = "rt-pill-defer";
@@ -4310,10 +4367,8 @@ export default {
           }
 
           if (dueDisplay) {
-            const sep = document.createElement("span");
-            sep.className = "rt-pill-separator";
-            sep.textContent = " · ";
-            pill.appendChild(sep);
+            if (repeatSpan || startSpan || deferSpan) addSeparator();
+            else if (pill.childElementCount > 0) addSeparator();
 
             dueSpan = document.createElement("span");
             dueSpan.className = "rt-pill-due";
@@ -5245,6 +5300,615 @@ export default {
       await syncChildAttrToParent(parentUid, "due", { ...baseOpts, ...options });
     }
 
+    async function undoTaskCompletion(uid) {
+      if (!uid) return;
+      try {
+        const block = await getBlock(uid);
+        if (!block) return;
+        const normalized = normalizeToTodoMacro(block.string || "");
+        await updateBlockString(uid, normalized);
+        const attrNames = lastAttrNames || resolveAttributeNames();
+        await removeChildAttrsForType(uid, "completed", attrNames);
+        await updateBlockProps(uid, {
+          rt: {
+            processed: null,
+            lastCompleted: null,
+          },
+        });
+        repeatOverrides.delete(uid);
+        activeDashboardController?.notifyBlockChange?.(uid);
+      } catch (err) {
+        console.warn("[RecurringTasks] undoTaskCompletion failed", err);
+      }
+    }
+
+    function createDashboardController(extensionAPI) {
+      const initialState = { tasks: [], status: "idle", error: null, lastUpdated: null };
+      let state = { ...initialState };
+      const subscribers = new Set();
+      let container = null;
+      let root = null;
+      let refreshPromise = null;
+      const DASHBOARD_POSITION_KEY = "betterTasks.dashboard.position";
+      let savedPosition =
+        typeof window !== "undefined" ? loadSavedDashboardPosition() : null;
+      let dragHandle = null;
+      let dragPointerId = null;
+      let dragOffsetX = 0;
+      let dragOffsetY = 0;
+      let isDraggingDashboard = false;
+      let resizeListenerAttached = false;
+
+      const controller = {
+        getSnapshot: () => state,
+        subscribe,
+        ensureInitialLoad,
+        refresh,
+        open,
+        close,
+        toggle,
+        toggleTask,
+        snoozeTask,
+        openBlock,
+        notifyBlockChange,
+        removeTask,
+        openSettings,
+        dispose,
+      };
+
+      function emit() {
+        const snapshot = {
+          ...state,
+          tasks: state.tasks.map((task) => ({ ...task })),
+        };
+        subscribers.forEach((callback) => {
+          try {
+            callback(snapshot);
+          } catch (err) {
+            console.warn("[BetterTasks] dashboard subscriber failed", err);
+          }
+        });
+      }
+
+      function subscribe(listener) {
+        if (typeof listener === "function") {
+          subscribers.add(listener);
+          listener({ ...state, tasks: state.tasks.map((task) => ({ ...task })) });
+        }
+        return () => subscribers.delete(listener);
+      }
+
+      function ensureInitialLoad() {
+        if (state.status === "idle" && !refreshPromise) {
+          void refresh({ reason: "initial" });
+        }
+      }
+
+      async function refresh({ reason = "manual" } = {}) {
+        if (refreshPromise) return refreshPromise;
+        state = {
+          ...state,
+          status: state.tasks.length ? "refreshing" : "loading",
+          error: null,
+        };
+        emit();
+        refreshPromise = collectDashboardTasks()
+          .then((tasks) => {
+            state = {
+              ...state,
+              tasks,
+              status: "ready",
+              error: null,
+              lastUpdated: Date.now(),
+              lastReason: reason,
+            };
+            emit();
+          })
+          .catch((err) => {
+            console.error("[BetterTasks] dashboard refresh failed", err);
+            state = {
+              ...state,
+              status: "error",
+              error: err,
+            };
+            emit();
+          })
+          .finally(() => {
+            refreshPromise = null;
+          });
+        return refreshPromise;
+      }
+
+      function ensureContainer() {
+        if (container && root) return;
+        container = document.createElement("div");
+        container.className = "bt-dashboard-host";
+        document.body.appendChild(container);
+        root = createRoot(container);
+        if (!resizeListenerAttached && typeof window !== "undefined") {
+          window.addEventListener("resize", handleWindowResize);
+          resizeListenerAttached = true;
+        }
+      }
+
+      function open() {
+        ensureContainer();
+        root.render(
+          <DashboardApp
+            controller={controller}
+            onRequestClose={close}
+            onHeaderReady={registerDragHandle}
+          />
+        );
+        ensureInitialLoad();
+        if (savedPosition) {
+          requestAnimationFrame(() => {
+            applySavedPosition();
+          });
+        }
+      }
+
+      function close() {
+        cleanupDragListeners();
+        registerDragHandle(null);
+        if (root) {
+          root.unmount();
+          root = null;
+        }
+        if (container) {
+          container.remove();
+          container = null;
+        }
+        if (resizeListenerAttached && typeof window !== "undefined") {
+          window.removeEventListener("resize", handleWindowResize);
+          resizeListenerAttached = false;
+        }
+      }
+
+      function toggle() {
+        if (root) {
+          close();
+        } else {
+          open();
+        }
+      }
+
+      async function toggleTask(uid, action) {
+        if (!uid) return;
+        try {
+          if (action === "complete") {
+            await setTaskTodoState(uid, "DONE");
+          } else {
+            await setTaskTodoState(uid, "TODO");
+            await undoTaskCompletion(uid);
+          }
+        } catch (err) {
+          console.error("[BetterTasks] toggleTask failed", err);
+          toast("Unable to update task.");
+        }
+        await refresh({ reason: "toggle" });
+      }
+
+      async function snoozeTask(uid, preset) {
+        if (!uid) return;
+        try {
+          const set = S();
+          if (preset === "pick") {
+            await snoozePickDeferDate(uid, set);
+          } else if (typeof preset === "number") {
+            await snoozeDeferByDays(uid, set, preset);
+          } else {
+            await snoozeDeferByDays(uid, set, 1);
+          }
+          activeDashboardController?.notifyBlockChange?.(uid);
+        } catch (err) {
+          console.error("[BetterTasks] snoozeTask failed", err);
+          toast("Could not snooze task.");
+        }
+        await refresh({ reason: "snooze" });
+      }
+
+      function removeTask(uid) {
+        if (!uid) return;
+        const tasks = state.tasks.filter((task) => task.uid !== uid);
+        if (tasks.length === state.tasks.length) return;
+        state = { ...state, tasks };
+        emit();
+      }
+
+      function openBlock(uid) {
+        if (!uid) return;
+        try {
+          window.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
+        } catch (err) {
+          console.warn("[BetterTasks] openBlock failed", err);
+        }
+      }
+
+      function openSettings() {
+        try {
+          if (extensionAPI?.settings?.open) {
+            extensionAPI.settings.open();
+          } else {
+            toast("Open the Roam Depot settings for Better Tasks to adjust options.");
+          }
+        } catch (err) {
+          console.warn("[BetterTasks] openSettings failed", err);
+        }
+      }
+
+      async function notifyBlockChange(uid) {
+        if (!uid) return;
+        try {
+          const set = S();
+          const block = await getBlock(uid);
+          if (!block) {
+            removeTask(uid);
+            return;
+          }
+          if (!isTaskBlock(block)) return;
+          const meta = await readRecurringMeta(block, set);
+          if (!isBetterTasksTask(meta)) return;
+          const task = deriveDashboardTask(block, meta, set);
+          if (!task) return;
+          const tasks = state.tasks.slice();
+          const index = tasks.findIndex((entry) => entry.uid === uid);
+          if (index >= 0) {
+            tasks[index] = task;
+          } else {
+            tasks.push(task);
+          }
+          state = { ...state, tasks };
+          emit();
+        } catch (err) {
+          console.warn("[BetterTasks] notifyBlockChange failed", err);
+        }
+      }
+
+      function dispose() {
+        subscribers.clear();
+        close();
+        state = { ...initialState };
+      }
+
+      function registerDragHandle(node) {
+        if (dragHandle === node) return;
+        if (dragHandle) {
+          dragHandle.removeEventListener("pointerdown", handlePointerDown);
+          dragHandle.classList.remove("bt-dashboard__header--dragging");
+          dragHandle.classList.remove("bt-dashboard__header--draggable");
+        }
+        dragHandle = node;
+        if (dragHandle) {
+          dragHandle.classList.add("bt-dashboard__header--draggable");
+          dragHandle.addEventListener("pointerdown", handlePointerDown);
+        }
+      }
+
+      function handlePointerDown(event) {
+        if (!container || !dragHandle) return;
+        if (event.button !== undefined && event.button !== 0) return;
+        const blocker = event.target?.closest?.("button, a, input, textarea, select");
+        if (blocker) return;
+        isDraggingDashboard = true;
+        dragPointerId = event.pointerId;
+        const rect = container.getBoundingClientRect();
+        dragOffsetX = event.clientX - rect.left;
+        dragOffsetY = event.clientY - rect.top;
+        container.classList.add("bt-dashboard-host--dragging");
+        dragHandle.classList.add("bt-dashboard__header--dragging");
+        if (dragHandle.setPointerCapture && dragPointerId != null) {
+          try {
+            dragHandle.setPointerCapture(dragPointerId);
+          } catch (_) {
+            // best effort only
+          }
+        }
+        if (typeof window !== "undefined") {
+          window.addEventListener("pointermove", handlePointerMove);
+          window.addEventListener("pointerup", handlePointerUp);
+        }
+        event.preventDefault();
+      }
+
+      function handlePointerMove(event) {
+        if (!isDraggingDashboard || event.pointerId !== dragPointerId) return;
+        if (!container) return;
+        const desired = {
+          left: event.clientX - dragOffsetX,
+          top: event.clientY - dragOffsetY,
+        };
+        const clamped = clampPosition(desired);
+        if (!clamped) return;
+        setContainerPosition(clamped);
+      }
+
+      function handlePointerUp(event) {
+        if (!isDraggingDashboard || event.pointerId !== dragPointerId) return;
+        if (dragHandle?.releasePointerCapture && dragPointerId != null) {
+          try {
+            dragHandle.releasePointerCapture(dragPointerId);
+          } catch (_) {
+            // ignore release failures
+          }
+        }
+        isDraggingDashboard = false;
+        dragPointerId = null;
+        container?.classList?.remove("bt-dashboard-host--dragging");
+        dragHandle?.classList?.remove("bt-dashboard__header--dragging");
+        if (typeof window !== "undefined") {
+          window.removeEventListener("pointermove", handlePointerMove);
+          window.removeEventListener("pointerup", handlePointerUp);
+        }
+        if (savedPosition) {
+          persistDashboardPosition(savedPosition);
+        }
+      }
+
+      function cleanupDragListeners() {
+        if (typeof window !== "undefined") {
+          window.removeEventListener("pointermove", handlePointerMove);
+          window.removeEventListener("pointerup", handlePointerUp);
+        }
+        isDraggingDashboard = false;
+        dragPointerId = null;
+        container?.classList?.remove("bt-dashboard-host--dragging");
+        dragHandle?.classList?.remove("bt-dashboard__header--dragging");
+      }
+
+      function loadSavedDashboardPosition() {
+        if (typeof window === "undefined") return null;
+        try {
+          const raw = window.localStorage?.getItem(DASHBOARD_POSITION_KEY);
+          if (!raw) return null;
+          const parsed = JSON.parse(raw);
+          if (
+            parsed &&
+            typeof parsed.top === "number" &&
+            Number.isFinite(parsed.top) &&
+            typeof parsed.left === "number" &&
+            Number.isFinite(parsed.left)
+          ) {
+            return { top: parsed.top, left: parsed.left };
+          }
+        } catch (err) {
+          console.warn("[BetterTasks] failed to read dashboard position", err);
+        }
+        return null;
+      }
+
+      function persistDashboardPosition(pos) {
+        if (typeof window === "undefined" || !pos) return;
+        try {
+          window.localStorage?.setItem(DASHBOARD_POSITION_KEY, JSON.stringify(pos));
+        } catch (err) {
+          console.warn("[BetterTasks] failed to store dashboard position", err);
+        }
+      }
+
+      function clampNumber(value, min, max) {
+        if (!Number.isFinite(value)) return min;
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+      }
+
+      function clampPosition(pos) {
+        if (!container || !pos || typeof window === "undefined") return null;
+        const margin = 12;
+        const rect = container.getBoundingClientRect();
+        const width = rect.width || 600;
+        const height = rect.height || Math.min(window.innerHeight - margin * 2, 700);
+        const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+        const maxTop = Math.max(margin, window.innerHeight - height - margin);
+        const left = clampNumber(pos.left, margin, maxLeft);
+        const top = clampNumber(pos.top, margin, maxTop);
+        return { left, top };
+      }
+
+      function setContainerPosition(pos) {
+        if (!container || !pos) return;
+        container.style.left = `${pos.left}px`;
+        container.style.top = `${pos.top}px`;
+        container.style.right = "auto";
+        container.style.bottom = "auto";
+        savedPosition = pos;
+      }
+
+      function applySavedPosition(options = {}) {
+        if (!savedPosition) return;
+        const clamped = clampPosition(savedPosition);
+        if (!clamped) return;
+        setContainerPosition(clamped);
+        if (options.persist) {
+          persistDashboardPosition(clamped);
+        }
+      }
+
+      function handleWindowResize() {
+        if (!container) return;
+        if (savedPosition) {
+          applySavedPosition({ persist: true });
+        }
+      }
+
+      return controller;
+    }
+
+    async function collectDashboardTasks() {
+      const set = S();
+      const [todoRows, doneRows, attrRows] = await Promise.all([
+        fetchBlocksByPageRef("TODO"),
+        fetchBlocksByPageRef("DONE"),
+        fetchBlocksByAttributes(set),
+      ]);
+      const blockMap = new Map();
+      for (const rows of [todoRows, doneRows, attrRows]) {
+        for (const row of rows || []) {
+          const block = row?.[0];
+          if (block?.uid) {
+            blockMap.set(block.uid, block);
+          }
+        }
+      }
+      const tasks = [];
+      for (const block of blockMap.values()) {
+        try {
+          const meta = await readRecurringMeta(block, set);
+          if (!isBetterTasksTask(meta) || !isTaskBlock(block)) continue;
+          const task = deriveDashboardTask(block, meta, set);
+          if (task) tasks.push(task);
+        } catch (err) {
+          console.warn("[BetterTasks] deriveDashboardTask failed", err);
+        }
+      }
+      const bucketWeight = { overdue: 0, today: 1, upcoming: 2, none: 3 };
+      tasks.sort((a, b) => {
+        const bucketDiff = (bucketWeight[a.dueBucket] ?? 99) - (bucketWeight[b.dueBucket] ?? 99);
+        if (bucketDiff !== 0) return bucketDiff;
+        const dueA = a.dueAt ? a.dueAt.getTime() : Number.MAX_SAFE_INTEGER;
+        const dueB = b.dueAt ? b.dueAt.getTime() : Number.MAX_SAFE_INTEGER;
+        if (dueA !== dueB) return dueA - dueB;
+        return (a.title || "").localeCompare(b.title || "");
+      });
+      return tasks;
+    }
+
+    async function fetchBlocksByPageRef(title) {
+      const pull = `[:block/uid :block/string :block/props :block/order :block/open
+        {:block/children [:block/uid :block/string]}
+        {:block/page [:block/uid :node/title]}
+        {:block/parents [:block/uid]}]`;
+      const query = `
+        [:find (pull ?b ${pull})
+         :where
+           [?b :block/refs ?ref]
+           [?ref :node/title "${title}"]]`;
+      try {
+        return (await window.roamAlphaAPI.q(query)) || [];
+      } catch (err) {
+        console.warn("[BetterTasks] fetchBlocksByPageRef failed", err);
+        return [];
+      }
+    }
+
+    async function fetchBlocksByAttributes(set) {
+      const attrNames = set?.attrNames || resolveAttributeNames();
+      const labels = new Set(
+        [
+          getAttrLabel("repeat", attrNames),
+          getAttrLabel("start", attrNames),
+          getAttrLabel("defer", attrNames),
+          getAttrLabel("due", attrNames),
+          getAttrLabel("completed", attrNames),
+        ].filter(Boolean)
+      );
+      const results = [];
+      const pull = `[:block/uid :block/string :block/props :block/order :block/open
+        {:block/children [:block/uid :block/string]}
+        {:block/page [:block/uid :node/title]}
+        {:block/parents [:block/uid]}]`;
+      for (const label of labels) {
+        const safe = label.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        const query = `
+          [:find (pull ?b ${pull})
+           :where
+            [?attr :node/title "${safe}"]
+            [?c :block/refs ?attr]
+            [?b :block/children ?c]]`;
+        try {
+          const rows = await window.roamAlphaAPI.q(query);
+          if (Array.isArray(rows)) {
+            results.push(...rows);
+          }
+        } catch (err) {
+          console.warn("[BetterTasks] fetchBlocksByAttributes failed", err);
+        }
+      }
+      return results;
+    }
+
+    function deriveDashboardTask(block, meta, set) {
+      if (!block) return null;
+      const title = formatDashboardTitle(block.string || "");
+      const startAt = meta?.start instanceof Date && !Number.isNaN(meta.start.getTime()) ? meta.start : null;
+      const deferUntil = meta?.defer instanceof Date && !Number.isNaN(meta.defer.getTime()) ? meta.defer : null;
+      const dueAt = meta?.due instanceof Date && !Number.isNaN(meta.due.getTime()) ? meta.due : null;
+      const now = new Date();
+      const startBucket = startAt && now < startAt ? "not-started" : "started";
+      const deferBucket = deferUntil && now < deferUntil ? "deferred" : "available";
+      const dueBucket = computeDueBucket(dueAt, now);
+      const recurrenceBucket = meta?.repeat ? "recurring" : "one-off";
+      const availabilityLabel =
+        startBucket === "not-started"
+          ? "Not started"
+          : deferBucket === "deferred"
+            ? "Deferred"
+            : "Available";
+      return {
+        uid: block.uid,
+        text: block.string || "",
+        title,
+        pageUid: block.page?.uid || null,
+        pageTitle: block.page?.title || block.page?.["node/title"] || "",
+        repeatText: meta?.repeat || "",
+        isRecurring: !!meta?.repeat,
+        isCompleted: isBlockCompleted(block),
+        startAt,
+        deferUntil,
+        dueAt,
+        startBucket,
+        deferBucket,
+        dueBucket,
+        recurrenceBucket,
+        availabilityLabel,
+        startDisplay: formatDateDisplay(startAt, set),
+        deferDisplay: formatDateDisplay(deferUntil, set),
+        dueDisplay: formatDateDisplay(dueAt, set),
+      };
+    }
+
+    function formatDashboardTitle(text) {
+      if (!text) return "";
+      return text
+        .replace(/^\s*\{\{\s*\[\[\s*(?:TODO|DONE)\s*\]\]\s*\}\}\s*/i, "")
+        .replace(/^\s*(?:TODO|DONE)\s+/i, "")
+        .trim();
+    }
+
+    function formatDateDisplay(date, set) {
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+      return formatFriendlyDate(date, set);
+    }
+
+function computeDueBucket(dueDate, now = new Date()) {
+  if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) return "none";
+  if (now > endOfDay(dueDate)) return "overdue";
+  if (isSameDay(dueDate, now)) return "today";
+  if (dueDate > endOfDay(now)) return "upcoming";
+  return "none";
+}
+
+function endOfDay(date) {
+  const d = new Date(date.getTime());
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function isSameDay(a, b) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function isBetterTasksTask(meta) {
+  if (!meta) return false;
+  return !!(meta.repeat || meta.hasTimingAttrs);
+}
+
+
     // ========================= Housekeeping =========================
     function sweepProcessed() {
       const now = Date.now();
@@ -5263,6 +5927,17 @@ export default {
       } finally {
         delete window.__RecurringTasksCleanup;
       }
+    }
+
+    removeDashboardTopbarButton();
+    disconnectTopbarObserver();
+    if (activeDashboardController) {
+      try {
+        activeDashboardController.dispose?.();
+      } catch (_) {
+        // ignore dispose errors
+      }
+      activeDashboardController = null;
     }
 
     window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: "Convert TODO to Better Task" });
@@ -5372,4 +6047,77 @@ function normalizeByDayList(raw, weekStartCode = DEFAULT_WEEK_START_CODE) {
 
 function keywordIntervalFromText(text) {
   return MONTH_KEYWORD_INTERVAL_LOOKUP[text] || null;
+}
+
+function ensureDashboardTopbarButton(retry = true) {
+  if (typeof document === "undefined") return;
+  if (!activeDashboardController) return;
+  if (document.getElementById(DASHBOARD_TOPBAR_BUTTON_ID)) return;
+  const button = document.createElement("span");
+  button.id = DASHBOARD_TOPBAR_BUTTON_ID;
+  button.className = "bp3-button bp3-minimal bp3-small bp3-icon-form";
+  button.setAttribute("role", "button");
+  button.setAttribute("title", "Better Tasks Dashboard");
+  button.setAttribute("aria-label", "Better Tasks Dashboard");
+  button.addEventListener("click", () => activeDashboardController?.toggle());
+  const placed = insertDashboardButton(button);
+  if (!placed && retry) {
+    setTimeout(() => ensureDashboardTopbarButton(false), 600);
+  }
+}
+
+function insertDashboardButton(button) {
+  const sidebarBtn = document.querySelector(".rm-open-left-sidebar-btn");
+  if (sidebarBtn?.parentNode) {
+    sidebarBtn.parentNode.insertBefore(button, sidebarBtn.nextSibling);
+    return true;
+  }
+  const topbar = document.querySelector(".rm-topbar");
+  if (topbar) {
+    topbar.appendChild(button);
+    return true;
+  }
+  const mainTopbar = document.querySelector(
+    "#app > div > div > div.flex-h-box > div.roam-main > div.rm-files-dropzone > div"
+  );
+  const row = mainTopbar?.childNodes?.[1];
+  if (row?.parentNode) {
+    row.parentNode.insertBefore(button, row);
+    return true;
+  }
+  return false;
+}
+
+function removeDashboardTopbarButton() {
+  if (typeof document === "undefined") return;
+  const existing = document.getElementById(DASHBOARD_TOPBAR_BUTTON_ID);
+  if (existing) existing.remove();
+}
+
+function observeTopbarButton() {
+  if (typeof document === "undefined") return;
+  if (topbarButtonObserver) return;
+  const target = document.querySelector(".rm-topbar") || document.body;
+  if (!target) return;
+  topbarButtonObserver = new MutationObserver(() => {
+    if (!activeDashboardController) return;
+    if (!document.getElementById(DASHBOARD_TOPBAR_BUTTON_ID)) {
+      ensureDashboardTopbarButton(false);
+    }
+  });
+  try {
+    topbarButtonObserver.observe(target, { childList: true, subtree: true });
+  } catch (_) {
+    topbarButtonObserver = null;
+  }
+}
+
+function disconnectTopbarObserver() {
+  if (!topbarButtonObserver) return;
+  try {
+    topbarButtonObserver.disconnect();
+  } catch (_) {
+    // ignore
+  }
+  topbarButtonObserver = null;
 }

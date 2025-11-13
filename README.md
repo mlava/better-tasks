@@ -2,13 +2,10 @@
 
 Bring true task management to Roam Research!
 
-This extension automatically recognizes and manages TODO items that match defined repeat pattern and/or date attributes, optionally generating the next instance when a repeating Better Task is completed.
+This extension automatically recognizes and manages TODO items that match defined repeat pattern and/or date attributes, optionally generating the next instance when a repeating Better Task is completed. 
 
-**Note 1:** 
+**Note:** 
 This extension is in active development and should be considered a beta release. Please let me know of any bugs or unexpected behaviours in Slack  - https://app.slack.com/client/TNEAEL9QW/
-
-**Note 2:** 
-The settings pane for the extension allows you to use whatever name for the repeat and start/defer/due date atttributes you choose. The extension defaults to using 'BT_attrRepeat', 'BT_attrStart', 'BT_attrDefer' and 'BT_attrDue' for the recurrence pattern and start/defer/due dates respectively. If you happen to already use these attributes for other purposes, the extension will recognise and attempt to use them if you don't set alternatives in the settings. Using 'frequency' and 'when' for example, would prevent the extension from acting on anything for which you already use 'BT_attrRepeat' and 'BT_attrDue'.
 
 ---
 
@@ -95,6 +92,9 @@ If enabled, shows a confirmation dialog (“Spawn next occurrence?”) when you 
 Tells Better Tasks which weekday your graph treats as the start of the week, and allows you to match your Roam Research preference setting.  
 Weekly rules that span multiple days or intervals (e.g., `every 2 weeks on Sat & Sun`, `Mon-Fri`) interpret ranges using this anchor. Default is **Monday**.
 
+**Note:** 
+The settings pane for the extension allows you to use whatever name for the repeat and start/defer/due date atttributes you choose. The extension defaults to using 'BT_attrRepeat', 'BT_attrStart', 'BT_attrDefer' and 'BT_attrDue' for the recurrence pattern and start/defer/due dates respectively. If you happen to already use these attributes for other purposes, the extension will recognise and attempt to use them if you don't set alternatives in the settings. Using 'frequency' and 'when' for example, would prevent the extension from acting on anything for which you already use 'BT_attrRepeat' and 'BT_attrDue'.
+
 ---
 
 ## 🧩 Pills and Menus
@@ -117,6 +117,19 @@ Each task shows an inline “pill” next to its checkbox when the child blocks 
 | End recurrence | Stop this task from repeating |
 
 All actions support **Undo** via a toast notification. If a start date isn't configured the buttons snooze the due date instead. Skip / generate / end only appear for tasks with a repeat rule.
+
+---
+
+## 📊 Better Tasks Dashboard
+
+Open the dashboard from the command palette (`Toggle Better Tasks Dashboard`) or the Blueprint icon that appears in Roam’s top bar. The dashboard lists every Better Task (recurring or scheduled one-off) with:
+
+- Powerful filters for recurrence type, availability (start/defer), due bucket, and completion status.
+- Quick snooze actions, completion toggles, and links back to the originating blocks.
+- Background refreshes whenever task attributes change so pills and dashboard stay in sync.
+- A floating panel you can drag anywhere within the Roam window. The position is remembered, so place it where it works best for your workflow.
+
+Use the dashboard to triage overdue work, snooze tasks in bulk, or jump straight to the next daily note page without leaving Roam.
 
 ---
 
