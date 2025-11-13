@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, measureElement } from "@tanstack/react-virtual";
 
 const FILTER_DEFS = {
   recurrence: [
@@ -133,24 +133,30 @@ function groupTasks(tasks, grouping) {
   return groups;
 }
 
-function useVirtualRows(groups) {
+function useVirtualRows(groups, expandedMap) {
   return useMemo(() => {
     const rows = [];
     for (const group of groups) {
       rows.push({ type: "group", key: `group-${group.id}`, groupId: group.id, group });
-      for (const task of group.items) {
-        rows.push({ type: "task", key: `task-${task.uid}`, groupId: group.id, task });
+      if (expandedMap[group.id] !== false) {
+        for (const task of group.items) {
+          rows.push({ type: "task", key: `task-${task.uid}`, groupId: group.id, task });
+        }
       }
     }
     return rows;
-  }, [groups]);
+  }, [groups, expandedMap]);
 }
 
-function Pill({ label, value, muted }) {
+function Pill({ icon, label, value, muted }) {
   if (!value) return null;
   return (
-    <span className={`bt-pill${muted ? " bt-pill--muted" : ""}`}>
-      <span className="bt-pill__label">{label}</span>
+    <span className={`bt-pill${muted ? " bt-pill--muted" : ""}`} title={label || undefined}>
+      {icon ? (
+        <span className="bt-pill__icon" aria-hidden="true">
+          {icon}
+        </span>
+      ) : null}
       <span className="bt-pill__value">{value}</span>
     </span>
   );
@@ -179,12 +185,22 @@ function FilterChips({ section, chips, activeValues, onToggle }) {
   );
 }
 
-function GroupHeader({ title, count }) {
+function GroupHeader({ title, count, isExpanded, onToggle }) {
   return (
-    <div className="bt-group-header">
-      <span>{title}</span>
+    <button
+      type="button"
+      className="bt-group-header"
+      onClick={onToggle}
+      aria-expanded={isExpanded}
+    >
+      <span className="bt-group-header__title">
+        <span className="bt-group-header__caret" aria-hidden="true">
+          {isExpanded ? "▾" : "▸"}
+        </span>
+        {title}
+      </span>
       <span className="bt-group-header__count">{count}</span>
-    </div>
+    </button>
   );
 }
 
@@ -205,10 +221,15 @@ function TaskRow({ task, controller }) {
       <div className="bt-task-row__body">
         <div className="bt-task-row__title">{task.title || "(Untitled task)"}</div>
         <div className="bt-task-row__meta">
-          <Pill label="Repeat" value={task.repeatText} muted={!task.repeatText} />
-          <Pill label="Start" value={task.startDisplay} muted={!task.startDisplay} />
-          <Pill label="Defer" value={task.deferDisplay} muted={!task.deferDisplay} />
-          <Pill label="Due" value={task.dueDisplay} muted={!task.dueDisplay} />
+          {(task.metaPills || []).map((pill) => (
+            <Pill
+              key={`${task.uid}-${pill.type}`}
+              icon={pill.icon}
+              label={pill.label}
+              value={pill.value}
+              muted={!pill.value}
+            />
+          ))}
         </div>
         <div className="bt-task-row__context">
           {task.pageTitle ? <span>In {task.pageTitle}</span> : null}
@@ -257,18 +278,41 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const [filters, dispatchFilters] = useReducer(filtersReducer, DEFAULT_FILTERS);
   const [grouping, setGrouping] = useState("time");
   const [query, setQuery] = useState("");
+  const [expandedGroups, setExpandedGroups] = useState({});
   const filteredTasks = useMemo(
     () => applyFilters(snapshot.tasks, filters, query),
     [snapshot.tasks, filters, query]
   );
   const groups = useMemo(() => groupTasks(filteredTasks, grouping), [filteredTasks, grouping]);
-  const rows = useVirtualRows(groups);
+  useEffect(() => {
+    setExpandedGroups((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      const ids = new Set(groups.map((group) => group.id));
+      groups.forEach((group) => {
+        if (!(group.id in next)) {
+          next[group.id] = true;
+          changed = true;
+        }
+      });
+      Object.keys(next).forEach((id) => {
+        if (!ids.has(id)) {
+          delete next[id];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [groups]);
+
+  const rows = useVirtualRows(groups, expandedGroups);
   const parentRef = useRef(null);
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
-    estimateSize: (index) => (rows[index].type === "group" ? 36 : 96),
+    estimateSize: (index) => (rows[index].type === "group" ? 40 : 100),
     getScrollElement: () => parentRef.current,
     overscan: 8,
+    measureElement,
   });
 
   const handleFilterToggle = (section, value) => {
@@ -352,14 +396,25 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
               transform: `translateY(${virtualRow.start}px)`,
             };
             if (row.type === "group") {
+              const expanded = expandedGroups[row.group.id] !== false;
               return (
-                <div style={style} key={row.key}>
-                  <GroupHeader title={row.group.title} count={row.group.items.length} />
+                <div style={style} key={row.key} ref={rowVirtualizer.measureElement}>
+                  <GroupHeader
+                    title={row.group.title}
+                    count={row.group.items.length}
+                    isExpanded={expanded}
+                    onToggle={() =>
+                      setExpandedGroups((prev) => ({
+                        ...prev,
+                        [row.group.id]: !expanded,
+                      }))
+                    }
+                  />
                 </div>
               );
             }
             return (
-              <div style={style} key={row.key}>
+              <div style={style} key={row.key} ref={rowVirtualizer.measureElement}>
                 <TaskRow task={row.task} controller={controller} />
               </div>
             );

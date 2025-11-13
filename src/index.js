@@ -2456,9 +2456,14 @@ export default {
       processedMap.set(blockUid, Date.now());
       setTimeout(() => processedMap.delete(blockUid), 750);
       if (overrideEntry) mergeRepeatOverride(blockUid, overrideEntry);
-      activeDashboardController?.notifyBlockChange?.(blockUid);
-      if (newBlockUid) {
-        activeDashboardController?.removeTask?.(newBlockUid);
+      if (activeDashboardController) {
+        await activeDashboardController.notifyBlockChange?.(blockUid);
+        if (newBlockUid) {
+          activeDashboardController.removeTask?.(newBlockUid);
+        }
+        if (activeDashboardController.isOpen?.()) {
+          await activeDashboardController.refresh?.({ reason: "undo" });
+        }
       }
       toast("Changes un-done successfully");
       void syncPillsForSurface(lastAttrSurface);
@@ -3916,6 +3921,12 @@ async function setTaskTodoState(uid, state = "TODO") {
         await revertBlockCompletion(block);
         if (checkbox) checkbox.checked = false;
         toast("Better Task completion cancelled.");
+        if (activeDashboardController) {
+          await activeDashboardController.notifyBlockChange?.(uid);
+          if (activeDashboardController.isOpen?.()) {
+            await activeDashboardController.refresh?.({ reason: "advance-cancel" });
+          }
+        }
         return null;
       }
       await ensureAdvanceChildAttr(uid, choice, meta, set.attrNames);
@@ -5353,6 +5364,7 @@ async function setTaskTodoState(uid, state = "TODO") {
         notifyBlockChange,
         removeTask,
         openSettings,
+        isOpen: () => !!root,
         dispose,
       };
 
@@ -5845,6 +5857,7 @@ async function setTaskTodoState(uid, state = "TODO") {
           : deferBucket === "deferred"
             ? "Deferred"
             : "Available";
+      const metaPills = buildDashboardPills({ startAt, deferUntil, dueAt, repeatText: meta?.repeat }, set);
       return {
         uid: block.uid,
         text: block.string || "",
@@ -5865,7 +5878,45 @@ async function setTaskTodoState(uid, state = "TODO") {
         startDisplay: formatDateDisplay(startAt, set),
         deferDisplay: formatDateDisplay(deferUntil, set),
         dueDisplay: formatDateDisplay(dueAt, set),
+        metaPills,
       };
+    }
+
+    function buildDashboardPills(info, set) {
+      const pills = [];
+      if (info.repeatText) {
+        pills.push({
+          type: "repeat",
+          icon: "↻",
+          value: info.repeatText,
+          label: `Repeat: ${info.repeatText}`,
+        });
+      }
+      if (info.startAt instanceof Date && !Number.isNaN(info.startAt.getTime())) {
+        pills.push({
+          type: "start",
+          icon: START_ICON,
+          value: formatPillDateText(info.startAt, set),
+          label: `Start: ${formatIsoDate(info.startAt, set)}`,
+        });
+      }
+      if (info.deferUntil instanceof Date && !Number.isNaN(info.deferUntil.getTime())) {
+        pills.push({
+          type: "defer",
+          icon: DEFER_ICON,
+          value: formatPillDateText(info.deferUntil, set),
+          label: `Defer: ${formatIsoDate(info.deferUntil, set)}`,
+        });
+      }
+      if (info.dueAt instanceof Date && !Number.isNaN(info.dueAt.getTime())) {
+        pills.push({
+          type: "due",
+          icon: DUE_ICON,
+          value: formatPillDateText(info.dueAt, set),
+          label: `Due: ${formatIsoDate(info.dueAt, set)}`,
+        });
+      }
+      return pills;
     }
 
     function formatDashboardTitle(text) {
