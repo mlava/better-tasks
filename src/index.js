@@ -156,54 +156,6 @@ export default {
       extensionAPI.settings.set(INSTALL_TOAST_KEY, "1");
     }
 
-    let legacyPropSyncPromise = null;
-
-    function migrateLegacyPropsToChildAttrs() {
-      if (legacyPropSyncPromise) return legacyPropSyncPromise;
-      legacyPropSyncPromise = (async () => {
-        const set = S();
-        let rows = [];
-        try {
-          rows =
-            (await window.roamAlphaAPI.q(`
-              [:find (pull ?b [:block/uid :block/props {:block/children [:block/uid :block/string]}])
-               :where
-               [?b :block/props ?p]]`)) || [];
-        } catch (err) {
-          console.warn("[RecurringTasks] legacy prop migration query failed", err);
-          return;
-        }
-        for (const row of rows) {
-          const block = row?.[0];
-          if (!block?.uid) continue;
-          const props = parseProps(block.props);
-          if (!props || typeof props !== "object") continue;
-          const repeatVal = typeof props.repeat === "string" && props.repeat.trim() ? props.repeat.trim() : null;
-          const dueVal = typeof props.due === "string" && props.due.trim() ? props.due.trim() : null;
-          const startVal = typeof props.start === "string" && props.start.trim() ? props.start.trim() : null;
-          const deferVal = typeof props.defer === "string" && props.defer.trim() ? props.defer.trim() : null;
-          if (!repeatVal && !dueVal && !startVal && !deferVal) continue;
-          const childMap = parseAttrsFromChildBlocks(block.children || []);
-          const attrNames = set.attrNames;
-          const ensureIfMissing = async (type, value) => {
-            if (!value) return;
-            const hasChild = !!pickChildAttr(childMap, getAttrAliases(type, attrNames), { allowFallback: false });
-            if (hasChild) return;
-            try {
-              await ensureChildAttrForType(block.uid, type, value, attrNames);
-            } catch (err) {
-              console.warn(`[RecurringTasks] migrate ${type} attr failed`, err);
-            }
-          };
-          await ensureIfMissing("repeat", repeatVal);
-          await ensureIfMissing("due", dueVal);
-          await ensureIfMissing("start", startVal);
-          await ensureIfMissing("defer", deferVal);
-        }
-      })();
-      return legacyPropSyncPromise;
-    }
-
     extensionAPI.ui.commandPalette.addCommand({
       label: "Convert TODO to Better Task",
       callback: () => convertTODO(null),
@@ -966,8 +918,6 @@ export default {
     window.addEventListener("hashchange", handleHashChange);
 
     delete window.roamAlphaAPI?.__rtWrapped;
-
-    void migrateLegacyPropsToChildAttrs();
 
     // === Child -> Props sync listeners (only used when attribute surface is "Child")
     const _handleAnyEdit = handleAnyEdit.bind(null);
