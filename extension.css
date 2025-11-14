@@ -245,10 +245,10 @@ body.bt-theme-dark {
 
 .bt-search {
     width: 100%;
-    padding: 8px 10px;
+    padding: 4px 6px;
     border-radius: 8px;
     border: 1px solid var(--bt-border);
-    font-size: 14px;
+    font-size: 13px;
     background: var(--bt-panel-bg);
     color: var(--bt-panel-text);
 }
