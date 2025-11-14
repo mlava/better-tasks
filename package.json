@@ -29,12 +29,6 @@
   "dependencies": {
     "izitoast": "^1.4.0"
   },
-  "overrides": {
-    "@tanstack/react-virtual": {
-      "react": "18.2.0",
-      "react-dom": "18.2.0-next-9e3b772b8-20220608"
-    }
-  },
   "keywords": [
     "task",
     "todo",
