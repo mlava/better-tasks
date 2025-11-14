@@ -1208,8 +1208,8 @@ export default {
       if (targetNode2) observer.observe(targetNode2, obsConfig);
       const surface = lastAttrSurface || enforceChildAttrSurface(extensionAPI);
       lastAttrSurface = surface;
-    void syncPillsForSurface(surface);
-  }
+      void syncPillsForSurface(surface);
+    }
 
     async function processTaskCompletion(uid, options = {}) {
       if (!uid) return null;
@@ -1349,9 +1349,9 @@ export default {
           set: setWithAdvance,
           overrideEntry: overrideEntry
             ? {
-                ...(overrideEntry.repeat ? { repeat: overrideEntry.repeat } : {}),
-                ...(overrideEntry.due ? { due: new Date(overrideEntry.due.getTime()) } : {}),
-              }
+              ...(overrideEntry.repeat ? { repeat: overrideEntry.repeat } : {}),
+              ...(overrideEntry.due ? { due: new Date(overrideEntry.due.getTime()) } : {}),
+            }
             : null,
         });
         repeatOverrides.delete(uid);
@@ -1433,7 +1433,7 @@ export default {
             }
           }
         }
-      } catch (_) {}
+      } catch (_) { }
       return result;
     }
 
@@ -2156,20 +2156,20 @@ export default {
       if (!block) return false;
       await updateBlockProps(uid, { [type]: undefined });
       await removeChildAttrsForType(uid, type, attrNames);
-  const removalKeys = getAttrRemovalKeys(type, attrNames);
-  if (removalKeys.length) {
-    const cleaned = removeInlineAttributes(block.string || "", removalKeys);
-    if (cleaned !== (block.string || "")) {
-      await updateBlockString(uid, cleaned);
+      const removalKeys = getAttrRemovalKeys(type, attrNames);
+      if (removalKeys.length) {
+        const cleaned = removeInlineAttributes(block.string || "", removalKeys);
+        if (cleaned !== (block.string || "")) {
+          await updateBlockString(uid, cleaned);
+        }
+      }
+      if (type === "repeat") {
+        repeatOverrides.delete(uid);
+      } else if (type === "due") {
+        mergeRepeatOverride(uid, { due: null });
+      }
+      return true;
     }
-  }
-  if (type === "repeat") {
-    repeatOverrides.delete(uid);
-  } else if (type === "due") {
-    mergeRepeatOverride(uid, { due: null });
-  }
-  return true;
-}
 
     async function ensureInlineAttrForType(block, type, value, attrNames) {
       const label = getAttrLabel(type, attrNames);
@@ -3213,6 +3213,14 @@ export default {
       x.setDate(x.getDate() + n);
       return x;
     }
+    function startOfWeek(date, weekStartCode) {
+      const target = weekStartCode && DOW_IDX.includes(weekStartCode) ? weekStartCode : DEFAULT_WEEK_START_CODE;
+      let cursor = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
+      for (let i = 0; i < 7 && DOW_IDX[cursor.getDay()] !== target; i++) {
+        cursor = addDaysLocal(cursor, -1);
+      }
+      return cursor;
+    }
     function isWeekend(d) {
       const w = d.getDay(); // 0 Sun .. 6 Sat
       return w === 0 || w === 6;
@@ -3261,10 +3269,10 @@ export default {
     }
 
     // ========================= Render helpers =========================
-const TODO_MACRO_PREFIX_RE = /^\s*\{\{\s*(?:\[\[\s*TODO\s*\]\]|TODO)\s*\}\}\s*/i;
-const TODO_WORD_PREFIX_RE = /^\s*TODO\s+/i;
-const DONE_MACRO_PREFIX_RE = /^\s*\{\{\s*(?:\[\[\s*(?:DONE)\s*\]\]|DONE)\s*\}\}\s*/i;
-const DONE_WORD_PREFIX_RE = /^\s*DONE\s+/i;
+    const TODO_MACRO_PREFIX_RE = /^\s*\{\{\s*(?:\[\[\s*TODO\s*\]\]|TODO)\s*\}\}\s*/i;
+    const TODO_WORD_PREFIX_RE = /^\s*TODO\s+/i;
+    const DONE_MACRO_PREFIX_RE = /^\s*\{\{\s*(?:\[\[\s*(?:DONE)\s*\]\]|DONE)\s*\}\}\s*/i;
+    const DONE_WORD_PREFIX_RE = /^\s*DONE\s+/i;
 
     function normalizeToTodoMacro(s) {
       var t = s.replace(/^\s+/, "");
@@ -3275,41 +3283,41 @@ const DONE_WORD_PREFIX_RE = /^\s*DONE\s+/i;
       return "{{[[TODO]]}} " + t;
     }
 
-function isBlockCompleted(block) {
-  const text = (block?.string || "").trim();
-  if (!text) return false;
-  return DONE_MACRO_PREFIX_RE.test(text) || DONE_WORD_PREFIX_RE.test(text);
-}
+    function isBlockCompleted(block) {
+      const text = (block?.string || "").trim();
+      if (!text) return false;
+      return DONE_MACRO_PREFIX_RE.test(text) || DONE_WORD_PREFIX_RE.test(text);
+    }
 
-function isTaskBlock(block) {
-  const text = (block?.string || "").trim();
-  if (!text) return false;
-  return (
-    TODO_MACRO_PREFIX_RE.test(text) ||
-    TODO_WORD_PREFIX_RE.test(text) ||
-    DONE_MACRO_PREFIX_RE.test(text) ||
-    DONE_WORD_PREFIX_RE.test(text)
-  );
-}
+    function isTaskBlock(block) {
+      const text = (block?.string || "").trim();
+      if (!text) return false;
+      return (
+        TODO_MACRO_PREFIX_RE.test(text) ||
+        TODO_WORD_PREFIX_RE.test(text) ||
+        DONE_MACRO_PREFIX_RE.test(text) ||
+        DONE_WORD_PREFIX_RE.test(text)
+      );
+    }
 
-function formatTodoStateString(text, state = "TODO") {
-  const base = normalizeToTodoMacro(text || "");
-  if (state === "DONE") {
-    return base.replace("{{[[TODO]]}}", "{{[[DONE]]}}");
-  }
-  return base;
-}
+    function formatTodoStateString(text, state = "TODO") {
+      const base = normalizeToTodoMacro(text || "");
+      if (state === "DONE") {
+        return base.replace("{{[[TODO]]}}", "{{[[DONE]]}}");
+      }
+      return base;
+    }
 
-async function setTaskTodoState(uid, state = "TODO") {
-  const block = await getBlock(uid);
-  if (!block) return;
-  const alreadyDone = isBlockCompleted(block);
-  if (state === "DONE" && alreadyDone) return;
-  if (state === "TODO" && !alreadyDone) return;
-  const next = formatTodoStateString(block.string || "", state);
-  if (next === block.string) return;
-  await updateBlockString(uid, next);
-}
+    async function setTaskTodoState(uid, state = "TODO") {
+      const block = await getBlock(uid);
+      if (!block) return;
+      const alreadyDone = isBlockCompleted(block);
+      if (state === "DONE" && alreadyDone) return;
+      if (state === "TODO" && !alreadyDone) return;
+      const next = formatTodoStateString(block.string || "", state);
+      if (next === block.string) return;
+      await updateBlockString(uid, next);
+    }
 
     function removeInlineAttributes(text, keys) {
       if (!text) return text;
@@ -5396,28 +5404,28 @@ async function setTaskTodoState(uid, state = "TODO") {
       let isDraggingDashboard = false;
       let resizeListenerAttached = false;
 
-    const controller = {
-      getSnapshot: () => state,
-      subscribe,
-      ensureInitialLoad,
-      refresh,
-      open,
-      close,
-      toggle,
-      toggleTask,
-      snoozeTask,
-      openBlock,
-      openPage,
-      notifyBlockChange,
-      removeTask,
-      openSettings,
-      isOpen: () => !!root,
-      editRepeat,
-      editDate,
-      openPillMenuForTask,
-      removeTaskAttribute,
-      dispose,
-    };
+      const controller = {
+        getSnapshot: () => state,
+        subscribe,
+        ensureInitialLoad,
+        refresh,
+        open,
+        close,
+        toggle,
+        toggleTask,
+        snoozeTask,
+        openBlock,
+        openPage,
+        notifyBlockChange,
+        removeTask,
+        openSettings,
+        isOpen: () => !!root,
+        editRepeat,
+        editDate,
+        openPillMenuForTask,
+        removeTaskAttribute,
+        dispose,
+      };
 
       function emit() {
         const snapshot = {
@@ -5523,11 +5531,11 @@ async function setTaskTodoState(uid, state = "TODO") {
       function close() {
         cleanupDragListeners();
         registerDragHandle(null);
-      setTopbarActive(false);
-      if (root) {
-        root.unmount();
-        root = null;
-      }
+        setTopbarActive(false);
+        if (root) {
+          root.unmount();
+          root = null;
+        }
         if (container) {
           container.remove();
           container = null;
@@ -6091,31 +6099,31 @@ async function setTaskTodoState(uid, state = "TODO") {
     }
 
     function computeDueBucket(dueDate, now = new Date()) {
-  if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) return "none";
-  if (now > endOfDay(dueDate)) return "overdue";
-  if (isSameDay(dueDate, now)) return "today";
-  if (dueDate > endOfDay(now)) return "upcoming";
-  return "none";
-}
+      if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) return "none";
+      if (now > endOfDay(dueDate)) return "overdue";
+      if (isSameDay(dueDate, now)) return "today";
+      if (dueDate > endOfDay(now)) return "upcoming";
+      return "none";
+    }
 
-function endOfDay(date) {
-  const d = new Date(date.getTime());
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
+    function endOfDay(date) {
+      const d = new Date(date.getTime());
+      d.setHours(23, 59, 59, 999);
+      return d;
+    }
 
-function isSameDay(a, b) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
+    function isSameDay(a, b) {
+      return (
+        a.getFullYear() === b.getFullYear() &&
+        a.getMonth() === b.getMonth() &&
+        a.getDate() === b.getDate()
+      );
+    }
 
-function isBetterTasksTask(meta) {
-  if (!meta) return false;
-  return !!(meta.repeat || meta.hasTimingAttrs);
-}
+    function isBetterTasksTask(meta) {
+      if (!meta) return false;
+      return !!(meta.repeat || meta.hasTimingAttrs);
+    }
 
 
     // ========================= Housekeeping =========================
@@ -6214,15 +6222,6 @@ function getOrderedWeekdayOffsets(byDay, weekStartCode) {
   }
   offsets.sort((a, b) => a - b);
   return offsets;
-}
-
-function startOfWeek(date, weekStartCode) {
-  const target = weekStartCode && DOW_IDX.includes(weekStartCode) ? weekStartCode : DEFAULT_WEEK_START_CODE;
-  let cursor = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
-  for (let i = 0; i < 7 && DOW_IDX[cursor.getDay()] !== target; i++) {
-    cursor = addDaysLocal(cursor, -1);
-  }
-  return cursor;
 }
 
 function monthFromText(x) {
@@ -6650,12 +6649,12 @@ function disconnectTopbarObserver() {
 function ensureDashboardWatch(uid) {
   if (!uid || dashboardWatchers.has(uid)) return;
   if (!window.roamAlphaAPI?.data?.addPullWatch) return;
-  const key = `better-tasks-watch-${uid}`;
+  const pattern = "[:block/uid]";
+  const selector = [":block/uid", uid];
   try {
     window.roamAlphaAPI.data.addPullWatch(
-      key,
-      "[:block/uid]",
-      { block: { uid } },
+      pattern,
+      selector,
       (_, after) => {
         if (!after) {
           removeDashboardWatch(uid);
@@ -6665,7 +6664,7 @@ function ensureDashboardWatch(uid) {
         }
       }
     );
-    dashboardWatchers.set(uid, key);
+    dashboardWatchers.set(uid, { pattern, selector });
   } catch (err) {
     console.warn("[BetterTasks] addPullWatch failed", err);
   }
@@ -6673,10 +6672,10 @@ function ensureDashboardWatch(uid) {
 
 function removeDashboardWatch(uid) {
   if (!uid) return;
-  const key = dashboardWatchers.get(uid);
-  if (!key) return;
+  const entry = dashboardWatchers.get(uid);
+  if (!entry) return;
   try {
-    window.roamAlphaAPI?.data?.removePullWatch?.(key);
+    window.roamAlphaAPI?.data?.removePullWatch?.(entry.pattern, entry.selector);
   } catch (err) {
     console.warn("[BetterTasks] removePullWatch failed", err);
   }

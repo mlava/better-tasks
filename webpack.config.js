@@ -29,12 +29,7 @@ module.exports = {
     },
     resolve: {
         extensions: [".js", ".jsx", ".ts", ".tsx"],
-    },/*
-    externals: {
-        react: "React",
-        "react-dom": "ReactDOM",
-        "react-dom/client": "ReactDOM",
-    },*/
+    },
     performance: {
         hints: false,
     },

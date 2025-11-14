@@ -46,7 +46,7 @@ Leave the repeat field blank while setting any combination of `start::`, `defer:
 
 Regardless of how you enter the attributes, the extension emits a compact **pill** next to each Better Task whenever its child blocks are collapsed:
 
-![alt text](images/image.png)
+![alt text](https://raw.githubusercontent.com/mlavercombe/better-tasks/main/images/image.png)
 
 - Pills disappear automatically when you expand the task (so you can edit the child blocks directly) and reappear when the block is collapsed.
 - Marking the TODO complete hides the pill until the extension spawns the next occurrence, keeping finished items visually quiet.
@@ -126,7 +126,7 @@ All actions support **Undo** via a toast notification. If a start date isn't con
 
 ## 📊 Better Tasks Dashboard
 
-Open the dashboard from the command palette (`Toggle Better Tasks Dashboard`) or the icon <img src="images/image-2.png" width="22"> that appears in Roam’s top bar. The dashboard lists every Better Task (recurring or scheduled one-off) with:
+Open the dashboard from the command palette (`Toggle Better Tasks Dashboard`) or the icon <img src="https://raw.githubusercontent.com/mlavercombe/better-tasks/main/images/image-2.png" width="22"> that appears in Roam’s top bar. The dashboard lists every Better Task (recurring or scheduled one-off) with:
 
 - Powerful filters for recurrence type, availability (start/defer), due bucket, and completion status.
 - Quick snooze actions, completion toggles, and links back to the originating blocks.
@@ -142,7 +142,7 @@ Use the dashboard to triage overdue work, snooze tasks, or jump straight to the 
 Better Tasks samples colors from Roam’s active theme and applies a lightweight contrast layer so the dashboard and pills feel native in both light and dark modes. Because every graph can load different community themes, there may still be combinations that need tweaks. If you notice illegible text or mismatched backgrounds, please report the theme you’re using so we can fine‑tune the adaptive styling.
 
 <p align="center">
-<img src="images/theming.gif"/>
+<img src="https://raw.githubusercontent.com/mlavercombe/better-tasks/main/images/theming.gif"/>
 </p>
 
 ---
