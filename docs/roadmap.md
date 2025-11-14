@@ -31,6 +31,8 @@
 - ✅ Add topbar/command-palette toggles plus draggable positioning with persisted location.
 - ✅ Keep dashboard and inline pills in sync when tasks change inside Roam.
 - ✅ Add user setting for “first day of week” so repeat parsing respects graph preferences.
+- ✅ Allow adding/removing repeat/start/defer/due attributes directly from the dashboard menu.
+- ⏳ Improve adaptive theming so dashboard + pills follow custom Roam themes more reliably.
 - ⏳ Add project and context attribute support.
 - ⏳ Introduce priority and energy attributes.
 - ⏳ Explore richer Smart UI components (hover cards, quick editors, etc.).
@@ -38,6 +40,6 @@
 ## Phase 5 — Cleanup & Release
 - 🧹 Refactor code to use `bt-` namespace instead of `rt-` (for Better Tasks).
 - ✅ Update documentation, README, and Roam Depot listing.
-- 🧹 Validate with user testing and collect feedback before next iteration.
+- 🚧 Validate with user testing and collect feedback before next iteration.
 
 ---

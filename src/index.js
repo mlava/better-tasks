@@ -20,6 +20,10 @@ const DASHBOARD_TOPBAR_BUTTON_ID = "bt-dashboard-button";
 let lastAttrNames = null;
 let activeDashboardController = null;
 let topbarButtonObserver = null;
+let themeObserver = null;
+let themeSyncTimer = null;
+let lastThemeSample = null;
+let themeStyleObserver = null;
 
 const DOW_MAP = {
   sunday: "SU",
@@ -219,6 +223,7 @@ export default {
     });
     ensureDashboardTopbarButton();
     observeTopbarButton();
+    observeThemeChanges();
 
     // Placeholder for future feature - deconvert Better Tasks TODOs
     /* 
@@ -2140,6 +2145,31 @@ export default {
       }
     }
 
+    async function clearAttrForType(uid, type, options = {}) {
+      if (!uid) return false;
+      const allowed = new Set(["repeat", "start", "defer", "due"]);
+      if (!allowed.has(type)) return false;
+      const set = options.set || S();
+      const attrNames = set?.attrNames || resolveAttributeNames();
+      const block = options.block || (await getBlock(uid));
+      if (!block) return false;
+      await updateBlockProps(uid, { [type]: undefined });
+      await removeChildAttrsForType(uid, type, attrNames);
+  const removalKeys = getAttrRemovalKeys(type, attrNames);
+  if (removalKeys.length) {
+    const cleaned = removeInlineAttributes(block.string || "", removalKeys);
+    if (cleaned !== (block.string || "")) {
+      await updateBlockString(uid, cleaned);
+    }
+  }
+  if (type === "repeat") {
+    repeatOverrides.delete(uid);
+  } else if (type === "due") {
+    mergeRepeatOverride(uid, { due: null });
+  }
+  return true;
+}
+
     async function ensureInlineAttrForType(block, type, value, attrNames) {
       const label = getAttrLabel(type, attrNames);
       const aliases = getAttrRemovalKeys(type, attrNames).filter((name) => name !== label);
@@ -3476,7 +3506,7 @@ async function setTaskTodoState(uid, state = "TODO") {
               },
             ],
           ],
-          buttons: [
+          buttons: [/*
             [
               "<button>Today</button>",
               (instance, toastInstance) => {
@@ -3494,7 +3524,7 @@ async function setTaskTodoState(uid, state = "TODO") {
                 instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
                 finish(formatted);
               },
-            ],
+            ],*/
             [
               "<button>Save</button>",
               (instance, toastInstance, _button, _e, inputs) => {
@@ -4473,24 +4503,26 @@ async function setTaskTodoState(uid, state = "TODO") {
         moved: false,
         targetUid: currentLocation.parentUid,
       };
-      span.textContent = `↻ ${normalized}`;
-      span.title = `Repeat rule: ${normalized}`;
-      const pill = span.closest(".rt-pill");
-      if (pill) {
-        const dueSpanEl = pill.querySelector(".rt-pill-due");
-        if (dueDateToPersist && dueSpanEl) {
-          const friendly = formatFriendlyDate(dueDateToPersist, set);
-          const tooltip = `Due: ${formatIsoDate(dueDateToPersist, set)}`;
-          renderPillDateSpan(dueSpanEl, {
-            icon: DUE_ICON,
-            date: dueDateToPersist,
-            set,
-            label: "Due",
-            tooltip,
-          });
-          pill.title = tooltip;
-        } else {
-          pill.title = `Repeat rule: ${normalized}`;
+      if (span) {
+        span.textContent = `↻ ${normalized}`;
+        span.title = `Repeat rule: ${normalized}`;
+        const pill = span.closest(".rt-pill");
+        if (pill) {
+          const dueSpanEl = pill.querySelector(".rt-pill-due");
+          if (dueDateToPersist && dueSpanEl) {
+            const friendly = formatFriendlyDate(dueDateToPersist, set);
+            const tooltip = `Due: ${formatIsoDate(dueDateToPersist, set)}`;
+            renderPillDateSpan(dueSpanEl, {
+              icon: DUE_ICON,
+              date: dueDateToPersist,
+              set,
+              label: "Due",
+              tooltip,
+            });
+            pill.title = tooltip;
+          } else {
+            pill.title = `Repeat rule: ${normalized}`;
+          }
         }
       }
       toast(`Repeat → ${normalized}`);
@@ -4525,6 +4557,7 @@ async function setTaskTodoState(uid, state = "TODO") {
         });
       }
       void syncPillsForSurface(lastAttrSurface);
+      return normalized;
     }
 
     async function handleStartClick(event, context) {
@@ -4536,22 +4569,24 @@ async function setTaskTodoState(uid, state = "TODO") {
     }
 
     async function handleFlexibleDateAttrClick(event, context) {
-      const { type, uid, set, span } = context;
+      const { type, uid, set, span, forcePrompt = false, allowCreate = false } = context;
       if (!type || !uid || !set) return;
       const block = await getBlock(uid);
       if (!block) return;
       const meta = await readRecurringMeta(block, set);
       const attrNames = set.attrNames;
       const currentDate = type === "start" ? meta.start : meta.defer;
-      if (!(currentDate instanceof Date) || Number.isNaN(currentDate.getTime())) return;
+      const hasDate = currentDate instanceof Date && !Number.isNaN(currentDate.getTime());
+      if (!hasDate && !allowCreate) return;
 
       const label = type === "start" ? "Start" : "Defer";
-      if (event.shiftKey) {
+      if (event.shiftKey && hasDate && !forcePrompt) {
         await openDatePage(currentDate, { inSidebar: true });
         return;
       }
-      if (event.altKey || event.metaKey || event.ctrlKey) {
-        const existing = formatIsoDate(currentDate, set);
+      const shouldPrompt = forcePrompt || !hasDate || event.altKey || event.metaKey || event.ctrlKey;
+      if (shouldPrompt) {
+        const existing = hasDate ? formatIsoDate(currentDate, set) : "";
         const nextIso = await promptForDate({
           title: `Edit ${label} Date`,
           message: `Select the ${label.toLowerCase()} date`,
@@ -4586,31 +4621,35 @@ async function setTaskTodoState(uid, state = "TODO") {
         }
         toast(`${label} → [[${formatRoamDateTitle(parsed)}]]`);
         void syncPillsForSurface(lastAttrSurface);
-        return;
+        return parsed;
       }
 
-      await openDatePage(currentDate);
+      if (hasDate) {
+        await openDatePage(currentDate);
+      }
     }
 
     async function handleDueClick(event, context) {
-      const { uid, set, span } = context;
+      const { uid, set, span, forcePrompt = false, allowCreate = false } = context;
       const block = await getBlock(uid);
-    if (!block) return;
-    const meta = await readRecurringMeta(block, set);
-    const attrNames = set.attrNames;
-    const contextSnapshot = prepareDueChangeContext(block, meta, set);
-    const due = meta.due;
-    if (!due) return;
-    if (event.altKey && (event.metaKey || event.ctrlKey)) {
-      await snoozeDeferByDays(uid, set, 1);
-      return;
-    }
-    if (event.shiftKey) {
-      await openDatePage(due, { inSidebar: true });
-      return;
-    }
-    if (event.altKey || event.metaKey || event.ctrlKey) {
-        const existing = formatIsoDate(due, set);
+      if (!block) return;
+      const meta = await readRecurringMeta(block, set);
+      const attrNames = set.attrNames;
+      const contextSnapshot = prepareDueChangeContext(block, meta, set);
+      const due = meta.due;
+      const hasDue = due instanceof Date && !Number.isNaN(due?.getTime?.());
+      if (!hasDue && !allowCreate) return;
+      if (!forcePrompt && event.altKey && (event.metaKey || event.ctrlKey)) {
+        await snoozeDeferByDays(uid, set, 1);
+        return;
+      }
+      if (event.shiftKey && hasDue && !forcePrompt) {
+        await openDatePage(due, { inSidebar: true });
+        return;
+      }
+      const shouldPrompt = forcePrompt || !hasDue || event.altKey || event.metaKey || event.ctrlKey;
+      if (shouldPrompt) {
+        const existing = hasDue ? formatIsoDate(due, set) : "";
         const nextIso = await promptForDate({
           title: "Edit Due Date",
           message: "Select the next due date",
@@ -4632,15 +4671,17 @@ async function setTaskTodoState(uid, state = "TODO") {
         const storedUid = dueChildInfo?.uid || existingEntry?.uid || null;
         setMetaChildAttr(meta, "due", { value: nextStr, uid: storedUid }, attrNames);
         mergeRepeatOverride(uid, { due: parsed });
-        renderPillDateSpan(span, {
-          icon: DUE_ICON,
-          date: parsed,
-          set,
-          label: "Due",
-          tooltip: `Due: ${formatIsoDate(parsed, set)}`,
-        });
-        const pill = span.closest(".rt-pill");
-        if (pill) pill.title = span.title;
+        if (span) {
+          renderPillDateSpan(span, {
+            icon: DUE_ICON,
+            date: parsed,
+            set,
+            label: "Due",
+            tooltip: `Due: ${formatIsoDate(parsed, set)}`,
+          });
+          const pill = span.closest?.(".rt-pill");
+          if (pill) pill.title = span.title;
+        }
         const dueChanged =
           (contextSnapshot.previousDueDate ? contextSnapshot.previousDueDate.getTime() : null) !== parsed.getTime();
         if (dueChanged) {
@@ -4648,7 +4689,9 @@ async function setTaskTodoState(uid, state = "TODO") {
             blockUid: uid,
             message: `Due date changed to ${formatRoamDateTitle(parsed)}`,
             setSnapshot: { ...set },
-            previousDueDate: contextSnapshot.previousDueDate ? new Date(contextSnapshot.previousDueDate.getTime()) : null,
+            previousDueDate: contextSnapshot.previousDueDate
+              ? new Date(contextSnapshot.previousDueDate.getTime())
+              : null,
             previousDueStr: contextSnapshot.previousDueStr || null,
             previousInlineDue: contextSnapshot.previousInlineDue,
             hadInlineDue: contextSnapshot.hadInlineDue,
@@ -4669,10 +4712,12 @@ async function setTaskTodoState(uid, state = "TODO") {
           });
         }
         void syncPillsForSurface(lastAttrSurface);
-        return;
+        return parsed;
+      }
+      if (hasDue) {
+        await openDatePage(due);
+      }
     }
-    await openDatePage(due);
-  }
 
     async function openDatePage(date, options = {}) {
       if (!(date instanceof Date) || Number.isNaN(date.getTime())) return;
@@ -5350,23 +5395,27 @@ async function setTaskTodoState(uid, state = "TODO") {
       let isDraggingDashboard = false;
       let resizeListenerAttached = false;
 
-      const controller = {
-        getSnapshot: () => state,
-        subscribe,
-        ensureInitialLoad,
-        refresh,
-        open,
-        close,
-        toggle,
-        toggleTask,
-        snoozeTask,
-        openBlock,
-        notifyBlockChange,
-        removeTask,
-        openSettings,
-        isOpen: () => !!root,
-        dispose,
-      };
+    const controller = {
+      getSnapshot: () => state,
+      subscribe,
+      ensureInitialLoad,
+      refresh,
+      open,
+      close,
+      toggle,
+      toggleTask,
+      snoozeTask,
+      openBlock,
+      notifyBlockChange,
+      removeTask,
+      openSettings,
+      isOpen: () => !!root,
+      editRepeat,
+      editDate,
+      openPillMenuForTask,
+      removeTaskAttribute,
+      dispose,
+    };
 
       function emit() {
         const snapshot = {
@@ -5472,11 +5521,11 @@ async function setTaskTodoState(uid, state = "TODO") {
       function close() {
         cleanupDragListeners();
         registerDragHandle(null);
-        setTopbarActive(false);
-        if (root) {
-          root.unmount();
-          root = null;
-        }
+      setTopbarActive(false);
+      if (root) {
+        root.unmount();
+        root = null;
+      }
         if (container) {
           container.remove();
           container = null;
@@ -5563,7 +5612,7 @@ async function setTaskTodoState(uid, state = "TODO") {
         }
       }
 
-      async function notifyBlockChange(uid) {
+      async function notifyBlockChange(uid, options = {}) {
         if (!uid) return;
         try {
           const set = S();
@@ -5574,7 +5623,7 @@ async function setTaskTodoState(uid, state = "TODO") {
           }
           if (!isTaskBlock(block)) return;
           const meta = await readRecurringMeta(block, set);
-          if (!isBetterTasksTask(meta)) return;
+          if (!isBetterTasksTask(meta) && !options.bypassFilters) return;
           const task = deriveDashboardTask(block, meta, set);
           if (!task) return;
           const tasks = state.tasks.slice();
@@ -5584,7 +5633,7 @@ async function setTaskTodoState(uid, state = "TODO") {
           } else {
             tasks.push(task);
           }
-          state = { ...state, tasks };
+          state = { ...state, tasks: sortDashboardTasksList(tasks) };
           emit();
         } catch (err) {
           console.warn("[BetterTasks] notifyBlockChange failed", err);
@@ -5761,6 +5810,84 @@ async function setTaskTodoState(uid, state = "TODO") {
       return controller;
     }
 
+    async function editRepeat(uid, event, options = {}) {
+      if (!uid) return;
+      const set = S();
+      const result = await handleRepeatEdit(event || new MouseEvent("click"), { uid, set, span: null });
+      if (typeof result === "string" && result) {
+        await waitForRepeatState(uid, set, { expectedValue: result }, 6, getBlock, readRecurringMeta);
+      }
+      await delay(250);
+      await activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
+      await delay(120);
+      await activeDashboardController?.refresh?.({ reason: "pill-repeat" });
+    }
+
+    async function editDate(uid, type, options = {}) {
+      if (!uid || !["start", "defer", "due"].includes(type)) return;
+      const set = S();
+      const handler =
+        type === "start"
+          ? handleStartClick
+          : type === "defer"
+            ? handleDeferClick
+            : handleDueClick;
+      const intent = options.intent || "direct";
+      const forcePrompt = intent === "menu-edit" || intent === "menu-add";
+      const allowCreate = intent === "menu-add";
+      const baseEvent = options.event || {};
+      const syntheticEvent = {
+        altKey: !!baseEvent.altKey,
+        metaKey: !!baseEvent.metaKey,
+        ctrlKey: !!baseEvent.ctrlKey,
+        shiftKey: !!baseEvent.shiftKey,
+      };
+      const resultDate = await handler(syntheticEvent, {
+        uid,
+        set,
+        span: null,
+        forcePrompt,
+        allowCreate,
+      });
+      if (resultDate instanceof Date) {
+        await waitForAttrDate(uid, type, resultDate, set, 6, getBlock, readRecurringMeta);
+      }
+      await delay(120);
+      await activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
+      await activeDashboardController?.refresh?.({ reason: `pill-${type}` });
+    }
+
+    function openPillMenuForTask(uid) {
+      if (!uid) return;
+      const set = S();
+      showPillMenu({ uid, set });
+    }
+
+    async function removeTaskAttribute(uid, type) {
+      if (!uid || !["repeat", "start", "defer", "due"].includes(type)) return;
+      try {
+        const set = S();
+        const cleared = await clearAttrForType(uid, type, { set });
+        if (cleared) {
+          await waitForAttrClear(uid, type, set, 6, getBlock, readRecurringMeta);
+          void syncPillsForSurface(lastAttrSurface || "Child");
+        }
+        await delay(120);
+        await activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
+        await activeDashboardController?.refresh?.({ reason: `remove-${type}` });
+        const labels = {
+          repeat: "Repeat rule removed",
+          start: "Start date removed",
+          defer: "Defer date removed",
+          due: "Due date removed",
+        };
+        toast(labels[type] || "Attribute removed");
+      } catch (err) {
+        console.error("[BetterTasks] removeTaskAttribute failed", err);
+        toast("Unable to remove that attribute.");
+      }
+    }
+
     async function collectDashboardTasks() {
       const set = S();
       const [todoRows, doneRows, attrRows] = await Promise.all([
@@ -5788,16 +5915,7 @@ async function setTaskTodoState(uid, state = "TODO") {
           console.warn("[BetterTasks] deriveDashboardTask failed", err);
         }
       }
-      const bucketWeight = { overdue: 0, today: 1, upcoming: 2, none: 3 };
-      tasks.sort((a, b) => {
-        const bucketDiff = (bucketWeight[a.dueBucket] ?? 99) - (bucketWeight[b.dueBucket] ?? 99);
-        if (bucketDiff !== 0) return bucketDiff;
-        const dueA = a.dueAt ? a.dueAt.getTime() : Number.MAX_SAFE_INTEGER;
-        const dueB = b.dueAt ? b.dueAt.getTime() : Number.MAX_SAFE_INTEGER;
-        if (dueA !== dueB) return dueA - dueB;
-        return (a.title || "").localeCompare(b.title || "");
-      });
-      return tasks;
+      return sortDashboardTasksList(tasks);
     }
 
     async function fetchBlocksByPageRef(title) {
@@ -5949,7 +6067,7 @@ async function setTaskTodoState(uid, state = "TODO") {
       return formatFriendlyDate(date, set);
     }
 
-function computeDueBucket(dueDate, now = new Date()) {
+    function computeDueBucket(dueDate, now = new Date()) {
   if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) return "none";
   if (now > endOfDay(dueDate)) return "overdue";
   if (isSameDay(dueDate, now)) return "today";
@@ -5986,6 +6104,20 @@ function isBetterTasksTask(meta) {
         if (now - v > 5 * 60_000) processedMap.delete(k); // 5 min TTL
       }
     }
+
+    function sortDashboardTasksList(tasks) {
+      const bucketWeight = { overdue: 0, today: 1, upcoming: 2, none: 3 };
+      return tasks
+        .slice()
+        .sort((a, b) => {
+          const bucketDiff = (bucketWeight[a.dueBucket] ?? 99) - (bucketWeight[b.dueBucket] ?? 99);
+          if (bucketDiff !== 0) return bucketDiff;
+          const dueA = a.dueAt ? a.dueAt.getTime() : Number.MAX_SAFE_INTEGER;
+          const dueB = b.dueAt ? b.dueAt.getTime() : Number.MAX_SAFE_INTEGER;
+          if (dueA !== dueB) return dueA - dueB;
+          return (a.title || "").localeCompare(b.title || "");
+        });
+    }
   },
 
   onunload: async () => {
@@ -6010,6 +6142,7 @@ function isBetterTasksTask(meta) {
 
     window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: "Convert TODO to Better Task" });
     // window.roamAlphaAPI.ui.blockContextMenu.removeCommand({label: "Convert Better Task to plain TODO",});
+    disconnectThemeObserver();
   },
 };
 
@@ -6177,6 +6310,306 @@ function observeTopbarButton() {
     topbarButtonObserver.observe(target, { childList: true, subtree: true });
   } catch (_) {
     topbarButtonObserver = null;
+  }
+}
+
+function observeThemeChanges() {
+  if (typeof document === "undefined") return;
+  syncDashboardThemeVars();
+  if (themeObserver || !document.body) return;
+  themeObserver = new MutationObserver(() => {
+    if (themeSyncTimer) clearTimeout(themeSyncTimer);
+    themeSyncTimer = setTimeout(() => {
+      syncDashboardThemeVars();
+      themeSyncTimer = null;
+    }, 180);
+  });
+  try {
+    const targets = [document.body, document.documentElement].filter(Boolean);
+    for (const target of targets) {
+      themeObserver.observe(target, { attributes: true, attributeFilter: ["class", "data-theme"] });
+    }
+  } catch (_) {
+    themeObserver = null;
+  }
+  if (typeof window !== "undefined" && window.matchMedia) {
+    if (!window.__btThemeMediaQuery) {
+      window.__btThemeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      window.__btThemeMediaQuery.addEventListener?.("change", syncDashboardThemeVars);
+    }
+  }
+  observeThemeStyles();
+}
+
+function disconnectThemeObserver() {
+  if (themeObserver) {
+    try {
+      themeObserver.disconnect();
+    } catch (_) {
+      // ignore
+    }
+    themeObserver = null;
+  }
+  if (themeStyleObserver) {
+    try {
+      themeStyleObserver.disconnect();
+    } catch (_) {
+      // ignore
+    }
+    themeStyleObserver = null;
+  }
+  if (themeSyncTimer) {
+    clearTimeout(themeSyncTimer);
+    themeSyncTimer = null;
+  }
+  if (typeof window !== "undefined" && window.__btThemeMediaQuery) {
+    window.__btThemeMediaQuery.removeEventListener?.("change", syncDashboardThemeVars);
+    window.__btThemeMediaQuery = null;
+  }
+}
+
+function pickColorValue(defaultValue, ...candidates) {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const value = typeof candidate === "function" ? candidate() : candidate;
+    if (typeof value !== "string") {
+      if (value != null) {
+        const str = String(value).trim();
+        if (str && str !== "initial" && str !== "inherit") return str;
+      }
+      continue;
+    }
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== "initial" && trimmed !== "inherit") return trimmed;
+  }
+  return defaultValue;
+}
+
+function syncDashboardThemeVars() {
+  if (typeof document === "undefined") return;
+  const body = document.body;
+  const root = document.documentElement;
+  if (!body || !root) return;
+  const computed = window.getComputedStyle(body);
+  const systemPrefersDark =
+    typeof window !== "undefined" &&
+    window.matchMedia &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const explicitDark =
+    body.classList.contains("bp3-dark") ||
+    /dark/i.test(body.className) ||
+    body.dataset.theme === "dark";
+
+  const layoutBg = sampleBackgroundColor([
+    ".roam-main",
+    ".roam-body .bp3-card",
+    ".roam-body",
+    "#app"
+  ]);
+  const baseSurface = pickColorValue(
+    explicitDark ? "#1f2428" : "#ffffff",
+    computed.getPropertyValue("--bt-surface"),
+    computed.getPropertyValue("--bp3-surface"),
+    computed.getPropertyValue("--background-color"),
+    layoutBg,
+    computed.backgroundColor
+  );
+  if (baseSurface === (lastThemeSample?.surface || null)) {
+    // no change; avoid flicker
+    return;
+  }
+  const textColor = pickColorValue(
+    finalIsDark ? "#f5f8fa" : "#111111",
+    computed.getPropertyValue("--bt-text"),
+    computed.getPropertyValue("--bp3-text-color"),
+    computed.color
+  );
+  const borderColor = pickColorValue(
+    finalIsDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
+    computed.getPropertyValue("--bt-border-color"),
+    computed.getPropertyValue("--bp3-border-color"),
+    computed.getPropertyValue("--border-color")
+  );
+  const mutedColor = pickColorValue(
+    finalIsDark ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.6)",
+    computed.getPropertyValue("--bt-muted-color"),
+    computed.getPropertyValue("--text-color-muted")
+  );
+  const pillBg = pickColorValue(
+    finalIsDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)",
+    computed.getPropertyValue("--bt-pill-bg")
+  );
+
+  const panelRgb = parseColorToRgb(baseSurface);
+  const derivedDark = panelRgb ? computeLuminance(panelRgb) < 0.45 : null;
+  const finalIsDark = explicitDark || (derivedDark != null ? derivedDark : systemPrefersDark);
+
+  body.classList.toggle("bt-theme-dark", finalIsDark);
+  body.classList.toggle("bt-theme-light", !finalIsDark);
+
+  const adjustedPanel = adjustColor(panelRgb, finalIsDark ? -0.08 : 0.03) || baseSurface;
+  const borderStrong = adjustColor(panelRgb, finalIsDark ? -0.25 : 0.15) || borderColor;
+
+  root.style.setProperty("--bt-panel-bg", adjustedPanel);
+  root.style.setProperty("--bt-panel-text", textColor);
+  root.style.setProperty("--bt-border", borderColor);
+  root.style.setProperty("--bt-border-strong", borderStrong);
+  root.style.setProperty("--bt-muted", mutedColor);
+  root.style.setProperty("--bt-pill-bg", pillBg);
+  lastThemeSample = { surface: baseSurface, dark: finalIsDark };
+}
+
+function parseColorToRgb(value) {
+  if (!value || typeof value !== "string") return null;
+  const str = value.trim();
+  if (!str) return null;
+  if (str.startsWith("#")) {
+    let hex = str.slice(1);
+    if (hex.length === 3) {
+      hex = hex
+        .split("")
+        .map((ch) => ch + ch)
+        .join("");
+    }
+    if (hex.length === 6) {
+      const num = parseInt(hex, 16);
+      if (Number.isNaN(num)) return null;
+      return {
+        r: (num >> 16) & 255,
+        g: (num >> 8) & 255,
+        b: num & 255,
+      };
+    }
+    return null;
+  }
+  const rgbMatch = str.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
+  if (rgbMatch) {
+    return {
+      r: Number(rgbMatch[1]),
+      g: Number(rgbMatch[2]),
+      b: Number(rgbMatch[3]),
+    };
+  }
+  return null;
+}
+
+function computeLuminance(rgb) {
+  if (!rgb) return null;
+  const toLinear = (channel) => {
+    const c = channel / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const r = toLinear(rgb.r);
+  const g = toLinear(rgb.g);
+  const b = toLinear(rgb.b);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function adjustColor(rgb, delta = 0) {
+  if (!rgb || typeof delta !== "number" || delta === 0) return null;
+  const mix = (channel) => {
+    const target = delta > 0 ? 255 : 0;
+    const ratio = Math.min(Math.abs(delta), 1);
+    return Math.round(channel + (target - channel) * ratio);
+  };
+  const r = mix(rgb.r);
+  const g = mix(rgb.g);
+  const b = mix(rgb.b);
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
+function sampleBackgroundColor(selectors = []) {
+  if (typeof document === "undefined") return null;
+  for (const selector of selectors) {
+    const node = typeof selector === "string" ? document.querySelector(selector) : selector;
+    if (!node) continue;
+    const style = window.getComputedStyle(node);
+    const color = style?.backgroundColor;
+    if (color && color !== "rgba(0, 0, 0, 0)" && color !== "transparent") {
+      return color;
+    }
+  }
+  return null;
+}
+
+async function waitForAttrDate(uid, attr, targetDate, set, retries = 6, getBlockFn, readMetaFn) {
+  if (!uid || !(targetDate instanceof Date) || Number.isNaN(targetDate.getTime())) return;
+  if (typeof getBlockFn !== "function" || typeof readMetaFn !== "function") return;
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  for (let i = 0; i < retries; i++) {
+    await sleep(150);
+    const block = await getBlockFn(uid);
+    if (!block) break;
+    const meta = await readMetaFn(block, set);
+    const metaDate = meta?.[attr] instanceof Date ? meta[attr] : null;
+    if (metaDate && !Number.isNaN(metaDate.getTime())) {
+      if (Math.abs(metaDate.getTime() - targetDate.getTime()) < 1000) return;
+    }
+  }
+}
+
+async function waitForAttrClear(uid, attr, set, retries = 6, getBlockFn, readMetaFn) {
+  if (!uid || typeof getBlockFn !== "function" || typeof readMetaFn !== "function") return;
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  for (let i = 0; i < retries; i++) {
+    await sleep(150);
+    const block = await getBlockFn(uid);
+    if (!block) break;
+    const meta = await readMetaFn(block, set);
+    if (!meta) break;
+    let hasValue = false;
+    if (attr === "repeat") {
+      hasValue = !!meta.repeat;
+    } else if (["start", "defer", "due"].includes(attr)) {
+      const val = meta[attr];
+      hasValue = val instanceof Date && !Number.isNaN(val.getTime());
+    }
+    if (!hasValue) return;
+  }
+}
+
+async function waitForRepeatState(uid, set, options = {}, retries = 6, getBlockFn, readMetaFn) {
+  if (!uid || typeof getBlockFn !== "function" || typeof readMetaFn !== "function") return;
+  const expectValue =
+    typeof options.expectedValue === "string" && options.expectedValue ? options.expectedValue.trim() : null;
+  const expectPresence = typeof options.expectPresence === "boolean" ? options.expectPresence : null;
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  for (let i = 0; i < retries; i++) {
+    await sleep(150);
+    const block = await getBlockFn(uid);
+    if (!block) break;
+    const meta = await readMetaFn(block, set);
+    const repeatVal = (meta?.repeat || "").trim();
+    if (expectValue != null) {
+      if (repeatVal === expectValue) return repeatVal;
+    } else if (expectPresence != null) {
+      if (!!repeatVal === expectPresence) return repeatVal;
+    } else if (repeatVal) {
+      return repeatVal;
+    }
+  }
+}
+
+function observeThemeStyles() {
+  if (typeof document === "undefined") return;
+  const head = document.head;
+  if (!head || themeStyleObserver) return;
+  themeStyleObserver = new MutationObserver(() => {
+    if (themeSyncTimer) clearTimeout(themeSyncTimer);
+    themeSyncTimer = setTimeout(() => {
+      syncDashboardThemeVars();
+      themeSyncTimer = null;
+    }, 200);
+  });
+  try {
+    themeStyleObserver.observe(head, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["href", "data-theme"],
+    });
+  } catch (_) {
+    themeStyleObserver = null;
   }
 }
 
