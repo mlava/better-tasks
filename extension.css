@@ -382,6 +382,18 @@ body.bt-theme-dark {
     font-size: 12px;
     color: var(--bt-muted);
 }
+.bt-task-row__context-sep {
+    color: var(--bt-muted);
+    margin: 0 4px;
+}
+.bt-task-row__context-link {
+    border: none;
+    background: none;
+    color: var(--bt-panel-text);
+    font: inherit;
+    padding: 0;
+    cursor: pointer;
+}
 
 .bt-task-row__meta {
     display: flex;

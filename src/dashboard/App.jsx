@@ -440,9 +440,16 @@ function TaskRow({ task, controller }) {
     setMenuOpen(value);
   }, []);
   const contextBits = [];
-  if (task.pageTitle) contextBits.push({ key: "page", text: `In ${task.pageTitle}` });
-  if (task.isCompleted) contextBits.push({ key: "completed", text: "Completed" });
-  else if (task.availabilityLabel) contextBits.push({ key: "availability", text: task.availabilityLabel });
+  if (task.pageTitle) {
+    contextBits.push({
+      key: "page",
+      type: "page",
+      text: task.pageTitle,
+      pageUid: task.pageUid,
+    });
+  }
+  if (task.isCompleted) contextBits.push({ key: "completed", type: "text", text: "Completed" });
+  else if (task.availabilityLabel) contextBits.push({ key: "availability", type: "text", text: task.availabilityLabel });
   const showSnooze = !task.isCompleted;
   const handlePillClick = (event, pill, taskRow, ctrl) => {
     const type = pill.type;
@@ -483,9 +490,35 @@ function TaskRow({ task, controller }) {
           <TaskActionsMenu task={task} controller={controller} onOpenChange={handleMenuOpenChange} />
         </div>
         <div className="bt-task-row__context">
-          {contextBits.map((bit, idx) => (
-            <span key={`${task.uid}-${bit.key || idx}`}>{bit.text}</span>
-          ))}
+          {contextBits.map((bit, idx) => {
+            const prefix = idx > 0 ? (
+              <span key={`sep-${task.uid}-${idx}`} className="bt-task-row__context-sep">
+                &middot;
+              </span>
+            ) : null;
+            const key = `${task.uid}-${bit.key || idx}`;
+            if (bit.type === "page" && bit.pageUid) {
+              return (
+                <React.Fragment key={key}>
+                  {prefix}
+                  <button
+                    type="button"
+                    className="bt-task-row__context-link"
+                    onClick={(event) => controller.openPage(bit.pageUid, { inSidebar: event.shiftKey })}
+                    title="Open page (Shift+Click → sidebar)"
+                  >
+                    [[{bit.text}]]
+                  </button>
+                </React.Fragment>
+              );
+            }
+            return (
+              <React.Fragment key={key}>
+                {prefix}
+                <span>{bit.text}</span>
+              </React.Fragment>
+            );
+          })}
         </div>
       </div>
       <div className="bt-task-row__actions">

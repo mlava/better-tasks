@@ -5406,6 +5406,7 @@ async function setTaskTodoState(uid, state = "TODO") {
       toggleTask,
       snoozeTask,
       openBlock,
+      openPage,
       notifyBlockChange,
       removeTask,
       openSettings,
@@ -5597,6 +5598,22 @@ async function setTaskTodoState(uid, state = "TODO") {
           window.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
         } catch (err) {
           console.warn("[BetterTasks] openBlock failed", err);
+        }
+      }
+
+      function openPage(pageUid, options = {}) {
+        if (!pageUid) return;
+        const { inSidebar = false } = options;
+        try {
+          if (inSidebar) {
+            window.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({
+              window: { type: "outline", "page-uid": pageUid, "block-uid": pageUid },
+            });
+          } else {
+            window.roamAlphaAPI?.ui?.mainWindow?.openPage?.({ page: { uid: pageUid } });
+          }
+        } catch (err) {
+          console.warn("[BetterTasks] openPage failed", err);
         }
       }
 
