@@ -256,9 +256,13 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
   const updatePosition = useCallback(() => {
     if (!buttonRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const estimatedHeight = 200; // provide enough room for the menu
+    const openUpwards = rect.bottom + estimatedHeight > viewportHeight && rect.top > estimatedHeight;
     setCoords({
-      top: rect.bottom + 6,
+      top: openUpwards ? rect.top - 6 : rect.bottom + 6,
       left: rect.right,
+      align: openUpwards ? "top" : "bottom",
     });
   }, []);
 
@@ -394,7 +398,10 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
             position: "fixed",
             top: coords.top,
             left: coords.left,
-            transform: "translate(-100%, 0)",
+            transform:
+              coords.align === "top"
+                ? "translate(-100%, -100%)"
+                : "translate(-100%, 0)",
           }}
         >
           {actions.map((action) => (
