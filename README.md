@@ -40,7 +40,7 @@ Leave the repeat field blank while setting any combination of `start::`, `defer:
 
 Regardless of how you enter the attributes, the extension emits a compact **pill** next to each Better Task whenever its child blocks are collapsed:
 
-![alt text](image.png)
+![alt text](images/image.png)
 
 - Pills disappear automatically when you expand the task (so you can edit the child blocks directly) and reappear when the block is collapsed.
 - Marking the TODO complete hides the pill until the extension spawns the next occurrence, keeping finished items visually quiet.
@@ -120,7 +120,7 @@ All actions support **Undo** via a toast notification. If a start date isn't con
 
 ## 📊 Better Tasks Dashboard
 
-Open the dashboard from the command palette (`Toggle Better Tasks Dashboard`) or the icon <img src="image-1.png" width="22"> that appears in Roam’s top bar. The dashboard lists every Better Task (recurring or scheduled one-off) with:
+Open the dashboard from the command palette (`Toggle Better Tasks Dashboard`) or the icon <img src="images/image-2.png" width="22"> that appears in Roam’s top bar. The dashboard lists every Better Task (recurring or scheduled one-off) with:
 
 - Powerful filters for recurrence type, availability (start/defer), due bucket, and completion status.
 - Quick snooze actions, completion toggles, and links back to the originating blocks.
