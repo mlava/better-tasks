@@ -40,9 +40,7 @@ Leave the repeat field blank while setting any combination of `start::`, `defer:
 
 Regardless of how you enter the attributes, the extension emits a compact **pill** next to each Better Task whenever its child blocks are collapsed:
 
-```
-☑️ Write weekly newsletter  ↻ every Friday · ⏳ Mon 3 Nov · 📅 Fri 7 Nov ⋯
-```
+![alt text](image.png)
 
 - Pills disappear automatically when you expand the task (so you can edit the child blocks directly) and reappear when the block is collapsed.
 - Marking the TODO complete hides the pill until the extension spawns the next occurrence, keeping finished items visually quiet.
