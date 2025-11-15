@@ -21,13 +21,19 @@
     "@babel/core": "^7.26.0",
     "@babel/preset-env": "^7.26.0",
     "@babel/preset-react": "^7.26.3",
-    "babel-loader": "^9.2.1",
     "@tanstack/react-virtual": "^3.10.7",
+    "babel-loader": "^9.2.1",
     "webpack": "^5.99.9",
     "webpack-cli": "^6.0.1"
   },
   "dependencies": {
     "izitoast": "^1.4.0"
+  },
+  "overrides": {
+    "@tanstack/react-virtual": {
+      "react": "18.2.0",
+      "react-dom": "18.2.0"
+    }
   },
   "keywords": [
     "task",
