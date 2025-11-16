@@ -18,8 +18,10 @@ const AI_SYSTEM_PROMPT = [
   'Required: { "title": string }',
   'Optional: "repeatRule", "dueDateText", "startDateText", "deferDateText", "project", "context", "priority", "energy".',
   'priority/energy must be one of: "low", "medium", "high", or null.',
-  "Dates: prefer Roam page links like [[November 18th, 2025]]; if unsure, use short phrases like \"tomorrow\" or \"next Monday\".",
-  "Please consider words like beginning, starting at, available from as potential indicators of start dates or defer dates, depending on the context.",
+  "Dates: prefer Roam page links like [[November 18th, 2025]]; if unsure, use short phrases like \"next Monday\" (not bare weekday names).",
+  "If you see time (e.g., 3pm), include it only in dueDateText/startDateText (e.g., \"next Wednesday at 3pm\").",
+  "For wording that implies when work can start (beginning/starting/available/from/after), use startDateText; for deadlines (by/before/due), use dueDateText; for postponement, use deferDateText.",
+  "For vague spans like \"this week/this weekend/this month/this quarter\", prefer concrete dates (start of span for startDateText, end of span for dueDateText when only one date is given).",
   "Please consider words like every, each, daily, weekly, monthly, yearly, annually, weekdays, weekends, biweekly, fortnightly, quarterly, semiannual(ly), semi-annual(ly), twice a year, every N days/weeks/months/years as indicators of repeat rules.",
   "Keep scheduling details (repeat/dates) OUT of the title; place them only in repeatRule/dueDateText/startDateText/deferDateText. The title should just be the task text.",
   "Do not invent details not implied.",
@@ -640,13 +642,27 @@ export default {
 
       const parseAndFormatDate = (value) => {
         if (typeof value !== "string" || !value.trim()) return null;
-        const dt = parseRoamDate(value.trim()) || parseRelativeDateText(value.trim(), set.weekStartCode);
+        const original = value.trim();
+        const cleaned = stripTimeFromDateText(original);
+        let dt = parseRoamDate(cleaned) || parseRelativeDateText(cleaned, set.weekStartCode);
+        if (!dt && hasTimeOnlyHint(original)) {
+          dt = pickAnchorDateFromTimeHint(original, set);
+        }
         if (!(dt instanceof Date) || Number.isNaN(dt.getTime())) return null;
         return formatDate(dt, set);
       };
 
-      const dueStr = parseAndFormatDate(parsed.dueDateText);
-      const startStr = parseAndFormatDate(parsed.startDateText);
+      const weekendSpan = parseWeekendSpan(parsed.dueDateText || parsed.startDateText || "", set);
+      const weekSpan = parseWeekSpan(parsed.dueDateText || parsed.startDateText || "", set);
+
+      const dueStr =
+        (weekendSpan?.due ? formatDate(weekendSpan.due, set) : null) ||
+        (weekSpan?.due ? formatDate(weekSpan.due, set) : null) ||
+        parseAndFormatDate(parsed.dueDateText);
+      const startStr =
+        (weekendSpan?.start ? formatDate(weekendSpan.start, set) : null) ||
+        (weekSpan?.start ? formatDate(weekSpan.start, set) : null) ||
+        parseAndFormatDate(parsed.startDateText);
       const deferStr = parseAndFormatDate(parsed.deferDateText);
 
       const props = parseProps(block.props);
@@ -778,21 +794,35 @@ export default {
       }
       let responseBodyText = null;
       try {
-        responseBodyText = await response.clone().text();
+        responseBodyText = await response.text();
       } catch (_) {
         // non-fatal
+      }
+      let parsedBody = null;
+      try {
+        parsedBody = responseBodyText ? JSON.parse(responseBodyText) : null;
+      } catch (_) {
+        // leave parsedBody null
+      }
+      let parsedContent = null;
+      try {
+        const contentRaw = parsedBody?.choices?.[0]?.message?.content;
+        parsedContent = contentRaw ? JSON.parse(contentRaw) : null;
+      } catch (_) {
+        parsedContent = null;
       }
       console.info("[BetterTasks] OpenAI response", {
         status: response?.status,
         ok: response?.ok,
-        body: responseBodyText,
+        body: parsedBody ?? responseBodyText,
+        contentJson: parsedContent,
       });
       if (!response || !response.ok) {
         let errorText = null;
         let errorJson = null;
         try {
-          errorText = await response.text();
-          errorJson = JSON.parse(errorText);
+          errorText = responseBodyText;
+          errorJson = parsedBody || JSON.parse(errorText || "{}");
         } catch (_) {
           // ignore parse issues
         }
@@ -806,11 +836,9 @@ export default {
           code,
         };
       }
-      let data = null;
-      try {
-        data = await response.json();
-      } catch (err) {
-        return { ok: false, error: err };
+      const data = parsedBody;
+      if (!data) {
+        return { ok: false, error: new Error("Empty response body") };
       }
       const content = data?.choices?.[0]?.message?.content;
       if (!content || typeof content !== "string") {
@@ -855,8 +883,10 @@ export default {
       let t = (title || "").trim();
       if (!t) return t;
       if (hasRepeat) {
-        t = t.replace(/,\s*(every|daily|weekly|monthly|yearly|annually|weekdays|weekends)\b.*$/i, "").trim();
-        t = t.replace(/\b(every|daily|weekly|monthly|yearly|annually|weekdays|weekends)\b.*$/i, "").trim();
+        t = t.replace(/,\s*every\b.+$/i, "").trim();
+        t = t.replace(/\bevery\s+.+$/i, "").trim();
+        // Only drop bare cadence words when they are effectively trailing schedule hints (optionally with at/on ...)
+        t = t.replace(/\b(daily|weekly|monthly|yearly|annually|weekdays|weekends)\b\s*(?:(?:at|on)\b.*)?$/i, "").trim();
       }
       if (hasDate) {
         t = t.replace(/\s*(on|by|due|for)\s+(tomorrow|today|next\s+[a-z]+|this\s+[a-z]+)$/i, "").trim();
@@ -3534,23 +3564,194 @@ export default {
 
       return null;
     }
+    function stripTimeFromDateText(text) {
+      if (!text || typeof text !== "string") return text;
+      let t = text.trim();
+      // strip "at 3pm" or "at 15:30"
+      t = t.replace(/\s+at\s+\d{1,2}(:\d{2})?\s*(am|pm)?\b/i, "");
+      // strip trailing "3pm" or "15:30"
+      t = t.replace(/\s+\d{1,2}(:\d{2})?\s*(am|pm)?\b/i, "");
+      // strip time-of-day words
+      t = t
+        .replace(/\b(morning|afternoon|evening|night)\b/gi, "")
+        .replace(/\b(before|by)\s*\d{1,2}(:\d{2})?\s*(am|pm)?\b/gi, "")
+        .replace(/\b(before|by)\s+lunch\b/gi, "")
+        .replace(/\blunch\b/gi, "")
+        .replace(/\b(noon|midnight)\b/gi, "")
+        .replace(/\b(end of day|eod)\b/gi, "")
+        .replace(/\bat\b\s*$/gi, "")
+        .trim();
+      // strip leading "every "
+      t = t.replace(/^\s*every\s+/i, "").trim();
+      return t.trim();
+    }
+    function hasTimeOnlyHint(text) {
+      if (!text || typeof text !== "string") return false;
+      const raw = text.toLowerCase();
+      return (
+        /\b(before|by)\s*\d{1,2}(:\d{2})?\s*(am|pm)?\b/.test(raw) ||
+        /\b\d{1,2}(:\d{2})?\s*(am|pm)?\b/.test(raw) ||
+        /\b(morning|afternoon|evening|night|end of day|eod|lunch)\b/.test(raw) ||
+        /\b(before|by)\s+lunch\b/.test(raw) ||
+        /\b(noon|midnight)\b/.test(raw)
+      );
+    }
+
+    function pickAnchorDateFromTimeHint(text, set) {
+      if (!text || typeof text !== "string") return todayLocal();
+      const raw = text.toLowerCase();
+      const m =
+        raw.match(/(before|by)?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/) ||
+        (/\bmorning\b/.test(raw) ? ["", "", "9", "00", "am"] : null) ||
+        (/\bafternoon\b/.test(raw) ? ["", "", "14", "00", ""] : null) ||
+        (/\bevening\b/.test(raw) ? ["", "", "18", "00", ""] : null) ||
+        (/\bnight\b/.test(raw) ? ["", "", "20", "00", ""] : null) ||
+        (/\b(end of day|eod)\b/.test(raw) ? ["", "", "17", "00", ""] : null) ||
+        (/\blunch\b/.test(raw) ? ["", "", "12", "30", ""] : null) ||
+        (/\bnoon\b/.test(raw) ? ["", "", "12", "00", ""] : null) ||
+        (/\bmidnight\b/.test(raw) ? ["", "", "00", "00", ""] : null);
+      if (!m) return todayLocal();
+      let hour = parseInt(m[2], 10);
+      const minute = m[3] ? parseInt(m[3], 10) : 0;
+      const suffix = m[4]?.toLowerCase();
+      if (suffix === "pm" && hour < 12) hour += 12;
+      if (suffix === "am" && hour === 12) hour = 0;
+      const now = new Date();
+      const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0);
+      const anchor = now.getTime() <= target.getTime() ? todayLocal() : addDaysLocal(todayLocal(), 1);
+      return anchor;
+    }
+
+    function parseWeekSpan(text, set) {
+      if (!text || typeof text !== "string") return null;
+      const raw = text.toLowerCase();
+      if (!/\b(this week|sometime this week|later this week|start of this week|end of the week|end of week|before the end of the week)\b/.test(raw))
+        return null;
+      const start = startOfWeek(todayLocal(), set?.weekStartCode);
+      const due = addDaysLocal(start, 6);
+      return { start, due };
+    }
+
+    function parseWeekendSpan(text, set) {
+      if (!text || typeof text !== "string") return null;
+      const raw = text.toLowerCase();
+      if (!/\b(this weekend|next weekend)\b/.test(raw)) return null;
+      const now = new Date();
+      const dow = now.getDay(); // 0 Sun .. 6 Sat
+      const baseStart = startOfWeek(todayLocal(), set?.weekStartCode);
+      const isLateSunday = raw.includes("this weekend") && dow === 0 && now.getHours() >= 12;
+      const weekOffset = raw.includes("next weekend") || isLateSunday ? 7 : 0;
+      const saturday = addDaysLocal(baseStart, weekOffset + 5);
+      const sunday = addDaysLocal(saturday, 1);
+      return { start: saturday, due: sunday };
+    }
     function parseRelativeDateText(s, weekStartCode = DEFAULT_WEEK_START_CODE) {
       if (!s || typeof s !== "string") return null;
-      const raw = s.trim().toLowerCase();
+      let raw = s.trim().toLowerCase();
       if (!raw) return null;
+      if (raw.startsWith("[[") && raw.endsWith("]]")) {
+        raw = raw.slice(2, -2).trim();
+      }
       if (raw === "today") return todayLocal();
       if (/^tomor+ow$/.test(raw) || raw === "tmr" || raw === "tmrw") {
         return addDaysLocal(todayLocal(), 1);
+      }
+      if (raw === "tonight") {
+        return todayLocal();
+      }
+      if (raw === "next month") {
+        const now = todayLocal();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        const d = new Date(y, m + 1, 1, 12, 0, 0, 0);
+        return d;
+      }
+      const nextMonthMatch = raw.match(/^(early|mid|late)\s+next\s+([a-z]+)$/);
+      if (nextMonthMatch) {
+        const descriptor = nextMonthMatch[1];
+        const monthName = nextMonthMatch[2];
+        const monthIndex = MONTH_MAP[monthName];
+        if (monthIndex != null) {
+          const now = todayLocal();
+          const year = now.getFullYear() + (monthIndex - 1 < now.getMonth() ? 1 : 0);
+          const day = descriptor === "early" ? 5 : descriptor === "mid" ? 15 : 25;
+          return new Date(year, monthIndex - 1, day, 12, 0, 0, 0);
+        }
+      }
+      const earlyMonthMatch = raw.match(/^(?:early|mid|late)\s+([a-z]+)$/);
+      if (earlyMonthMatch) {
+        const monthName = earlyMonthMatch[1];
+        const monthIndex = MONTH_MAP[monthName];
+        if (monthIndex != null) {
+          const now = todayLocal();
+          const year = now.getFullYear() + (monthIndex - 1 < now.getMonth() ? 1 : 0);
+          const day = raw.startsWith("early") ? 5 : raw.startsWith("mid") ? 15 : 25;
+          return new Date(year, monthIndex - 1, day, 12, 0, 0, 0);
+        }
+      }
+      const nextWeekMatch = raw.match(/^(early|mid|late)\s+next\s+week$/);
+      if (nextWeekMatch) {
+        const descriptor = nextWeekMatch[1];
+        const anchor = addDaysLocal(startOfWeek(todayLocal(), weekStartCode), 7);
+        if (descriptor === "early") return anchor;
+        if (descriptor === "mid") return addDaysLocal(anchor, 3);
+        return addDaysLocal(anchor, 5);
       }
       if (raw === "next week") {
         const anchor = todayLocal();
         const thisWeekStart = startOfWeek(anchor, weekStartCode);
         return addDaysLocal(thisWeekStart, 7);
       }
+      const thisWeekMatch = raw.match(/^(?:sometime|later|early)\s+this\s+week$/);
+      if (thisWeekMatch) {
+        const anchor = startOfWeek(todayLocal(), weekStartCode);
+        if (/early/.test(raw)) return anchor;
+        if (/later/.test(raw)) return addDaysLocal(anchor, 4);
+        return anchor;
+      }
+      const thisDowMatch = raw.match(/^this\s+([a-z]+)$/);
+      if (thisDowMatch) {
+        const dowCode = dowFromAlias(thisDowMatch[1]);
+        if (dowCode) {
+          const today = todayLocal();
+          const todayIdx = today.getDay(); // 0 Sun .. 6 Sat
+          const targetIdx = DOW_IDX.indexOf(dowCode);
+          let delta = targetIdx - todayIdx;
+          if (delta <= 0) delta += 7;
+          return addDaysLocal(today, delta);
+        }
+      }
+      const theFirstMatch = raw.match(/^the\s+first(?:\s+of)?\s+every\s+month$/);
+      if (theFirstMatch) {
+        const now = todayLocal();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        const todayDay = now.getDate();
+        // if past the first, move to next month
+        const targetMonth = todayDay > 1 ? m + 1 : m;
+        return new Date(y, targetMonth, 1, 12, 0, 0, 0);
+      }
       const nextDowMatch = raw.match(/^next\s+([a-z]+)$/);
       if (nextDowMatch) {
         const dowCode = dowFromAlias(nextDowMatch[1]);
         if (dowCode) return nextDowDate(todayLocal(), dowCode);
+      }
+      const weekdayCode = dowFromAlias(raw);
+      if (weekdayCode) return nextDowDate(todayLocal(), weekdayCode);
+      if (raw === "this weekend") {
+        const now = new Date();
+        const dow = now.getDay(); // 0 Sun .. 6 Sat
+        if (dow === 0 && now.getHours() >= 12) {
+          const anchorNext = addDaysLocal(startOfWeek(todayLocal(), weekStartCode), 7);
+          return addDaysLocal(anchorNext, 5);
+        }
+        const anchor = startOfWeek(todayLocal(), weekStartCode);
+        // weekend = Saturday of this week
+        return addDaysLocal(anchor, 5);
+      }
+      if (raw === "next weekend") {
+        const anchor = addDaysLocal(startOfWeek(todayLocal(), weekStartCode), 7);
+        return addDaysLocal(anchor, 5);
       }
       return null;
     }
