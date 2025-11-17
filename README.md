@@ -148,7 +148,7 @@ Use the dashboard to triage overdue work, snooze tasks, or jump straight to the 
 
 ### 🎨 Theme Compatibility (Beta)
 
-Better Tasks samples colors from Roam’s active theme and applies a lightweight contrast layer so the dashboard and pills feel native in both light and dark modes. Because every graph can load different community themes, there may still be combinations that need tweaks. If you notice illegible text or mismatched backgrounds, please report the theme you’re using so we can fine‑tune the adaptive styling.
+Better Tasks samples colours from Roam’s active theme and applies a lightweight contrast layer so the dashboard and pills feel native in both light and dark modes. Because every graph can load different community themes, there may still be combinations that need tweaks. If you notice illegible text or mismatched backgrounds, please report the theme you’re using so we can fine‑tune the adaptive styling.
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/mlava/better-tasks/main/images/theming.gif"/>
