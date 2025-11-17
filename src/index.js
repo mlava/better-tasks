@@ -44,6 +44,8 @@ let themeObserver = null;
 let themeSyncTimer = null;
 let lastThemeSample = null;
 let themeStyleObserver = null;
+let roamStudioToggleObserver = null;
+let btPendingRoamStudioTheme = false;
 
 const DOW_MAP = {
   sunday: "SU",
@@ -920,6 +922,7 @@ export default {
     let completionQueueFlushInFlight = false;
     const COMPLETION_PAIR_WINDOW_MS = 1200;
     const USER_COMPLETION_BYPASS_MS = 2200;
+    const COMPLETION_STALE_WINDOW_MS = 60_000;
     const repeatOverrides = new Map();
     const invalidRepeatToasted = new Set();
     const invalidDueToasted = new Set();
@@ -1482,6 +1485,7 @@ export default {
       if (!uid) return;
       const now = Date.now();
       const recentClick = now - lastUserCheckboxInteraction <= USER_COMPLETION_BYPASS_MS;
+      const userInitiated = recentClick;
       if (now < pageLoadQuietUntil && !recentClick) {
         logCompletionDebug("skip-done-add-quiet", {
           uid,
@@ -1496,11 +1500,11 @@ export default {
       if (entry.removedAt && now - entry.removedAt <= COMPLETION_PAIR_WINDOW_MS) {
         completionPairs.delete(uid);
         logCompletionDebug("done-added-paired", { uid, removedAt: entry.removedAt, addedAt: now });
-        enqueueCompletion(uid, { checkbox });
+        enqueueCompletion(uid, { checkbox, userInitiated, detectedAt: now });
         return;
       }
-      completionPairs.set(uid, { ...entry, addedAt: now });
-      logCompletionDebug("done-added-no-pair", { uid, addedAt: now });
+      completionPairs.set(uid, { ...entry, addedAt: now, userInitiated });
+      logCompletionDebug("done-added-no-pair", { uid, addedAt: now, userInitiated });
     }
 
     function enqueueCompletion(uid, options = {}) {
@@ -1573,11 +1577,11 @@ export default {
       scheduleObserverRestart();
     }
 
-      if (typeof window !== "undefined") {
-        try {
-          window.__RecurringTasksCleanup?.();
-        } catch (_) {
-          // ignore cleanup errors from previous runs
+    if (typeof window !== "undefined") {
+      try {
+        window.__RecurringTasksCleanup?.();
+      } catch (_) {
+        // ignore cleanup errors from previous runs
       }
       window.__RecurringTasksCleanup = () => {
         window.removeEventListener("hashchange", handleHashChange);
@@ -1673,11 +1677,11 @@ export default {
             }
           }
 
-      if (!mutation.addedNodes || mutation.addedNodes.length === 0) continue;
+          if (!mutation.addedNodes || mutation.addedNodes.length === 0) continue;
 
-      for (const node of mutation.addedNodes) {
-        if (!(node instanceof HTMLElement)) continue;
-        void decorateBlockPills(node);
+          for (const node of mutation.addedNodes) {
+            if (!(node instanceof HTMLElement)) continue;
+            void decorateBlockPills(node);
 
             const doneHosts = [];
             if (node.matches?.(".rm-checkbox.rm-done")) doneHosts.push(node);
@@ -1718,6 +1722,8 @@ export default {
       });
       processedMap.set(uid, Date.now());
       const checkbox = options.checkbox || null;
+      const userInitiated = !!options.userInitiated;
+      const detectedAt = typeof options.detectedAt === "number" ? options.detectedAt : null;
       try {
         const set = S();
         await flushChildAttrSync(uid);
@@ -1743,6 +1749,25 @@ export default {
           processedMap.delete(uid);
           logCompletionDebug("skip-completion-recent-meta", { uid, metaProcessed: meta.processedTs, now });
           return null;
+        }
+
+        if (!userInitiated) {
+          const staleProcessed = meta.processedTs && now - meta.processedTs > COMPLETION_STALE_WINDOW_MS;
+          // Allow keyboard completions (cmd/ctrl+Enter) which won't mark userInitiated,
+          // but still block re-processing when a completed child attr already exists.
+          const completedEntry = pickChildAttr(meta.childAttrMap, set.attrNames.completedAliases, { allowFallback: true });
+          if (completedEntry || staleProcessed) {
+            processedMap.delete(uid);
+            logCompletionDebug("skip-completion-stale", {
+              uid,
+              processedTs: meta.processedTs || null,
+              completedValue: completedEntry?.value || null,
+              staleProcessed,
+              detectedAt,
+              now,
+            });
+            return null;
+          }
         }
 
         const isOneOff = !meta.repeat && hasTimingOnly;
@@ -1965,12 +1990,7 @@ export default {
       const current = await window.roamAlphaAPI.q(
         `[:find ?p :where [?b :block/uid "${uid}"] [?b :block/props ?p]]`
       );
-      let props = {};
-      try {
-        props = current?.[0]?.[0] ? JSON.parse(current[0][0]) : {};
-      } catch (e) {
-        props = {};
-      }
+      const props = parseProps(current?.[0]?.[0]);
       const next = { ...props, ...enrichedMerge };
       if (props.rt && enrichedMerge?.rt) {
         next.rt = { ...props.rt, ...enrichedMerge.rt };
@@ -7127,34 +7147,6 @@ function observeTopbarButton() {
   }
 }
 
-function observeThemeChanges() {
-  if (typeof document === "undefined") return;
-  syncDashboardThemeVars();
-  if (themeObserver || !document.body) return;
-  themeObserver = new MutationObserver(() => {
-    if (themeSyncTimer) clearTimeout(themeSyncTimer);
-    themeSyncTimer = setTimeout(() => {
-      syncDashboardThemeVars();
-      themeSyncTimer = null;
-    }, 180);
-  });
-  try {
-    const targets = [document.body, document.documentElement].filter(Boolean);
-    for (const target of targets) {
-      themeObserver.observe(target, { attributes: true, attributeFilter: ["class", "data-theme"] });
-    }
-  } catch (_) {
-    themeObserver = null;
-  }
-  if (typeof window !== "undefined" && window.matchMedia) {
-    if (!window.__btThemeMediaQuery) {
-      window.__btThemeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-      window.__btThemeMediaQuery.addEventListener?.("change", syncDashboardThemeVars);
-    }
-  }
-  observeThemeStyles();
-}
-
 function disconnectThemeObserver() {
   if (themeObserver) {
     try {
@@ -7201,68 +7193,147 @@ function pickColorValue(defaultValue, ...candidates) {
 
 function syncDashboardThemeVars() {
   if (typeof document === "undefined") return;
+
   const body = document.body;
   const root = document.documentElement;
   if (!body || !root) return;
+
+  const usingBlueprint = !!document.querySelector(".blueprint-dm-toggle");
+  const usingRoamStudio = !!document.querySelector(".roamstudio-dm-toggle");
+
   const computed = window.getComputedStyle(body);
+
   const systemPrefersDark =
     typeof window !== "undefined" &&
     window.matchMedia &&
     window.matchMedia("(prefers-color-scheme: dark)").matches;
+
   const explicitDark =
     body.classList.contains("bp3-dark") ||
-    /dark/i.test(body.className) ||
-    body.dataset.theme === "dark";
+    root.classList.contains("bp3-dark") ||
+    body.dataset.theme === "dark" ||
+    root.dataset.theme === "dark";
+
+  const externalMode = getExternalAppearanceFromToggle(); // "dark" | "light" | "auto" | null
+  console.log("[BT Theme] externalMode =", externalMode, "explicitDark =", explicitDark, "systemPrefersDark =", systemPrefersDark);
+
+  let finalIsDark;
+  if (externalMode === "dark") {
+    finalIsDark = true;
+  } else if (externalMode === "light") {
+    finalIsDark = false;
+  } else if (externalMode === "auto") {
+    finalIsDark = explicitDark || systemPrefersDark;
+  } else {
+    finalIsDark = explicitDark || systemPrefersDark;
+  }
 
   const layoutBg = sampleBackgroundColor([
     ".roam-main",
     ".roam-body .bp3-card",
     ".roam-body",
-    "#app"
+    "#app",
   ]);
-  const baseSurface = pickColorValue(
-    explicitDark ? "#1f2428" : "#ffffff",
+
+  // Theme-specific dark fallback for the panel surface
+  const darkFallbackSurface = usingBlueprint ? "#202B33" : "#1f2428";
+
+  const baseSurfaceCandidate = pickColorValue(
+    finalIsDark ? darkFallbackSurface : "#ffffff",
     computed.getPropertyValue("--bt-surface"),
     computed.getPropertyValue("--bp3-surface"),
     computed.getPropertyValue("--background-color"),
     layoutBg,
     computed.backgroundColor
   );
-  if (baseSurface === (lastThemeSample?.surface || null)) {
-    // no change; avoid flicker
+
+  if (
+    !btPendingRoamStudioTheme &&
+    baseSurfaceCandidate === (lastThemeSample?.surface || null)
+  ) {
+    console.log("[BT Theme] baseSurface unchanged → skipping update");
     return;
   }
+
+  if (btPendingRoamStudioTheme) {
+    console.log("[BT Theme] Forcing update because theme toggle was detected");
+    btPendingRoamStudioTheme = false;
+  }
+
+  // Clamp overly-light surfaces in dark mode so the panel actually looks dark
+  let baseSurface = baseSurfaceCandidate;
+  let panelRgb = parseColorToRgb(baseSurfaceCandidate);
+  if (finalIsDark && panelRgb) {
+    const lum = computeLuminance(panelRgb);
+    console.log(
+      "[BT Theme] dark-mode base surface luminance =",
+      lum,
+      "for",
+      baseSurfaceCandidate
+    );
+    if (lum > 0.6) {
+      baseSurface = darkFallbackSurface;
+      panelRgb = parseColorToRgb(baseSurface);
+      console.log(
+        "[BT Theme] overriding baseSurface with dark fallback",
+        baseSurface
+      );
+    }
+  }
+
+  console.log("[BT Theme] baseSurface =", baseSurface, "finalIsDark =", finalIsDark);
+
+  // Stronger defaults for Blueprint dark to improve legibility
+  const fallbackTextDark = usingBlueprint ? "#F5F8FA" : "#f5f8fa";
+  const fallbackBorderDark = usingBlueprint
+    ? "rgba(255,255,255,0.24)"
+    : "rgba(255,255,255,0.12)";
+  const fallbackMutedDark = usingBlueprint
+    ? "rgba(255,255,255,0.82)"
+    : "rgba(255,255,255,0.65)";
+  const fallbackPillBgDark = usingBlueprint
+    ? "rgba(255,255,255,0.18)"
+    : "rgba(255,255,255,0.08)";
+
   const textColor = pickColorValue(
-    finalIsDark ? "#f5f8fa" : "#111111",
+    finalIsDark ? fallbackTextDark : "#111111",
     computed.getPropertyValue("--bt-text"),
     computed.getPropertyValue("--bp3-text-color"),
     computed.color
   );
+
   const borderColor = pickColorValue(
-    finalIsDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
+    finalIsDark ? fallbackBorderDark : "rgba(0,0,0,0.08)",
     computed.getPropertyValue("--bt-border-color"),
     computed.getPropertyValue("--bp3-border-color"),
     computed.getPropertyValue("--border-color")
   );
+
   const mutedColor = pickColorValue(
-    finalIsDark ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.6)",
+    finalIsDark ? fallbackMutedDark : "rgba(0,0,0,0.6)",
     computed.getPropertyValue("--bt-muted-color"),
     computed.getPropertyValue("--text-color-muted")
   );
+
   const pillBg = pickColorValue(
-    finalIsDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)",
+    finalIsDark ? fallbackPillBgDark : "rgba(0,0,0,0.07)",
     computed.getPropertyValue("--bt-pill-bg")
   );
-
-  const panelRgb = parseColorToRgb(baseSurface);
-  const derivedDark = panelRgb ? computeLuminance(panelRgb) < 0.45 : null;
-  const finalIsDark = explicitDark || (derivedDark != null ? derivedDark : systemPrefersDark);
 
   body.classList.toggle("bt-theme-dark", finalIsDark);
   body.classList.toggle("bt-theme-light", !finalIsDark);
 
-  const adjustedPanel = adjustColor(panelRgb, finalIsDark ? -0.08 : 0.03) || baseSurface;
-  const borderStrong = adjustColor(panelRgb, finalIsDark ? -0.25 : 0.15) || borderColor;
+  console.log(
+    "[BT Theme] Applied classes: bt-theme-dark?",
+    finalIsDark,
+    "| bt-theme-light?",
+    !finalIsDark
+  );
+
+  const adjustedPanel =
+    adjustColor(panelRgb, finalIsDark ? -0.06 : 0.03) || baseSurface;
+  const borderStrong =
+    adjustColor(panelRgb, finalIsDark ? -0.22 : 0.15) || borderColor;
 
   root.style.setProperty("--bt-panel-bg", adjustedPanel);
   root.style.setProperty("--bt-panel-text", textColor);
@@ -7270,7 +7341,66 @@ function syncDashboardThemeVars() {
   root.style.setProperty("--bt-border-strong", borderStrong);
   root.style.setProperty("--bt-muted", mutedColor);
   root.style.setProperty("--bt-pill-bg", pillBg);
+
+  console.log("[BT Theme] CSS vars updated:", {
+    baseSurface,
+    adjustedPanel,
+    textColor,
+    borderColor,
+    borderStrong,
+    mutedColor,
+    pillBg,
+  });
+
   lastThemeSample = { surface: baseSurface, dark: finalIsDark };
+}
+
+function getExternalAppearanceFromToggle() {
+  if (typeof document === "undefined") return null;
+
+  // Try to find a concrete button/icon element for *either* theme
+  let btn =
+    // Roam Studio icon button
+    document.querySelector(".bp3-button.roamstudio-dm-toggle") ||
+    document.querySelector(".roamstudio-dm-toggle .bp3-button") ||
+    // Blueprint icon button
+    document.querySelector(".bp3-button.blueprint-dm-toggle") ||
+    document.querySelector(".blueprint-dm-toggle .bp3-button");
+
+  if (!btn) {
+    // Debug info if needed
+    const rsWrapper = document.querySelector(".roamstudio-dm-toggle");
+    const bpWrapper = document.querySelector(".blueprint-dm-toggle");
+    console.log("[BT Theme] External theme toggle icon not found", {
+      rsWrapper,
+      bpWrapper,
+    });
+    return null;
+  }
+
+  const className = btn.className || "";
+  console.log("[BT Theme] Theme toggle ICON found:", btn, "| className =", className);
+
+  const hasMoon = btn.classList.contains("bp3-icon-moon");
+  const hasFlash = btn.classList.contains("bp3-icon-flash");
+  const hasClean = btn.classList.contains("bp3-icon-clean");
+
+  // Order matters: if both clean+moon are present, treat as dark.
+  if (hasFlash) {
+    console.log("[BT Theme] Toggle reports mode = light");
+    return "light";
+  }
+  if (hasMoon) {
+    console.log("[BT Theme] Toggle reports mode = dark");
+    return "dark";
+  }
+  if (hasClean) {
+    console.log("[BT Theme] Toggle reports mode = auto");
+    return "auto";
+  }
+
+  console.log("[BT Theme] Toggle icon has unexpected classes, mode = null");
+  return null;
 }
 
 function parseColorToRgb(value) {
@@ -7404,17 +7534,52 @@ async function waitForRepeatState(uid, set, options = {}, retries = 6, getBlockF
   }
 }
 
+function observeThemeChanges() {
+  if (typeof document === "undefined") return;
+  syncDashboardThemeVars();
+
+  if (!document.body) return;
+
+  if (!themeObserver) {
+    themeObserver = new MutationObserver(() => {
+      triggerThemeResync(180);
+    });
+    try {
+      const targets = [document.body, document.documentElement].filter(Boolean);
+      for (const target of targets) {
+        themeObserver.observe(target, {
+          attributes: true,
+          attributeFilter: ["class", "data-theme"],
+        });
+      }
+    } catch (_) {
+      themeObserver = null;
+    }
+  }
+
+  if (typeof window !== "undefined" && window.matchMedia) {
+    if (!window.__btThemeMediaQuery) {
+      window.__btThemeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      window.__btThemeMediaQuery.addEventListener?.("change", () => {
+        triggerThemeResync(0);
+      });
+    }
+  }
+
+  observeThemeStyles();
+  observeThemeToggleClicks();
+  observeRoamStudioToggleAttributes();
+}
+
 function observeThemeStyles() {
   if (typeof document === "undefined") return;
   const head = document.head;
   if (!head || themeStyleObserver) return;
+
   themeStyleObserver = new MutationObserver(() => {
-    if (themeSyncTimer) clearTimeout(themeSyncTimer);
-    themeSyncTimer = setTimeout(() => {
-      syncDashboardThemeVars();
-      themeSyncTimer = null;
-    }, 200);
+    triggerThemeResync(200);
   });
+
   try {
     themeStyleObserver.observe(head, {
       childList: true,
@@ -7425,6 +7590,56 @@ function observeThemeStyles() {
   } catch (_) {
     themeStyleObserver = null;
   }
+}
+
+function triggerThemeResync(delay = 0) {
+  if (themeSyncTimer) clearTimeout(themeSyncTimer);
+  themeSyncTimer = setTimeout(() => {
+    syncDashboardThemeVars();
+    themeSyncTimer = null;
+  }, delay);
+}
+
+function observeThemeToggleClicks() {
+  if (typeof document === "undefined" || !document.body) return;
+  if (window.__btThemeToggleClickHandlerAttached) return;
+
+  const handler = (e) => {
+    const toggle = e.target.closest(".roamstudio-dm-toggle, .blueprint-dm-toggle");
+    if (!toggle) return;
+
+    console.log("[BT Theme] Theme toggle click detected, scheduling theme resync");
+    btPendingRoamStudioTheme = true;
+
+    // Still give the theme extension time to rebuild CSS
+    triggerThemeResync(650);
+  };
+
+  document.body.addEventListener("click", handler, true);
+  window.__btThemeToggleClickHandlerAttached = true;
+}
+
+function observeRoamStudioToggleAttributes() {
+  if (typeof document === "undefined") return;
+  if (roamStudioToggleObserver) return;
+
+  const toggle = document.querySelector(".roamstudio-dm-toggle");
+  if (!toggle) {
+    // Try again later – RS might not have injected the button yet
+    setTimeout(observeRoamStudioToggleAttributes, 1000);
+    return;
+  }
+
+  roamStudioToggleObserver = new MutationObserver((mutations) => {
+    if (mutations.some(m => m.type === "attributes" && m.attributeName === "class")) {
+      triggerThemeResync(120);
+    }
+  });
+
+  roamStudioToggleObserver.observe(toggle, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
 }
 
 function disconnectTopbarObserver() {
