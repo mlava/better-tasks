@@ -164,12 +164,74 @@ label.revealIn>input {
 body.bp3-dark,
 body.bt-theme-dark {
     --bt-panel-bg: var(--bt-surface, #1f2428);
-    --bt-panel-text: var(--bt-text, #f5f8fa);
-    --bt-border: var(--bt-border-color, rgba(255, 255, 255, 0.12));
-    --bt-border-strong: rgba(255, 255, 255, 0.25);
-    --bt-muted: var(--bt-muted-color, rgba(255, 255, 255, 0.65));
-    --bt-pill-bg: rgba(255, 255, 255, 0.08);
+    --bt-panel-text: var(--bt-text, #f7f9fb);
+    --bt-border: var(--bt-border-color, rgba(255, 255, 255, 0.16));
+    --bt-border-strong: rgba(255, 255, 255, 0.28);
+    --bt-muted: var(--bt-muted-color, rgba(247, 249, 251, 0.78));
+    --bt-pill-bg: rgba(255, 255, 255, 0.12);
     --bt-popover-bg: rgba(12, 14, 16, 0.98);
+}
+body.bp3-dark .bt-dashboard__header h2,
+body.bt-theme-dark .bt-dashboard__header h2 {
+    color: var(--bt-panel-text);
+}
+body.bp3-dark .bt-dashboard__header-actions .bp3-button,
+body.bt-theme-dark .bt-dashboard__header-actions .bp3-button {
+    color: var(--bt-panel-text);
+    border-color: var(--bt-border-strong);
+}
+body.bp3-dark .bt-group-header,
+body.bt-theme-dark .bt-group-header {
+    color: rgba(247, 249, 251, 0.88);
+}
+body.bp3-dark .bt-task-row__checkbox,
+body.bt-theme-dark .bt-task-row__checkbox {
+    color: rgba(247, 249, 251, 0.64);
+}
+body.bp3-dark .bt-task-row__checkbox--done,
+body.bt-theme-dark .bt-task-row__checkbox--done {
+    color: #5dd48a;
+}
+body.bp3-dark .bt-task-row__context-link,
+body.bt-theme-dark .bt-task-row__context-link {
+    color: rgba(247, 249, 251, 0.9);
+}
+body.bp3-dark .bt-chip,
+body.bt-theme-dark .bt-chip {
+    color: var(--bt-panel-text);
+    border-color: rgba(255, 255, 255, 0.32);
+}
+body.bp3-dark .bt-chip--active,
+body.bt-theme-dark .bt-chip--active {
+    background: var(--bt-panel-text);
+    color: #0f1418;
+    border-color: var(--bt-panel-text);
+}
+body.bp3-dark .bt-filter-row__label,
+body.bt-theme-dark .bt-filter-row__label {
+    color: var(--bt-muted);
+}
+body.bp3-dark .bt-task-row__title,
+body.bt-theme-dark .bt-task-row__title {
+    color: var(--bt-panel-text);
+}
+body.bp3-dark .bt-task-row__meta,
+body.bt-theme-dark .bt-task-row__meta,
+body.bp3-dark .bt-task-row__context,
+body.bt-theme-dark .bt-task-row__context {
+    color: var(--bt-muted);
+}
+body.bp3-dark .bt-task-row__actions .bp3-button,
+body.bt-theme-dark .bt-task-row__actions .bp3-button,
+body.bp3-dark .bt-task-row__snooze .bp3-button,
+body.bt-theme-dark .bt-task-row__snooze .bp3-button {
+    color: var(--bt-panel-text);
+    border-color: var(--bt-border-strong);
+}
+body.bp3-dark .bt-task-menu__trigger,
+body.bt-theme-dark .bt-task-menu__trigger {
+    color: var(--bt-panel-text);
+    border-color: var(--bt-border);
 }
 
 .bt-dashboard-host {
