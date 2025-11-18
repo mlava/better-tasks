@@ -1610,10 +1610,7 @@ export default {
       const entry = completionPairs.get(uid) || {};
       const pairedRemoval =
         entry.removedAt && now - entry.removedAt <= COMPLETION_PAIR_WINDOW_MS;
-      const navWindow = lastNavigationAt && now - lastNavigationAt <= NAV_COMPLETION_BLOCK_MS;
-      const quietWindow = now < pageLoadQuietUntil;
-      const userInitiated =
-        recentClick || (pairedRemoval && !quietWindow && !navWindow);
+      const userInitiated = recentClick;
       if (now < pageLoadQuietUntil && !userInitiated) {
         logCompletionDebug("skip-done-add-quiet", {
           uid,
@@ -1869,9 +1866,11 @@ export default {
         fromQueue: !!options?.checkbox || false,
         now: Date.now(),
       });
-      processedMap.set(uid, Date.now());
+      const now = Date.now();
+      processedMap.set(uid, now);
       const checkbox = options.checkbox || null;
-      const userInitiated = !!options.userInitiated;
+      const userClickRecent = now - lastUserCheckboxInteraction <= USER_COMPLETION_BYPASS_MS;
+      const userInitiated = !!options.userInitiated && userClickRecent;
       const detectedAt = typeof options.detectedAt === "number" ? options.detectedAt : null;
       try {
         const set = S();
@@ -1893,7 +1892,6 @@ export default {
           return null;
         }
 
-        const now = Date.now();
         const detectionTs = detectedAt || now;
         const recentNavigation =
           !!lastNavigationAt && detectionTs - lastNavigationAt <= NAV_COMPLETION_BLOCK_MS;
@@ -1904,6 +1902,16 @@ export default {
             detectedAt: detectionTs,
             lastNavigationAt,
             windowMs: NAV_COMPLETION_BLOCK_MS,
+          });
+          return null;
+        }
+
+        if (!userInitiated && meta.processedTs) {
+          processedMap.delete(uid);
+          logCompletionDebug("skip-completion-meta-processed", {
+            uid,
+            metaProcessed: meta.processedTs,
+            now,
           });
           return null;
         }
@@ -5534,8 +5542,8 @@ export default {
           clearPendingPillTimer(uid);
 
           if (seen.has(uid)) {
-            if (main.querySelector?.(".rt-pill-wrap")) continue;
-            schedulePillRefresh(main, uid, 60);
+            // Ensure this instance cleans any stray pills and exits; first instance handles render.
+            main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
             continue;
           }
           seen.add(uid);
@@ -5551,6 +5559,11 @@ export default {
           activeDashboardController?.notifyBlockChange?.(uid);
 
           const originalString = block.string;
+          const isAttrLine = ATTR_RE.test((originalString || "").trim());
+          if (isAttrLine) {
+            main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
+            continue;
+          }
           const meta = await readRecurringMeta(block, set);
           const hasTiming = !!meta.hasTimingAttrs;
           const isRecurring = !!meta.repeat;
@@ -5573,17 +5586,15 @@ export default {
           const caretOpen = caret?.classList?.contains("rm-caret-down");
           const inlineCaretOpen = caret?.getAttribute?.("aria-expanded") === "true";
           const inlineCaretClosed = caret?.getAttribute?.("aria-expanded") === "false";
+          const blockContainer = main.closest?.(".roam-block-container, .roam-block") || null;
           const childrenContainer =
-            main.querySelector?.(":scope > .rm-block__children") ||
-            main.querySelector?.(":scope > .rm-block-children");
+            blockContainer?.querySelector?.(":scope > .rm-block__children, :scope > .rm-block-children") || null;
           const childrenVisible = isChildrenVisible(childrenContainer);
+          // Use DOM state for this specific instance; ignore persisted block.open to avoid cross-pane bleed.
           const isOpen =
-            block.open === true ||
-              inlineCaretOpen ||
-              caretOpen ||
-              childrenVisible
+            inlineCaretOpen || caretOpen || childrenVisible
               ? true
-              : block.open === false || inlineCaretClosed || caretClosed
+              : inlineCaretClosed || caretClosed
                 ? false
                 : childrenContainer
                   ? childrenVisible
