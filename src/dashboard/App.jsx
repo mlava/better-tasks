@@ -277,6 +277,7 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
   const menuRef = useRef(null);
   const buttonRef = useRef(null);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const menuSizeRef = useRef({ width: 240, height: 200 });
   const metadata = task.metadata || {};
   const handleEditText = async (key, currentValue) => {
     const label =
@@ -337,50 +338,27 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
     if (!buttonRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
-    const estimatedHeight = 240; // provide enough room for the menu
-    const openUpwards = true; // prefer above
-    setCoords({
-      top: openUpwards ? rect.top - 6 : rect.bottom + 6,
-      left: rect.right - 12,
-      align: openUpwards ? "top" : "bottom",
-    });
+    const viewportWidth = window.innerWidth;
+    const spacing = 8;
+    const { width = 240, height = 200 } = menuSizeRef.current || {};
+    let openAbove = rect.top - spacing - height >= spacing;
+    if (!openAbove && rect.bottom + spacing + height <= viewportHeight - spacing) {
+      openAbove = false;
+    } else if (!openAbove) {
+      openAbove = rect.top > viewportHeight / 2;
+    }
+    let top = openAbove ? rect.top - height - spacing : rect.bottom + spacing;
+    if (top < spacing) top = spacing;
+    if (top + height + spacing > viewportHeight) {
+      top = Math.max(spacing, viewportHeight - height - spacing);
+    }
+    let left = rect.right - width;
+    if (left < spacing) left = spacing;
+    if (left + width + spacing > viewportWidth) {
+      left = Math.max(spacing, viewportWidth - width - spacing);
+    }
+    setCoords({ top, left });
   }, []);
-
-  useLayoutEffect(() => {
-    if (!open) return undefined;
-    updatePosition();
-    const handler = () => updatePosition();
-    window.addEventListener("scroll", handler, true);
-    window.addEventListener("resize", handler);
-    return () => {
-      window.removeEventListener("scroll", handler, true);
-      window.removeEventListener("resize", handler);
-    };
-  }, [open, updatePosition]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const handleClick = (event) => {
-      if (
-        menuRef.current?.contains(event.target) ||
-        buttonRef.current?.contains(event.target)
-      ) {
-        return;
-      }
-      setOpenState(false);
-    };
-    const handleKey = (event) => {
-      if (event.key === "Escape") {
-        setOpenState(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [open]);
 
   const actions = useMemo(() => {
     if (!task || !controller) return [];
@@ -519,7 +497,55 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
     return list;
   }, [controller, task, handleEditText]);
 
-  if (!actions.length) return null;
+  const safeActions = Array.isArray(actions) ? actions : [];
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const menuEl = menuRef.current;
+    if (menuEl) {
+      const rect = menuEl.getBoundingClientRect();
+      menuSizeRef.current = { width: rect.width, height: rect.height };
+      updatePosition();
+    }
+  }, [open, updatePosition, safeActions.length]);
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    updatePosition();
+    const handler = () => updatePosition();
+    window.addEventListener("scroll", handler, true);
+    window.addEventListener("resize", handler);
+    return () => {
+      window.removeEventListener("scroll", handler, true);
+      window.removeEventListener("resize", handler);
+    };
+  }, [open, updatePosition]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleClick = (event) => {
+      if (
+        menuRef.current?.contains(event.target) ||
+        buttonRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setOpenState(false);
+    };
+    const handleKey = (event) => {
+      if (event.key === "Escape") {
+        setOpenState(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  if (!safeActions.length) return null;
 
   const menuRoot = useMemo(() => {
     if (typeof document === "undefined") return null;
@@ -550,13 +576,9 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
             position: "fixed",
             top: coords.top,
             left: coords.left,
-            transform:
-              coords.align === "top"
-                ? "translate(-100%, -100%)"
-                : "translate(-100%, 0)",
           }}
         >
-          {actions.map((action) =>
+          {safeActions.map((action) =>
             action.separator ? (
               <div key={action.key} className="bt-task-menu__separator">
                 {action.label}

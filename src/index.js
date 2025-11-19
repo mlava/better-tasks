@@ -3613,7 +3613,15 @@ export default {
       const deferInfo = parseDateFromText(parsed.deferDateText || "", set);
 
       const anchorDate = dueInfo.date || deferInfo.date || startInfo.date || todayLocal();
-      const targetPageUid = await chooseTargetPageUid(anchorDate, { page: { uid: null } }, set);
+      let targetPageUid = await ensureTargetReady(anchorDate, { page: { uid: null } }, set);
+      if (!targetPageUid) {
+        targetPageUid = await chooseTargetPageUid(anchorDate, { page: { uid: null } }, set);
+      }
+      if (!targetPageUid) {
+        console.warn("[BetterTasks] quick add parsed task missing target page");
+        toast("Couldn't find a page to create that task.");
+        return false;
+      }
       const newUid = window.roamAlphaAPI.util.generateUID();
       await createBlock(targetPageUid, 0, todoString, newUid);
 
@@ -3679,7 +3687,15 @@ export default {
       const deferStr = deferDate ? formatDate(deferDate, set) : null;
 
       const anchorDate = dueDate || deferDate || startDate || todayLocal();
-      const targetPageUid = await chooseTargetPageUid(anchorDate, { page: { uid: null } }, set);
+      let targetPageUid = await ensureTargetReady(anchorDate, { page: { uid: null } }, set);
+      if (!targetPageUid) {
+        targetPageUid = await chooseTargetPageUid(anchorDate, { page: { uid: null } }, set);
+      }
+      if (!targetPageUid) {
+        console.warn("[BetterTasks] quick add prompt task missing target page");
+        toast("Couldn't find a page to create that task.");
+        return false;
+      }
       const newUid = window.roamAlphaAPI.util.generateUID();
       await createBlock(targetPageUid, 0, todoString, newUid);
 
