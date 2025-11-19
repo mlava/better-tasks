@@ -35,10 +35,6 @@
       "react-dom": "18.2.0"
     }
   },
-  "externals": {
-    "react": "React",
-    "react-dom": "ReactDOM"
-  },
   "keywords": [
     "task",
     "todo",

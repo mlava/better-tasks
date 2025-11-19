@@ -30,6 +30,11 @@ module.exports = {
     resolve: {
         extensions: [".js", ".jsx", ".ts", ".tsx"],
     },
+    externalsType: "window",
+    externals: {
+        "react": "React",
+        "react-dom": "ReactDOM"
+    },
     performance: {
         hints: false,
     },
