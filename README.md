@@ -55,7 +55,7 @@ Regardless of how you enter the attributes, the extension emits a compact **pill
 - **↻ Repeat pill** — Click to edit; **Alt+Click** copies the rule to the clipboard.
 - **⏱ Start / ⏳ Defer / 📅 Next** — Click to open the corresponding Daily Note Page.  
   **Shift+Click** opens that page in the right sidebar (matches Roam).  
-  **Alt+Cmd/Ctrl+Click** on the due pill snoozes +1 day.  
+  **Alt-Cmd/Ctrl+Click** on the due pill snoozes +1 day.  
   **Alt/Ctrl/Meta+Click** on any date pill opens a date picker to change that date.
 - **⋯ Menu** — Opens the full Better Task menu (see below).
 
@@ -116,7 +116,7 @@ Each task shows an inline “pill” next to its checkbox when the child blocks 
 
 **Pill actions:**
 - **Repeat pill (↻)** — Click to edit; Alt+Click to copy rule text.
-- **Due pill (Next:)** — Click to open DNP; Shift+Click opens in right sidebar; Alt+Cmd/Ctrl+Click snoozes +1 day; Alt/Ctrl/Meta+Click opens the date picker.
+- **Due pill (Next:)** — Click to open DNP; Shift+Click opens in right sidebar; Alt-Cmd/Ctrl+Click snoozes +1 day; Alt/Ctrl/Meta+Click opens the date picker.
 - **⋯ (menu)** — Opens the task menu with more options:
 
 | Action | Description |

@@ -10,7 +10,7 @@ Run this checklist before each release:
    - Shift+click the due pill.
    - Expect: the due date opens in Roams right sidebar.
 
-3. **Due pill  Alt+Cmd/Ctrl+Click (snooze)**
+3. **Due pill  Alt-Cmd/Ctrl+Click (snooze)**
    - Hold Alt+Cmd (macOS) or Alt+Ctrl (Windows/Linux) while clicking the due pill.
    - Expect: a `defer::` child is created/updated to today+1 (or defer+1); due remains unchanged; toast confirms snooze.
 

@@ -774,8 +774,8 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     [snapshot.tasks, filters, query]
   );
   const groups = useMemo(
-    () => groupTasks(filteredTasks, grouping, { completion: filters.completion }),
-    [filteredTasks, grouping, filters.completion]
+    () => groupTasks(filteredTasks, grouping, { completion: filters.Completion || filters.completion }),
+    [filteredTasks, grouping, filters.Completion, filters.completion]
   );
   useEffect(() => {
     setExpandedGroups((prev) => {

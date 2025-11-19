@@ -3062,7 +3062,8 @@ export default {
         } else if (type === "priority" || type === "energy") {
           await setRichAttribute(uid, type, trimmed || null, attrNames);
         }
-        const notifier = controllerRef?.notifyBlockChange || controller.notifyBlockChange;
+        const notifier =
+          controllerRef?.notifyBlockChange || activeDashboardController?.notifyBlockChange;
         if (typeof notifier === "function") {
           await notifier(uid, { bypassFilters: true });
         }
@@ -4801,7 +4802,8 @@ export default {
           settled = true;
           resolve(value);
         };
-        const inputHtml = `<input type="text" placeholder="${escapeHtml(
+        const inputClass = `rt-prompt-input-${Date.now()}`;
+        const inputHtml = `<input type="text" class="${inputClass}" placeholder="${escapeHtml(
           placeholder || ""
         )}" value="${escapeHtml(initial || "")}" />`;
         iziToast.question({
@@ -4861,6 +4863,14 @@ export default {
               },
             ],
           ],
+          onOpened: (_instance, toastEl) => {
+            const input = toastEl.querySelector?.(`.${inputClass}`);
+            input?.focus?.();
+            if (input && typeof input.selectionStart === "number") {
+              const len = input.value.length;
+              input.setSelectionRange(len, len);
+            }
+          },
           onClosed: () => finish(null),
         });
       });
@@ -5449,6 +5459,12 @@ export default {
           align-items: center;
           gap: 4px;
         }
+        .rt-pill-meta {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          cursor: pointer;
+        }
         .rt-pill-icon {
           font-size: 11px;
           line-height: 1;
@@ -5542,8 +5558,9 @@ export default {
           clearPendingPillTimer(uid);
 
           if (seen.has(uid)) {
-            // Ensure this instance cleans any stray pills and exits; first instance handles render.
+            if (main.querySelector?.(".rt-pill-wrap")) continue;
             main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
+            schedulePillRefresh(main, uid, 60);
             continue;
           }
           seen.add(uid);
@@ -5567,7 +5584,16 @@ export default {
           const meta = await readRecurringMeta(block, set);
           const hasTiming = !!meta.hasTimingAttrs;
           const isRecurring = !!meta.repeat;
-          if (!isRecurring && !hasTiming) {
+          const metadataInfo = meta.metadata || parseRichMetadata(meta.childAttrMap || {}, attrNames);
+          const hasMetadataSignal =
+            !!(
+              metadataInfo?.project ||
+              metadataInfo?.waitingFor ||
+              (metadataInfo?.context || []).length ||
+              metadataInfo?.priority ||
+              metadataInfo?.energy
+            );
+          if (!isRecurring && !hasTiming && !hasMetadataSignal) {
             main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
             continue;
           }
@@ -5598,10 +5624,9 @@ export default {
                 ? false
                 : childrenContainer
                   ? childrenVisible
-                  : false;
+                  : block.open === true;
 
           main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
-
           if (isOpen) {
             continue;
           }
@@ -5748,6 +5773,134 @@ export default {
               handleDueClick(e, { uid, set, meta, span: dueSpan });
             });
             pill.appendChild(dueSpan);
+          }
+
+          const appendMetaSpan = (icon, text, title) => {
+            if (!text) return null;
+            if (pill.childElementCount > 0) addSeparator();
+            const span = document.createElement("span");
+            span.className = "rt-pill-meta";
+            span.textContent = `${icon} ${text}`;
+            span.title = title;
+            pill.appendChild(span);
+            return span;
+          };
+
+          const cyclePriorityEnergy = async (type, currentValue) => {
+            const order = [null, "low", "medium", "high"];
+            const normalized = currentValue ? currentValue.toLowerCase() : null;
+            const idx = order.indexOf(normalized);
+            const next = order[(idx + 1) % order.length];
+            await setRichAttribute(uid, type, next, attrNames);
+            activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
+            return next;
+          };
+
+          if (metadataInfo?.project) {
+            const span = appendMetaSpan(
+              "📁",
+              metadataInfo.project,
+              `Project: ${metadataInfo.project}`
+            );
+            span?.addEventListener("click", (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              handleMetadataClick(
+                uid,
+                "project",
+                { value: metadataInfo.project },
+                event,
+                activeDashboardController
+              );
+            });
+          }
+          if (metadataInfo?.waitingFor) {
+            const span = appendMetaSpan(
+              "⌛",
+              metadataInfo.waitingFor,
+              `Waiting for: ${metadataInfo.waitingFor}`
+            );
+            span?.addEventListener("click", (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              handleMetadataClick(
+                uid,
+                "waitingFor",
+                { value: metadataInfo.waitingFor },
+                event,
+                activeDashboardController
+              );
+            });
+          }
+          if (metadataInfo?.context?.length) {
+            const first = metadataInfo.context[0];
+            const extra =
+              metadataInfo.context.length > 1
+                ? ` (+${metadataInfo.context.length - 1})`
+                : "";
+            const display = `${first}${extra}`;
+            const span = appendMetaSpan(
+              "@",
+              display,
+              `Context: ${metadataInfo.context.join(", ")}`
+            );
+            span?.addEventListener("click", (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              handleMetadataClick(
+                uid,
+                "context",
+                { value: first, list: metadataInfo.context },
+                event,
+                activeDashboardController
+              );
+            });
+          }
+          if (metadataInfo?.priority) {
+            const span = appendMetaSpan(
+              "!",
+              formatPriorityEnergyDisplay(metadataInfo.priority),
+              `Priority: ${formatPriorityEnergyDisplay(metadataInfo.priority)} (click to cycle)`
+            );
+            if (span) {
+              span.dataset.metaValue = metadataInfo.priority || "";
+              span.addEventListener("click", async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const current = span.dataset.metaValue || null;
+                const next = await cyclePriorityEnergy("priority", current);
+                if (next) {
+                  span.dataset.metaValue = next || "";
+                  span.textContent = `! ${formatPriorityEnergyDisplay(next)}`;
+                  span.title = `Priority: ${formatPriorityEnergyDisplay(next)} (click to cycle)`;
+                } else {
+                  span.remove();
+                }
+              });
+            }
+          }
+          if (metadataInfo?.energy) {
+            const span = appendMetaSpan(
+              "🔋",
+              formatPriorityEnergyDisplay(metadataInfo.energy),
+              `Energy: ${formatPriorityEnergyDisplay(metadataInfo.energy)} (click to cycle)`
+            );
+            if (span) {
+              span.dataset.metaValue = metadataInfo.energy || "";
+              span.addEventListener("click", async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const current = span.dataset.metaValue || null;
+                const next = await cyclePriorityEnergy("energy", current);
+                if (next) {
+                  span.dataset.metaValue = next || "";
+                  span.textContent = `🔋 ${formatPriorityEnergyDisplay(next)}`;
+                  span.title = `Energy: ${formatPriorityEnergyDisplay(next)} (click to cycle)`;
+                } else {
+                  span.remove();
+                }
+              });
+            }
           }
 
           const menuBtn = document.createElement("span");
@@ -6094,6 +6247,32 @@ export default {
 
     function showPillMenu({ uid, set, isRecurring = true }) {
       const menuId = `rt-pill-menu-${uid}-${Date.now()}`;
+      const metadataInfo = activeDashboardController
+        ? activeDashboardController.getTaskMetadata?.(uid)
+        : null;
+      const hasProject = !!metadataInfo?.project;
+      const hasWaiting = !!metadataInfo?.waitingFor;
+      const hasContext = Array.isArray(metadataInfo?.context) && metadataInfo.context.length > 0;
+      const metaSection = `
+        <small>Metadata</small>
+        ${
+          hasProject
+            ? `<button data-action="meta-project-remove" data-danger="1">Remove project</button>`
+            : `<button data-action="meta-project-add">Add project</button>`
+        }
+        ${
+          hasWaiting
+            ? `<button data-action="meta-waiting-remove" data-danger="1">Remove waiting-for</button>`
+            : `<button data-action="meta-waiting-add">Add waiting-for</button>`
+        }
+        ${
+          hasContext
+            ? `<button data-action="meta-context-remove" data-danger="1">Remove context</button>`
+            : `<button data-action="meta-context-add">Add context</button>`
+        }
+        <button data-action="meta-priority-cycle">Cycle priority</button>
+        <button data-action="meta-energy-cycle">Cycle energy</button>
+      `;
       const recurringBlock = isRecurring
         ? `
          <button data-action="skip">Skip this occurrence</button>
@@ -6108,6 +6287,7 @@ export default {
          <button data-action="snooze-next-mon">Snooze to next Monday</button>
          <button data-action="snooze-pick">Snooze (pick date)</button>
          ${recurringBlock}
+         ${metaSection}
         </div>
       `;
       iziToast.show({
@@ -6528,6 +6708,8 @@ export default {
           ? inputContainer.firstElementChild
           : null;
       const autocompleteWrapper = main.querySelector?.(".rm-autocomplete__wrapper");
+      const blockSelf = main.querySelector?.(".rm-block__self");
+      const blockText = main.querySelector?.(".rm-block-text");
       if (inlineText && inlineText.nodeType === 1) {
         inlineText.appendChild(pillWrap);
         pillWrap.classList.add("rt-pill-inline");
@@ -6536,6 +6718,15 @@ export default {
       if (inputContainer && inputContainer.tagName !== "TEXTAREA" && !pillWrap.isConnected) {
         inputContainer.appendChild(pillWrap);
         pillWrap.classList.add("rt-pill-inline");
+        return;
+      }
+      if (blockText && !pillWrap.isConnected) {
+        blockText.appendChild(pillWrap);
+        pillWrap.classList.add("rt-pill-inline");
+        return;
+      }
+      if (blockSelf?.parentNode && !pillWrap.isConnected) {
+        blockSelf.parentNode.insertBefore(pillWrap, blockSelf.nextSibling);
         return;
       }
       if (autocompleteWrapper?.parentNode && !pillWrap.isConnected) {
@@ -6968,6 +7159,7 @@ export default {
           toast("Could not update metadata.");
         }
         await notifyBlockChange(uid, { bypassFilters: true });
+        void syncPillsForSurface(lastAttrSurface);
       }
 
       async function snoozeTask(uid, preset) {
