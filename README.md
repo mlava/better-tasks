@@ -42,6 +42,26 @@ Optionally include a start attribute `BT_attrStart::` (when the task becomes ava
 
 Leave the repeat field blank while setting any combination of `start::`, `defer::`, or `due::` to create a *scheduled one-off* task. It uses the same child-block storage, pills, snooze controls, and completion logic — just without spawning a follow-up block. Completing it writes `completed:: [[<today>]]` and hides the pill.
 
+### 🔹 Optional Metadata
+
+Better Tasks also understands the following optional child-block attributes (names configurable in settings; defaults shown):
+
+```markdown
+- BT_attrProject:: [[Website Refresh]]
+- BT_attrWaitingFor:: [[Finance Team]]
+- BT_attrContext:: @computer, #office
+- BT_attrPriority:: high
+- BT_attrEnergy:: medium
+```
+
+These lines are purely optional—omit any you don’t need. Whenever a metadata value exists, it appears both in the dashboard and in the inline pill with quick actions:
+
+- Click → opens/creates the referenced page (project, waiting-for, context).
+- Shift+Click → opens that page in the right sidebar.
+- Cmd/Ctrl+Click → prompts you to edit the value directly.
+
+Priority/energy pills cycle through low/medium/high/none on click. You can also add/remove metadata from the “⋯” menu on the pill or the dashboard row.
+
 ### 🔹 Inline Pill Indicators
 
 Regardless of how you enter the attributes, the extension emits a compact **pill** next to each Better Task whenever its child blocks are collapsed:
@@ -57,6 +77,7 @@ Regardless of how you enter the attributes, the extension emits a compact **pill
   **Shift+Click** opens that page in the right sidebar (matches Roam).  
   **Alt-Cmd/Ctrl+Click** on the due pill snoozes +1 day.  
   **Alt/Ctrl/Meta+Click** on any date pill opens a date picker to change that date.
+- **📁 / ⌛ / @ / ! / 🔋 metadata** — Only appear when a project, waiting-for, context, priority, or energy is set. Click to open the page or cycle the value (priority/energy); Shift+Click opens in the sidebar; Cmd/Ctrl+Click prompts you to edit.
 - **⋯ Menu** — Opens the full Better Task menu (see below).
 
 ---
@@ -142,6 +163,7 @@ Open the dashboard from the command palette (`Toggle Better Tasks Dashboard`) or
 - Background refreshes whenever task attributes change so pills and dashboard stay in sync.
 - A floating panel you can drag anywhere within the Roam window. The position is remembered, so place it where it works best for your workflow.
 - A subtle ⋯ menu beside each task’s pills that lets you add or remove repeat/start/defer/due attributes (or edit them) without leaving the dashboard.
+- Optional metadata chips (project, waiting-for, context, priority, energy) with filters plus add/remove buttons that mirror the inline pill behaviour.
 - A quick-add input at the top: type a task and hit **OK** or Enter to create it (uses AI parsing when enabled, otherwise the manual Better Task flow with scheduling).
 - Clicking the repeat or date pills in the dashboard mirrors the inline pill behaviour: you can open the same pickers, copy repeat text, or jump straight to the target Daily Note without expanding the block in Roam.
 

@@ -54,14 +54,11 @@ Interactive task manager view
 - Ability to add/remove repeat/start/defer/due attributes directly from the dashboard menu.
 - Adaptive theming for Roam light/dark and popular theme packs (ongoing polish).
 - Dashboard support for waiting-for, project, context, priority and energy attributes, including creating, editing and deleting.
+- Inline pill metadata parity (project, waiting-for, context, priority, energy) with the same click / Shift+Click / Cmd+Click actions as the dashboard.
 
 **In Progress**
 
-Inline Pills:
-- Add **waiting for** support.
-- Add **project attribute** support.
-- Add **context attribute** support.
-- Introduce **priority** and **energy** attributes.
+- Additional inline pill UX polish (hover states, animations, and layout tidy-ups).
 
 **Pending**
 
@@ -106,7 +103,7 @@ Optional AI-assisted task creation using a user-supplied OpenAI API key.
 
 - Add a settings switch to allow recurrence to anchor on the defer date instead of the due date.
 - Implement task dependencies (e.g., “blocked by”, “waiting on”, sequential chains).
-- Add a waiting-for attribute for GTD-style workflows.
+- Build richer GTD views (Next / Waiting / Delegated) that leverage the existing waiting-for/project/context metadata.
 - Add explicit GTD modes: next, waiting, delegated.
 - Support shortcode input parsing (similar to Todoist’s syntax such as `!priority`, `@context`, etc.).
 - Add AI-powered task input parsing for natural-language task creation.
