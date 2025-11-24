@@ -18,6 +18,26 @@ function formatPriorityEnergyDisplay(value) {
   return value;
 }
 
+const GTD_STATUS_ORDER = ["next action", "delegated", "deferred", "someday"];
+
+function formatGtdStatusDisplay(value) {
+  if (!value) return "";
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function cycleGtdStatus(current) {
+  const normalized = current ? String(current).trim().toLowerCase() : null;
+  const order = [...GTD_STATUS_ORDER, null];
+  const idx = order.indexOf(normalized ?? null);
+  return order[(idx + 1) % order.length];
+}
+
 const FILTER_DEFS = {
   Recurrence: [
     { value: "recurring", label: "Recurring" },
@@ -51,6 +71,12 @@ const FILTER_DEFS = {
     { value: "medium", label: "Medium" },
     { value: "low", label: "Low" },
   ],
+  GTD: [
+    { value: "next action", label: "Next action" },
+    { value: "delegated", label: "Delegated" },
+    { value: "deferred", label: "Deferred" },
+    { value: "someday", label: "Someday" },
+  ],
 };
 
 const DEFAULT_FILTERS = {
@@ -61,6 +87,7 @@ const DEFAULT_FILTERS = {
   Completion: ["open"],
   Priority: [],
   Energy: [],
+  GTD: [],
   projectText: "",
   waitingText: "",
 };
@@ -103,6 +130,11 @@ function filtersReducer(state, action) {
       }
       return { ...state, [action.section]: Array.from(current) };
     }
+    case "toggleSingle": {
+      const current = new Set(state[action.section] || []);
+      const isActive = current.has(action.value);
+      return { ...state, [action.section]: isActive ? [] : [action.value] };
+    }
     case "setText":
       return { ...state, [action.section]: action.value || "" };
     case "reset":
@@ -134,6 +166,7 @@ function applyFilters(tasks, filters, query) {
   const completionFilter = new Set(filters.Completion || filters.completion || []);
   const priorityFilter = new Set(filters.Priority || filters.priority || []);
   const energyFilter = new Set(filters.Energy || filters.energy || []);
+  const gtdFilter = new Set(filters.GTD || filters.gtd || []);
   const projectText = (filters.projectText || "").trim().toLowerCase();
   const waitingText = (filters.waitingText || "").trim().toLowerCase();
   return tasks.filter((task) => {
@@ -148,6 +181,8 @@ function applyFilters(tasks, filters, query) {
     const meta = task.metadata || {};
     if (priorityFilter.size && !priorityFilter.has(meta.priority || "")) return false;
     if (energyFilter.size && !energyFilter.has(meta.energy || "")) return false;
+    const gtdValue = (meta.gtd || "").toLowerCase();
+    if (gtdFilter.size && !gtdFilter.has(gtdValue)) return false;
     if (projectText) {
       const hay = (meta.project || "").toLowerCase();
       if (!hay.includes(projectText)) return false;
@@ -228,7 +263,7 @@ function Pill({ icon, label, value, muted, onClick }) {
   );
 }
 
-function FilterChips({ section, chips, activeValues, onToggle }) {
+function FilterChips({ section, chips, activeValues, onToggle, singleChoice = false }) {
   const chipList = Array.isArray(chips) ? chips : [];
   const active = Array.isArray(activeValues) ? activeValues : [];
   return (
@@ -242,7 +277,7 @@ function FilterChips({ section, chips, activeValues, onToggle }) {
               key={chip.value}
               type="button"
               className={`bt-chip${isActive ? " bt-chip--active" : ""}`}
-              onClick={() => onToggle(section, chip.value)}
+              onClick={() => onToggle(section, chip.value, singleChoice)}
             >
               {chip.label}
             </button>
@@ -309,7 +344,7 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
     } else if (key === "project") {
       controller.updateMetadata?.(task.uid, { project: trimmed || null });
     } else if (key === "waitingFor") {
-      controller.updateMetadata?.(task.uid, { waitingFor: trimmed || null });
+          controller.updateMetadata?.(task.uid, { waitingFor: trimmed || null });
     }
   };
   const cycleValue = (key) => {
@@ -318,6 +353,10 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
     const idx = order.indexOf(current);
     const next = order[(idx + 1) % order.length];
     controller.updateMetadata?.(task.uid, { [key]: next });
+  };
+  const cycleGtd = () => {
+    const next = cycleGtdStatus(metadata.gtd || null);
+    controller.updateMetadata?.(task.uid, { gtd: next });
   };
 
   const setOpenState = useCallback((next) => {
@@ -424,6 +463,12 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
 
     const meta = task.metadata || {};
     list.push({ key: "meta-separator", label: "Metadata", separator: true });
+    list.push({
+      key: "meta-gtd",
+      label: `GTD: ${meta.gtd ? formatGtdStatusDisplay(meta.gtd) : "none"} (click to cycle)`,
+      handler: () => cycleGtd(),
+    });
+
     if (meta.project) {
       list.push({
         key: "meta-project-edit",
@@ -444,26 +489,6 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
       });
     }
 
-    if (meta.waitingFor) {
-      list.push({
-        key: "meta-waiting-edit",
-        label: `Edit waiting-for (${meta.waitingFor})`,
-        handler: () => handleEditText("waitingFor", meta.waitingFor),
-      });
-      list.push({
-        key: "meta-waiting-remove",
-        label: "Remove waiting-for",
-        handler: () => controller.updateMetadata?.(task.uid, { waitingFor: null }),
-        danger: true,
-      });
-    } else {
-      list.push({
-        key: "meta-waiting-add",
-        label: "Set waiting-for",
-        handler: () => handleEditText("waitingFor", meta.waitingFor),
-      });
-    }
-
     if (meta.context && meta.context.length) {
       list.push({
         key: "meta-context-edit",
@@ -481,6 +506,26 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
         key: "meta-context-add",
         label: "Set context",
         handler: () => handleEditText("context", (meta.context || []).join(", ")),
+      });
+    }
+
+    if (meta.waitingFor) {
+      list.push({
+        key: "meta-waiting-edit",
+        label: `Edit waiting-for (${meta.waitingFor})`,
+        handler: () => handleEditText("waitingFor", meta.waitingFor),
+      });
+      list.push({
+        key: "meta-waiting-remove",
+        label: "Remove waiting-for",
+        handler: () => controller.updateMetadata?.(task.uid, { waitingFor: null }),
+        danger: true,
+      });
+    } else {
+      list.push({
+        key: "meta-waiting-add",
+        label: "Set waiting-for",
+        handler: () => handleEditText("waitingFor", meta.waitingFor),
       });
     }
     list.push({
@@ -651,6 +696,8 @@ function TaskRow({ task, controller }) {
       ctrl.editDate(taskRow.uid, type, { event });
     } else if (type === "priority" || type === "energy") {
       ctrl.updateMetadata?.(taskRow.uid, { [type]: pill.nextValue });
+    } else if (type === "gtd") {
+      ctrl.updateMetadata?.(taskRow.uid, { gtd: pill.nextValue });
     } else if (type === "project") {
       ctrl.handleMetadataClick?.(taskRow.uid, "project", { value: pill.raw || pill.value }, event, ctrl);
     } else if (type === "waitingFor") {
@@ -831,8 +878,8 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     measureElement,
   });
 
-  const handleFilterToggle = (section, value) => {
-    dispatchFilters({ type: "toggle", section, value });
+  const handleFilterToggle = (section, value, singleChoice = false) => {
+    dispatchFilters({ type: singleChoice ? "toggleSingle" : "toggle", section, value });
   };
 
   const [quickText, setQuickText] = useState("");
@@ -973,6 +1020,14 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                 chips={FILTER_DEFS["Due"]}
                 activeValues={filters["Due"]}
                 onToggle={handleFilterToggle}
+              />
+              <FilterChips
+                key="GTD"
+                section="GTD"
+                chips={FILTER_DEFS["GTD"]}
+                activeValues={filters["GTD"]}
+                onToggle={handleFilterToggle}
+                singleChoice
               />
               <div className="bt-filter-text-row">
                 <label className="bt-filter-text">

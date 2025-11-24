@@ -12,6 +12,7 @@ const DEFAULT_WAITING_FOR_ATTR = "BT_attrWaitingFor";
 const DEFAULT_CONTEXT_ATTR = "BT_attrContext";
 const DEFAULT_PRIORITY_ATTR = "BT_attrPriority";
 const DEFAULT_ENERGY_ATTR = "BT_attrEnergy";
+const DEFAULT_GTD_ATTR = "BT_attrGTD";
 const ADVANCE_ATTR = "BT_attrAdvance";
 const INSTALL_TOAST_KEY = "rt-intro-toast";
 const AI_MODE_SETTING = "bt-ai-mode";
@@ -36,6 +37,7 @@ const START_ICON = "⏱";
 const DEFER_ICON = "⏳";
 const DUE_ICON = "📅";
 const WEEK_START_OPTIONS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const GTD_STATUS_ORDER = ["next action", "delegated", "deferred", "someday"];
 const PARENT_WRITE_DELAY_MS = 120;
 const TOAST_HIDE_DELAY_MS = 120;
 const DASHBOARD_TOPBAR_BUTTON_ID = "bt-dashboard-button";
@@ -51,6 +53,7 @@ let lastThemeSample = null;
 let themeStyleObserver = null;
 let roamStudioToggleObserver = null;
 let btPendingRoamStudioTheme = false;
+const ReactDOMGlobal = typeof window !== "undefined" ? window.ReactDOM || null : null;
 
 const DOW_MAP = {
   sunday: "SU",
@@ -162,6 +165,12 @@ export default {
           name: "Project attribute name",
           description: "Label for project attribute (child block)",
           action: { type: "input", placeholder: "BT_attrProject", onChange: handleAttributeNameChange },
+        },
+        {
+          id: "bt-attr-gtd",
+          name: "GTD status attribute name",
+          description: "Label for GTD status attribute (child block)",
+          action: { type: "input", placeholder: DEFAULT_GTD_ATTR, onChange: handleAttributeNameChange },
         },
         {
           id: "bt-attr-waitingFor",
@@ -2584,6 +2593,8 @@ export default {
             out.completed = out[key];
           } else if (key === attrNames.projectKey && out.project == null) {
             out.project = out[key];
+          } else if (key === attrNames.gtdKey && out.gtd == null) {
+            out.gtd = out[key];
           } else if (key === attrNames.waitingForKey && out.waitingFor == null) {
             out.waitingFor = out[key];
           } else if (key === attrNames.contextKey && out.context == null) {
@@ -2634,6 +2645,49 @@ export default {
       return null;
     }
 
+    function normalizeGtdStatus(raw) {
+      if (!raw || typeof raw !== "string") return null;
+      const stripped = stripLinkOrTag(raw).replace(/:+$/, "");
+      const s = stripped.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+      const aliases = {
+        "next action": "next action",
+        "next": "next action",
+        "na": "next action",
+        "nextaction": "next action",
+        "delegated": "delegated",
+        "waiting for": "delegated",
+        "waiting": "delegated",
+        "deferred": "deferred",
+        "defer": "deferred",
+        "someday": "someday",
+        "someday maybe": "someday",
+        "maybe": "someday",
+      };
+      const match = aliases[s];
+      if (match) return match;
+      const orderedHit = GTD_STATUS_ORDER.find((status) => status === s);
+      return orderedHit || null;
+    }
+
+    function formatGtdStatusDisplay(value) {
+      const normalized = normalizeGtdStatus(value);
+      const source = normalized || (typeof value === "string" ? value.trim().toLowerCase() : "");
+      if (!source) return "";
+      return source
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+    }
+
+    function cycleGtdStatus(current) {
+      const normalized = current ? normalizeGtdStatus(current) : null;
+      const order = [...GTD_STATUS_ORDER, null];
+      const idx = order.indexOf(normalized ?? null);
+      const next = order[(idx + 1) % order.length];
+      return next;
+    }
+
     function formatPriorityEnergyDisplay(value) {
       if (!value || typeof value !== "string") return "";
       const v = value.trim().toLowerCase();
@@ -2649,13 +2703,15 @@ export default {
       const contextEntry = pickChildAttr(childAttrMap, attrNames.contextAliases || [], { allowFallback: true });
       const priorityEntry = pickChildAttr(childAttrMap, attrNames.priorityAliases || [], { allowFallback: true });
       const energyEntry = pickChildAttr(childAttrMap, attrNames.energyAliases || [], { allowFallback: true });
+      const gtdEntry = pickChildAttr(childAttrMap, attrNames.gtdAliases || [], { allowFallback: true });
 
       const project = projectEntry?.value ? stripLinkOrTag(projectEntry.value) || null : null;
       const waitingFor = waitingEntry?.value ? stripLinkOrTag(waitingEntry.value) || null : null;
       const context = contextEntry?.value ? normalizeContextList(contextEntry.value) : [];
       const priority = normalizePriorityValue(priorityEntry?.value || null);
       const energy = normalizeEnergyValue(energyEntry?.value || null);
-      return { project, waitingFor, context, priority, energy };
+      const gtd = normalizeGtdStatus(gtdEntry?.value || null);
+      return { project, waitingFor, context, priority, energy, gtd };
     }
 
     function escapeRegExp(str) {
@@ -2729,11 +2785,24 @@ export default {
       const defer = buildAttrConfig("rt-defer-attr", DEFAULT_DEFER_ATTR);
       const completed = buildAttrConfig("rt-completed-attr", DEFAULT_COMPLETED_ATTR);
       const project = buildAttrConfig("bt-attr-project", DEFAULT_PROJECT_ATTR);
+      const gtd = buildAttrConfig("bt-attr-gtd", DEFAULT_GTD_ATTR);
       const waitingFor = buildAttrConfig("bt-attr-waitingFor", DEFAULT_WAITING_FOR_ATTR);
       const context = buildAttrConfig("bt-attr-context", DEFAULT_CONTEXT_ATTR);
       const priority = buildAttrConfig("bt-attr-priority", DEFAULT_PRIORITY_ATTR);
       const energy = buildAttrConfig("bt-attr-energy", DEFAULT_ENERGY_ATTR);
-      const attrByType = { repeat, due, start, defer, completed, project, waitingFor, context, priority, energy };
+      const attrByType = {
+        repeat,
+        due,
+        start,
+        defer,
+        completed,
+        project,
+        gtd,
+        waitingFor,
+        context,
+        priority,
+        energy,
+      };
       return {
         repeatAttr: repeat.attr,
         repeatKey: repeat.key,
@@ -2759,6 +2828,10 @@ export default {
         projectKey: project.key,
         projectAliases: project.aliases,
         projectRemovalKeys: project.removalKeys,
+        gtdAttr: gtd.attr,
+        gtdKey: gtd.key,
+        gtdAliases: gtd.aliases,
+        gtdRemovalKeys: gtd.removalKeys,
         waitingForAttr: waitingFor.attr,
         waitingForKey: waitingFor.key,
         waitingForAliases: waitingFor.aliases,
@@ -2815,10 +2888,11 @@ export default {
       defer: 4,
       due: 5,
       project: 6,
-      waitingfor: 7,
-      context: 8,
-      priority: 9,
-      energy: 10,
+      gtd: 7,
+      waitingfor: 8,
+      context: 9,
+      priority: 10,
+      energy: 11,
     };
 
     function getChildOrderForType(type) {
@@ -2836,6 +2910,7 @@ export default {
         { type: "defer", label: getAttrLabel("defer", attrNames) },
         { type: "due", label: getAttrLabel("due", attrNames) },
         { type: "project", label: getAttrLabel("project", attrNames) },
+        { type: "gtd", label: getAttrLabel("gtd", attrNames) },
         { type: "waitingFor", label: getAttrLabel("waitingFor", attrNames) },
         { type: "context", label: getAttrLabel("context", attrNames) },
         { type: "priority", label: getAttrLabel("priority", attrNames) },
@@ -2927,6 +3002,13 @@ export default {
             aliases: attrNames.projectAliases,
             removalKeys: attrNames.projectRemovalKeys,
           };
+        case "gtd":
+          return {
+            attr: attrNames.gtdAttr,
+            key: attrNames.gtdKey,
+            aliases: attrNames.gtdAliases,
+            removalKeys: attrNames.gtdRemovalKeys,
+          };
         case "waitingFor":
         case "waitingfor":
           return {
@@ -3001,6 +3083,13 @@ export default {
         writeValue = value.trim();
         if (type === "priority" || type === "energy") {
           writeValue = formatPriorityEnergyDisplay(writeValue);
+        } else if (type === "gtd") {
+          const normalized = normalizeGtdStatus(writeValue);
+          if (!normalized) {
+            await removeChildAttrsForType(uid, type, attrNames);
+            return;
+          }
+          writeValue = formatGtdStatusDisplay(normalized);
         }
       } else if (value && typeof value === "object" && value.label) {
         writeValue = String(value.label).trim();
@@ -5615,7 +5704,8 @@ export default {
               metadataInfo?.waitingFor ||
               (metadataInfo?.context || []).length ||
               metadataInfo?.priority ||
-              metadataInfo?.energy
+              metadataInfo?.energy ||
+              metadataInfo?.gtd
             );
           if (!isRecurring && !hasTiming && !hasMetadataSignal) {
             main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
@@ -5819,6 +5909,15 @@ export default {
             activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
             return next;
           };
+          const cycleGtdInline = async (currentValue) => {
+            const next = cycleGtdStatus(currentValue);
+            await setRichAttribute(uid, "gtd", next, attrNames);
+            activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
+            if (typeof window !== "undefined") {
+              window.__btInlineMetaCache?.delete?.(uid);
+            }
+            return next;
+          };
 
           if (metadataInfo?.project) {
             const span = appendMetaSpan(
@@ -5879,6 +5978,32 @@ export default {
                 activeDashboardController
               );
             });
+          }
+          if (metadataInfo?.gtd) {
+            const display = formatGtdStatusDisplay(metadataInfo.gtd);
+            const tooltip = `GTD: ${display}`;
+            const span = appendMetaSpan(
+              "➡",
+              display,
+              tooltip
+            );
+            if (span) {
+              span.dataset.metaValue = metadataInfo.gtd || "";
+              span.addEventListener("click", async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const current = span.dataset.metaValue || null;
+                const next = await cycleGtdInline(current);
+                if (next) {
+                  const nextDisplay = formatGtdStatusDisplay(next);
+                  span.dataset.metaValue = next || "";
+                  span.textContent = `➡ ${nextDisplay}`;
+                  span.title = `GTD: ${nextDisplay}`;
+                } else {
+                  span.remove();
+                }
+              });
+            }
           }
           if (metadataInfo?.priority) {
             const span = appendMetaSpan(
@@ -6308,6 +6433,9 @@ export default {
         if ("energy" in patch) {
           await setRichAttribute(uid, "energy", patch.energy ?? null, attrNamesForMenu);
         }
+        if ("gtd" in patch) {
+          await setRichAttribute(uid, "gtd", patch.gtd ?? null, attrNamesForMenu);
+        }
         if (typeof window !== "undefined") {
           window.__btInlineMetaCache?.delete(uid);
         }
@@ -6317,20 +6445,21 @@ export default {
 
       const metaSection = `
         <small>Metadata</small>
+        <button data-action="meta-gtd-cycle">Cycle GTD status</button>
         ${
           hasProject
             ? `<button data-action="meta-project-remove" data-danger="1">Remove project</button>`
             : `<button data-action="meta-project-add">Add project</button>`
         }
         ${
-          hasWaiting
-            ? `<button data-action="meta-waiting-remove" data-danger="1">Remove waiting-for</button>`
-            : `<button data-action="meta-waiting-add">Add waiting-for</button>`
-        }
-        ${
           hasContext
             ? `<button data-action="meta-context-remove" data-danger="1">Remove context</button>`
             : `<button data-action="meta-context-add">Add context</button>`
+        }
+        ${
+          hasWaiting
+            ? `<button data-action="meta-waiting-remove" data-danger="1">Remove waiting-for</button>`
+            : `<button data-action="meta-waiting-add">Add waiting-for</button>`
         }
         <button data-action="meta-priority-cycle">Cycle priority</button>
         <button data-action="meta-energy-cycle">Cycle energy</button>
@@ -6382,6 +6511,10 @@ export default {
           attach('[data-action="skip"]', () => skipOccurrence(uid, set));
           attach('[data-action="generate"]', () => generateNextNow(uid, set));
           attach('[data-action="end"]', () => endRecurrence(uid, set));
+          attach('[data-action="meta-gtd-cycle"]', async () => {
+            const next = cycleGtdStatus(metadataInfo?.gtd || null);
+            await applyMetadataPatch({ gtd: next });
+          });
           attach('[data-action="meta-project-add"]', async () => {
             const val = await promptForValue({
               title: "Add Project",
@@ -6393,17 +6526,6 @@ export default {
             await applyMetadataPatch({ project: val.trim() });
           });
           attach('[data-action="meta-project-remove"]', () => applyMetadataPatch({ project: null }));
-          attach('[data-action="meta-waiting-add"]', async () => {
-            const val = await promptForValue({
-              title: "Add Waiting-for",
-              message: "Who or what are you waiting for?",
-              placeholder: "Waiting for",
-              initial: "",
-            });
-            if (!val || !val.trim()) return;
-            await applyMetadataPatch({ waitingFor: val.trim() });
-          });
-          attach('[data-action="meta-waiting-remove"]', () => applyMetadataPatch({ waitingFor: null }));
           attach('[data-action="meta-context-add"]', async () => {
             const val = await promptForValue({
               title: "Add Context",
@@ -6420,6 +6542,17 @@ export default {
             await applyMetadataPatch({ context: contexts });
           });
           attach('[data-action="meta-context-remove"]', () => applyMetadataPatch({ context: [] }));
+          attach('[data-action="meta-waiting-add"]', async () => {
+            const val = await promptForValue({
+              title: "Add Waiting-for",
+              message: "Who or what are you waiting for?",
+              placeholder: "Waiting for",
+              initial: "",
+            });
+            if (!val || !val.trim()) return;
+            await applyMetadataPatch({ waitingFor: val.trim() });
+          });
+          attach('[data-action="meta-waiting-remove"]', () => applyMetadataPatch({ waitingFor: null }));
           attach('[data-action="meta-priority-cycle"]', async () => {
             const order = [null, "low", "medium", "high"];
             const current = (metadataInfo?.priority || "").toLowerCase() || null;
@@ -7176,7 +7309,7 @@ export default {
         container = document.createElement("div");
         container.className = "bt-dashboard-host";
         document.body.appendChild(container);
-        root = createRoot(container);
+        root = createRootCompat(container);
         if (!resizeListenerAttached && typeof window !== "undefined") {
           window.addEventListener("resize", handleWindowResize);
           resizeListenerAttached = true;
@@ -7274,6 +7407,9 @@ export default {
           }
           if ("energy" in patch) {
             await setRichAttribute(uid, "energy", patch.energy, attrNames);
+          }
+          if ("gtd" in patch) {
+            await setRichAttribute(uid, "gtd", patch.gtd, attrNames);
           }
         } catch (err) {
           console.warn("[BetterTasks] updateMetadata failed", err);
@@ -7709,6 +7845,7 @@ export default {
           getAttrLabel("due", attrNames),
           getAttrLabel("completed", attrNames),
           getAttrLabel("project", attrNames),
+          getAttrLabel("gtd", attrNames),
           getAttrLabel("waitingFor", attrNames),
           getAttrLabel("context", attrNames),
           getAttrLabel("priority", attrNames),
@@ -7851,6 +7988,17 @@ export default {
           value: `${display}${more}`,
           label: `Context: ${info.metadata.context.join(", ")}`,
           rawList: info.metadata.context,
+        });
+      }
+      if (info.metadata?.gtd) {
+        const display = formatGtdStatusDisplay(info.metadata.gtd);
+        const next = cycleGtdStatus(info.metadata.gtd);
+        pills.push({
+          type: "gtd",
+          icon: "➡",
+          value: display,
+          label: `GTD: ${display}`,
+          nextValue: next,
         });
       }
       if (info.metadata?.priority) {
@@ -8039,6 +8187,25 @@ function splitList(str) {
     .replace(/\band\b/gi, ",")
     .split(/[,\s/]+/)
     .filter(Boolean);
+}
+
+function createRootCompat(container) {
+  if (!container) throw new Error("Container required for dashboard");
+  // Prefer global ReactDOM.createRoot if available (React 18); otherwise skip straight to legacy render.
+  const createRootFn = ReactDOMGlobal && typeof ReactDOMGlobal.createRoot === "function" ? ReactDOMGlobal.createRoot : null;
+  if (createRootFn) {
+    try {
+      return createRootFn(container);
+    } catch (err) {
+      console.warn("[BetterTasks] createRoot failed, falling back to legacy render", err);
+    }
+  }
+  const dom = ReactDOMGlobal;
+  if (!dom) throw new Error("ReactDOM not available in this environment");
+  return {
+    render: (node) => dom.render(node, container),
+    unmount: () => dom.unmountComponentAtNode(container),
+  };
 }
 
 // Recognize MWF / TTh sets
