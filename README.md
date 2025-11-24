@@ -48,6 +48,7 @@ Better Tasks also understands the following optional child-block attributes (nam
 
 ```markdown
 - BT_attrProject:: [[Website Refresh]]
+- BT_attrGTD:: Next Action
 - BT_attrWaitingFor:: [[Finance Team]]
 - BT_attrContext:: @computer, #office
 - BT_attrPriority:: high
@@ -60,7 +61,7 @@ These lines are purely optional—omit any you don’t need. Whenever a metadata
 - Shift+Click → opens that page in the right sidebar.
 - Cmd/Ctrl+Click → prompts you to edit the value directly.
 
-Priority/energy pills cycle through low/medium/high/none on click. You can also add/remove metadata from the “⋯” menu on the pill or the dashboard row.
+GTD status cycles through Next Action → Delegated → Deferred → Someday → (cleared) on click. Priority/energy pills cycle through low/medium/high/none on click. You can also add/remove metadata from the “⋯” menu on the pill or the dashboard row.
 
 ### 🔹 Inline Pill Indicators
 
@@ -107,6 +108,9 @@ Label for the optional “due” date attribute (default `BT_attrDue`)
 
 ### Completed attribute name
 Label written when the task is marked DONE (default `BT_attrCompleted`).
+
+### GTD status attribute name
+Label for an optional GTD status child block (default `BT_attrGTD`), cycling through Next Action, Delegated, Deferred, Someday, or cleared.
 
 You can change any of these attributes in Settings. These defaults have been chosen to minimise the risk of unexpected behaviours if you already use start:: defer:: repeat:: due:: or completed:: in your graph for other purposes.
 
@@ -329,7 +333,7 @@ https://www.loom.com/share/f8856114bfd14d40a228292e7bcff9ee
 
 ## 🧰 Example Workflow
 
-1. Draft the task (inline or empty block), then run **Convert TODO to Better Task** (or simply **Create a Better Task** if you’re starting fresh). The toast lets you enter the title, optional repeat rule, and optional start/defer/due dates; it stores the canonical data in child blocks and shows the inline pill.
+1. Draft the task and then run **Convert TODO to Better Task** (or simply **Create a Better Task** if you’re starting fresh). The toast lets you enter the title, optional repeat rule, and optional start/defer/due dates; it stores the canonical data in child blocks and shows the inline pill.
 2. Mark it done — for repeating Better Tasks, the extension automatically creates the next task on its start date (or due date if no start is provided) so it appears on the right Daily Note or page.
 3. If you snooze or skip via the pill menu, the defer/due child blocks update and the pill reflects the new dates immediately.
 
