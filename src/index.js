@@ -294,6 +294,7 @@ export default {
       const inlineAttrs = parseAttrsFromBlockText(fstring);
       const childAttrs = parseAttrsFromChildBlocks(block.children || []);
       const attrNames = resolveAttributeNames();
+      const existingMeta = parseRichMetadata(childAttrs, attrNames);
       const childRepeatEntry = pickChildAttr(childAttrs, attrNames.repeatAliases);
       const childDueEntry = pickChildAttr(childAttrs, attrNames.dueAliases);
       const childStartEntry = pickChildAttr(childAttrs, attrNames.startAliases);
@@ -321,6 +322,12 @@ export default {
         due: props.due || childDueEntry?.value || inlineDueVal || "",
         start: props.start || childStartEntry?.value || inlineStartVal || "",
         defer: props.defer || childDeferEntry?.value || inlineDeferVal || "",
+        project: existingMeta.project || "",
+        waitingFor: existingMeta.waitingFor || "",
+        context: existingMeta.context || "",
+        priority: existingMeta.priority || "",
+        energy: existingMeta.energy || "",
+        gtd: existingMeta.gtd || "",
       });
       if (!promptResult) return;
 
@@ -395,8 +402,16 @@ export default {
 
       const hasRepeat = !!normalizedRepeat;
       const hasTimingInput = !!(dueStr || startStr || deferStr);
-      if (!hasRepeat && !hasTimingInput) {
-        toast("Add a repeat rule or at least one start/defer/due date.");
+      const hasMetadataInput = !!(
+        (promptResult.project || "").trim() ||
+        (promptResult.waitingFor || "").trim() ||
+        (promptResult.context || "").trim() ||
+        (promptResult.priority || "").trim() ||
+        (promptResult.energy || "").trim() ||
+        (promptResult.gtd || "").trim()
+      );
+      if (!hasRepeat && !hasTimingInput && !hasMetadataInput) {
+        toast("Add a repeat rule, a date, or metadata.");
         return;
       }
 
@@ -427,9 +442,16 @@ export default {
       } else {
         await removeChildAttrsForType(fuid, "defer", attrNamesForWrite);
       }
+      await applyMetadataFromPrompt(fuid, promptResult, attrNamesForWrite, { initial: existingMeta });
 
       repeatOverrides.delete(fuid);
-      toast(hasRepeat ? "Created recurring TODO" : "Created scheduled TODO");
+      toast(
+        hasRepeat
+          ? "Created recurring TODO"
+          : hasTimingInput
+            ? "Created scheduled TODO"
+            : "Added metadata"
+      );
       scheduleSurfaceSync(set.attributeSurface);
     }
 
@@ -677,8 +699,8 @@ export default {
       const baseTitle = typeof parsed.title === "string" ? parsed.title.trim() : "";
       if (!baseTitle) return false;
       const cleanedTitle = stripSchedulingFromTitle(baseTitle, parsed);
-  const attrNames = resolveAttributeNames();
-  const set = S(attrNames);
+      const attrNames = resolveAttributeNames();
+      const set = S(attrNames);
 
       const todoString = normalizeToTodoMacro(cleanedTitle);
       if (todoString !== (block.string || "")) {
@@ -2310,6 +2332,16 @@ export default {
         startSignals.some((value) => !!value) ||
         deferSignals.some((value) => !!value) ||
         dueSignals.some((value) => !!value);
+      const richMeta = parseRichMetadata(childAttrMap, attrNames);
+      const hasMetadataSignal =
+        !!(
+          richMeta.project ||
+          richMeta.waitingFor ||
+          (richMeta.context || []).length ||
+          richMeta.priority ||
+          richMeta.energy ||
+          richMeta.gtd
+        );
 
       let repeatText = null;
       let dueDate = null;
@@ -2418,7 +2450,6 @@ export default {
 
       const advanceEntry = childAttrMap[ADVANCE_ATTR.toLowerCase()];
       const advanceFrom = normalizeAdvanceValue(advanceEntry?.value) || null;
-      const richMeta = parseRichMetadata(childAttrMap, attrNames);
 
       return {
         uid: block.uid,
@@ -2435,6 +2466,7 @@ export default {
         advanceFrom,
         hasRepeat,
         hasTimingAttrs,
+        hasMetadata: hasMetadataSignal,
         isRecurring: hasRepeat,
         isOneOff,
         metadata: richMeta,
@@ -3799,6 +3831,7 @@ export default {
       else await removeChildAttrsForType(newUid, "start", attrNames);
       if (deferStr) await ensureChildAttrForType(newUid, "defer", deferStr, attrNames);
       else await removeChildAttrsForType(newUid, "defer", attrNames);
+      await applyMetadataFromPrompt(newUid, promptResult, attrNames);
 
       scheduleSurfaceSync(set.attributeSurface);
       activeDashboardController?.notifyBlockChange?.(newUid, { bypassFilters: true });
@@ -5101,6 +5134,12 @@ export default {
           typeof initial.defer === "string" && initial.defer
             ? initial.defer
             : initial.deferText || initial.rawDefer || "",
+        project: typeof initial.project === "string" ? initial.project : "",
+        waitingFor: typeof initial.waitingFor === "string" ? initial.waitingFor : "",
+        context: Array.isArray(initial.context) ? initial.context.join(", ") : typeof initial.context === "string" ? initial.context : "",
+        priority: typeof initial.priority === "string" ? initial.priority : "",
+        energy: typeof initial.energy === "string" ? initial.energy : "",
+        gtd: typeof initial.gtd === "string" ? initial.gtd : "",
       };
       const initialDueDate = snapshot.due ? parseRoamDate(snapshot.due) : null;
       const initialDueIso =
@@ -5149,16 +5188,69 @@ export default {
         const dueInputHtml = `<label class="rt-input-wrap">Due<br/><input data-rt-field="due" type="date" class="${dateInputClass}" value="${escapeHtml(
           snapshot.dueIso || ""
         )}" /></label>`;
+        const metadataHtml = `
+          <div class="rt-meta-section">
+            <div class="rt-meta-grid">
+              <label class="rt-input-wrap">Project<br/>
+                <input data-rt-field="project" type="text" placeholder="Project" value="${escapeHtml(
+          snapshot.project || ""
+        )}" />
+              </label>
+              <label class="rt-input-wrap">GTD status<br/>
+                <select data-rt-field="gtd">
+                  <option value=""></option>
+                  <option value="next action"${snapshot.gtd === "next action" ? " selected" : ""}>Next Action</option>
+                  <option value="delegated"${snapshot.gtd === "delegated" ? " selected" : ""}>Delegated</option>
+                  <option value="deferred"${snapshot.gtd === "deferred" ? " selected" : ""}>Deferred</option>
+                  <option value="someday"${snapshot.gtd === "someday" ? " selected" : ""}>Someday</option>
+                </select>
+              </label>
+              <label class="rt-input-wrap">Waiting-for<br/>
+                <input data-rt-field="waitingFor" type="text" placeholder="Waiting-for" value="${escapeHtml(
+          snapshot.waitingFor || ""
+        )}" />
+              </label>
+              <label class="rt-input-wrap">Priority<br/>
+                <select data-rt-field="priority">
+                  <option value=""></option>
+                  <option value="low"${snapshot.priority === "low" ? " selected" : ""}>Low</option>
+                  <option value="medium"${snapshot.priority === "medium" ? " selected" : ""}>Medium</option>
+                  <option value="high"${snapshot.priority === "high" ? " selected" : ""}>High</option>
+                </select>
+              </label>
+              <label class="rt-input-wrap">Context(s)<br/>
+                <input data-rt-field="context" type="text" placeholder="@home, @work" value="${escapeHtml(
+          snapshot.context || ""
+        )}" />
+              </label>
+              <label class="rt-input-wrap">Energy<br/>
+                <select data-rt-field="energy">
+                  <option value=""></option>
+                  <option value="low"${snapshot.energy === "low" ? " selected" : ""}>Low</option>
+                  <option value="medium"${snapshot.energy === "medium" ? " selected" : ""}>Medium</option>
+                  <option value="high"${snapshot.energy === "high" ? " selected" : ""}>High</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        `;
         const fieldSelectors = {
-          task: 'input[data-rt-field="task"]',
-          repeat: 'input[data-rt-field="repeat"]',
-          due: 'input[data-rt-field="due"]',
-          start: 'input[data-rt-field="start"]',
-          defer: 'input[data-rt-field="defer"]',
+          task: '[data-rt-field="task"]',
+          repeat: '[data-rt-field="repeat"]',
+          due: '[data-rt-field="due"]',
+          start: '[data-rt-field="start"]',
+          defer: '[data-rt-field="defer"]',
+          project: '[data-rt-field="project"]',
+          waitingFor: '[data-rt-field="waitingFor"]',
+          context: '[data-rt-field="context"]',
+          priority: '[data-rt-field="priority"]',
+          energy: '[data-rt-field="energy"]',
+          gtd: '[data-rt-field="gtd"]',
         };
         const promptMessage = includeTaskText
-          ? "Enter the task text, and the optional repeat rule and dates."
-          : "Enter an optional repeat rule and dates.";
+          ? "Enter the task text, optional repeat rule, dates, and metadata."
+          : "Enter an optional repeat rule, dates, and metadata.";
+        const messageHtml = promptMessage;
         const inputs = [];
         if (includeTaskText) {
           inputs.push([
@@ -5220,7 +5312,7 @@ export default {
           title: "Better Tasks",
           icon: "",
           iconText: "✓",
-          message: promptMessage,
+          message: messageHtml,
           inputs,
           buttons: [
             [
@@ -5251,6 +5343,18 @@ export default {
                       return snapshot.deferIso || "";
                     case "due":
                       return snapshot.dueIso || "";
+                    case "project":
+                      return snapshot.project || "";
+                    case "waitingFor":
+                      return snapshot.waitingFor || "";
+                    case "context":
+                      return snapshot.context || "";
+                    case "priority":
+                      return snapshot.priority || "";
+                    case "energy":
+                      return snapshot.energy || "";
+                    case "gtd":
+                      return snapshot.gtd || "";
                     default:
                       return "";
                   }
@@ -5267,6 +5371,12 @@ export default {
                 const dueIso = getFieldValue("due");
                 const startIso = getFieldValue("start");
                 const deferIso = getFieldValue("defer");
+                const projectVal = getFieldValue("project");
+                const waitingVal = getFieldValue("waitingFor");
+                const contextVal = getFieldValue("context");
+                const priorityVal = getFieldValue("priority");
+                const energyVal = getFieldValue("energy");
+                const gtdVal = getFieldValue("gtd");
                 const normalizedRepeat =
                   repeatValue ? normalizeRepeatRuleText(repeatValue) || repeatValue : "";
                 let dueText = null;
@@ -5315,6 +5425,12 @@ export default {
                   deferDate,
                   taskText: includeTaskText ? taskValue : undefined,
                   taskTextRaw: includeTaskText ? taskValueRaw : undefined,
+                  project: projectVal || "",
+                  waitingFor: waitingVal || "",
+                  context: contextVal || "",
+                  priority: priorityVal || "",
+                  energy: energyVal || "",
+                  gtd: gtdVal || "",
                 });
               },
               true,
@@ -5329,6 +5445,26 @@ export default {
           ],
           onOpened: (_instance, toastEl) => {
             if (!toastEl) return;
+            const inputsContainer = toastEl.querySelector(".iziToast-inputs");
+            if (inputsContainer) {
+              inputsContainer.querySelector(".rt-meta-section")?.remove();
+              const frag = document.createElement("div");
+              frag.innerHTML = metadataHtml;
+              const section = frag.firstElementChild;
+              if (section) inputsContainer.appendChild(section);
+            }
+            // Ensure metadata fields reflect current snapshot values (e.g., after back navigation)
+            const assignIfPresent = (selector, value) => {
+              const el = toastEl.querySelector(selector);
+              if (el) el.value = value;
+            };
+            assignIfPresent(fieldSelectors.gtd, snapshot.gtd || "");
+            assignIfPresent(fieldSelectors.project, snapshot.project || "");
+            assignIfPresent(fieldSelectors.waitingFor, snapshot.waitingFor || "");
+            assignIfPresent(fieldSelectors.context, snapshot.context || "");
+            assignIfPresent(fieldSelectors.priority, snapshot.priority || "");
+            assignIfPresent(fieldSelectors.energy, snapshot.energy || "");
+
             const focusPrimaryInput = () => {
               const selectors = includeTaskText
                 ? ["input[data-rt-field=\"task\"]", "input[data-rt-field=\"repeat\"]"]
@@ -5693,6 +5829,7 @@ export default {
           const meta = await readRecurringMeta(block, set);
           const hasTiming = !!meta.hasTimingAttrs;
           const isRecurring = !!meta.repeat;
+          const isBetterTask = isBetterTasksTask(meta);
           const metadataInfo = meta.metadata || parseRichMetadata(meta.childAttrMap || {}, attrNames);
           if (typeof window !== "undefined") {
             const metaCache = window.__btInlineMetaCache || (window.__btInlineMetaCache = new Map());
@@ -5707,6 +5844,14 @@ export default {
               metadataInfo?.energy ||
               metadataInfo?.gtd
             );
+          if (!isBetterTask && !hasMetadataSignal) {
+            main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
+            if (typeof window !== "undefined") {
+              window.__btInlineMetaCache?.delete?.(uid);
+            }
+            activeDashboardController?.removeTask?.(uid);
+            continue;
+          }
           if (!isRecurring && !hasTiming && !hasMetadataSignal) {
             main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
             continue;
@@ -6446,20 +6591,17 @@ export default {
       const metaSection = `
         <small>Metadata</small>
         <button data-action="meta-gtd-cycle">Cycle GTD status</button>
-        ${
-          hasProject
-            ? `<button data-action="meta-project-remove" data-danger="1">Remove project</button>`
-            : `<button data-action="meta-project-add">Add project</button>`
+        ${hasProject
+          ? `<button data-action="meta-project-remove" data-danger="1">Remove project</button>`
+          : `<button data-action="meta-project-add">Add project</button>`
         }
-        ${
-          hasContext
-            ? `<button data-action="meta-context-remove" data-danger="1">Remove context</button>`
-            : `<button data-action="meta-context-add">Add context</button>`
+        ${hasContext
+          ? `<button data-action="meta-context-remove" data-danger="1">Remove context</button>`
+          : `<button data-action="meta-context-add">Add context</button>`
         }
-        ${
-          hasWaiting
-            ? `<button data-action="meta-waiting-remove" data-danger="1">Remove waiting-for</button>`
-            : `<button data-action="meta-waiting-add">Add waiting-for</button>`
+        ${hasWaiting
+          ? `<button data-action="meta-waiting-remove" data-danger="1">Remove waiting-for</button>`
+          : `<button data-action="meta-waiting-add">Add waiting-for</button>`
         }
         <button data-action="meta-priority-cycle">Cycle priority</button>
         <button data-action="meta-energy-cycle">Cycle energy</button>
@@ -7502,7 +7644,15 @@ export default {
           }
           if (!isTaskBlock(block)) return;
           const meta = await readRecurringMeta(block, set);
-          if (!isBetterTasksTask(meta) && !options.bypassFilters) return;
+          if (!isBetterTasksTask(meta)) {
+            removeTask(uid);
+            if (typeof window !== "undefined") {
+              window.__btInlineMetaCache?.delete(uid);
+            }
+            repeatOverrides.delete(uid);
+            scheduleSurfaceSync(lastAttrSurface || "Child");
+            return;
+          }
           const task = deriveDashboardTask(block, meta, set);
           if (!task) return;
           const tasks = state.tasks.slice();
@@ -7735,6 +7885,43 @@ export default {
       await delay(120);
       await activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
       await activeDashboardController?.refresh?.({ reason: `pill-${type}` });
+    }
+
+    function parseMetadataFromPrompt(promptResult) {
+      if (!promptResult) return {};
+      const project = typeof promptResult.project === "string" ? promptResult.project.trim() : "";
+      const waitingFor = typeof promptResult.waitingFor === "string" ? promptResult.waitingFor.trim() : "";
+      const contextRaw = typeof promptResult.context === "string" ? promptResult.context : "";
+      const priority = typeof promptResult.priority === "string" ? promptResult.priority.trim().toLowerCase() : "";
+      const energy = typeof promptResult.energy === "string" ? promptResult.energy.trim().toLowerCase() : "";
+      const gtd = typeof promptResult.gtd === "string" ? promptResult.gtd.trim() : "";
+      const contexts = contextRaw ? normalizeContextList(contextRaw) : [];
+      return { project, waitingFor, contexts, priority, energy, gtd };
+    }
+
+    async function applyMetadataFromPrompt(uid, promptResult, attrNames, options = {}) {
+      if (!uid || !promptResult) return;
+      const initial = options.initial || {};
+      const { project, waitingFor, contexts, priority, energy, gtd } = parseMetadataFromPrompt(promptResult);
+      if (project || initial.project) {
+        await setRichAttribute(uid, "project", project || null, attrNames);
+      }
+      if (waitingFor || initial.waitingFor) {
+        await setRichAttribute(uid, "waitingFor", waitingFor || null, attrNames);
+      }
+      if ((contexts && contexts.length) || (initial.context || []).length) {
+        await setRichAttribute(uid, "context", contexts && contexts.length ? contexts : [], attrNames);
+      }
+      if (priority || initial.priority) {
+        await setRichAttribute(uid, "priority", priority || null, attrNames);
+      }
+      if (energy || initial.energy) {
+        await setRichAttribute(uid, "energy", energy || null, attrNames);
+      }
+      const gtdNormalized = gtd ? normalizeGtdStatus(gtd) : null;
+      if (gtdNormalized || initial.gtd) {
+        await setRichAttribute(uid, "gtd", gtdNormalized || null, attrNames);
+      }
     }
 
     async function openPillMenuForTask(uid) {
@@ -8065,7 +8252,7 @@ export default {
 
     function isBetterTasksTask(meta) {
       if (!meta) return false;
-      return !!(meta.repeat || meta.hasTimingAttrs);
+      return !!(meta.repeat || meta.hasTimingAttrs || meta.hasMetadata);
     }
 
 

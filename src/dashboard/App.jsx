@@ -92,6 +92,31 @@ const DEFAULT_FILTERS = {
   waitingText: "",
 };
 
+const FILTER_STORAGE_KEY = "betterTasks.dashboard.filters";
+
+function loadSavedFilters(defaults) {
+  if (typeof window === "undefined") return { ...defaults };
+  try {
+    const raw = window.localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) return { ...defaults };
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return { ...defaults };
+    return { ...defaults, ...parsed };
+  } catch (err) {
+    console.warn("[BetterTasks] failed to load dashboard filters", err);
+    return { ...defaults };
+  }
+}
+
+function saveFilters(filters) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters || {}));
+  } catch (err) {
+    console.warn("[BetterTasks] failed to save dashboard filters", err);
+  }
+}
+
 const FILTER_SECTIONS_LEFT = ["Recurrence", "Start", "Defer"];
 const FILTER_SECTIONS_RIGHT = ["Completion", "Priority", "Energy"];
 
@@ -833,7 +858,7 @@ function EmptyState({ status, onRefresh }) {
 
 export default function DashboardApp({ controller, onRequestClose, onHeaderReady }) {
   const snapshot = useControllerSnapshot(controller);
-  const [filters, dispatchFilters] = useReducer(filtersReducer, DEFAULT_FILTERS);
+  const [filters, dispatchFilters] = useReducer(filtersReducer, DEFAULT_FILTERS, loadSavedFilters);
   const [grouping, setGrouping] = useState("time");
   const [query, setQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState({});
@@ -881,6 +906,10 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const handleFilterToggle = (section, value, singleChoice = false) => {
     dispatchFilters({ type: singleChoice ? "toggleSingle" : "toggle", section, value });
   };
+
+  useEffect(() => {
+    saveFilters(filters);
+  }, [filters]);
 
   const [quickText, setQuickText] = useState("");
 
@@ -1027,7 +1056,6 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                 chips={FILTER_DEFS["GTD"]}
                 activeValues={filters["GTD"]}
                 onToggle={handleFilterToggle}
-                singleChoice
               />
               <div className="bt-filter-text-row">
                 <label className="bt-filter-text">

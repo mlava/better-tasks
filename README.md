@@ -40,7 +40,7 @@ Optionally include a start attribute `BT_attrStart::` (when the task becomes ava
 
 ### 🔹 Scheduled (One-Off) Tasks
 
-Leave the repeat field blank while setting any combination of `start::`, `defer::`, or `due::` to create a *scheduled one-off* task. It uses the same child-block storage, pills, snooze controls, and completion logic — just without spawning a follow-up block. Completing it writes `completed:: [[<today>]]` and hides the pill.
+Leave the repeat field blank while setting any combination of `start::`, `defer::`, or `due::` to create a *scheduled one-off* task. It uses the same child-block storage, pills, snooze controls, and completion logic — just without spawning a follow-up block. Completing it writes `completed:: [[<today>]]` and hides the pill. Tasks with only metadata are supported too (no repeat or dates required).
 
 ### 🔹 Optional Metadata
 
@@ -55,13 +55,13 @@ Better Tasks also understands the following optional child-block attributes (nam
 - BT_attrEnergy:: medium
 ```
 
-These lines are purely optional—omit any you don’t need. Whenever a metadata value exists, it appears both in the dashboard and in the inline pill with quick actions:
+These lines are purely optional - omit any you don’t need. Whenever a metadata value exists, it appears both in the dashboard and in the inline pill with quick actions:
 
 - Click → opens/creates the referenced page (project, waiting-for, context).
 - Shift+Click → opens that page in the right sidebar.
 - Cmd/Ctrl+Click → prompts you to edit the value directly.
 
-GTD status cycles through Next Action → Delegated → Deferred → Someday → (cleared) on click. Priority/energy pills cycle through low/medium/high/none on click. You can also add/remove metadata from the “⋯” menu on the pill or the dashboard row.
+GTD status cycles through Next Action → Delegated → Deferred → Someday → (cleared) on click. Priority/energy pills cycle through low/medium/high/none on click. You can also add/remove metadata from the “⋯” menu on the pill or the dashboard row. The Convert/Create prompt includes these fields, with dropdowns for GTD/priority/energy.
 
 ### 🔹 Inline Pill Indicators
 
@@ -80,6 +80,7 @@ Regardless of how you enter the attributes, the extension emits a compact **pill
   **Alt/Ctrl/Meta+Click** on any date pill opens a date picker to change that date.
 - **📁 / ⌛ / @ / ! / 🔋 metadata** — Only appear when a project, waiting-for, context, priority, or energy is set. Click to open the page or cycle the value (priority/energy); Shift+Click opens in the sidebar; Cmd/Ctrl+Click prompts you to edit.
 - **⋯ Menu** — Opens the full Better Task menu (see below).
+  - Metadata-only tasks still show the pill/menu so you can edit or clear attributes.
 
 ---
 
