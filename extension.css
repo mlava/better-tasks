@@ -128,6 +128,37 @@
     position: static !important;
     top: auto !important;
 }
+.bt-today-panel-block .rm-block__content > span:first-child {
+    display: none !important;
+}
+.bt-today-panel-inline-hidden .rm-block__content > span:first-child,
+.bt-today-panel-inline-hidden .rm-block__input > span:first-child {
+    display: none !important;
+}
+.bt-today-panel-inline-hidden .rm-block__children {
+    display: none !important;
+}
+.bt-today-panel-inline-hidden .rm-bullet,
+.bt-today-panel-inline-hidden .controls {
+    display: none !important;
+}
+.bt-today-panel-block .rm-block__children {
+    padding-top: 4px;
+    position: relative;
+}
+.bt-today-panel-block .rm-block__input {
+    position: relative;
+}
+.bt-today-panel-block .rm-block__children > .rm-multibar {
+    display: none;
+}
+.bt-today-panel-root {
+    min-height: 0;
+    width: 100%;
+    padding-top: 6px;
+    position: relative;
+    z-index: 1;
+}
 
 .betterTasks2 .rt-meta-grid select {
     height: 27px;
