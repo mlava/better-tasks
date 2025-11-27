@@ -299,6 +299,25 @@ export default {
       label: "Create a Better Task",
       callback: (e) => createBetterTaskEntryPoint(e),
     });
+    const slashCommandAPI = window.roamAlphaAPI?.ui?.slashCommand;
+    if (slashCommandAPI) {
+      slashCommandAPI.addCommand({
+        label: "Create a Better Task",
+        callback: (args) => {
+          const blockUid = args["block-uid"];
+          createBetterTaskEntryPoint({ "block-uid": blockUid });
+          return "";
+        },
+      });
+      slashCommandAPI.addCommand({
+        label: "Convert TODO to Better Task",
+        callback: (args) => {
+          const blockUid = args["block-uid"];
+          convertTODO({ "block-uid": blockUid });
+          return "";
+        },
+      });
+    }
 
     activeDashboardController = createDashboardController(extensionAPI);
     extensionAPI.ui.commandPalette.addCommand({
@@ -8827,65 +8846,65 @@ export default {
     async function renderTodayWidget() {
       if (!TODAY_WIDGET_ENABLED) return;
       try {
-      const layout = getTodayWidgetLayout();
-      const perfRenderToday = perfMark(`renderTodayWidget ${layout}`);
-      const includeOverdue = getTodayWidgetIncludeOverdue();
-      const showCompleted = getTodayWidgetShowCompleted();
-      const placement = getTodayWidgetPlacement();
-      const layoutSignature = [layout, includeOverdue ? "overdue" : "nooverdue", showCompleted ? "showdone" : "hidedone", placement].join("|");
-      lastTodayConfigSignature = layoutSignature;
-      const prevLayout = lastTodayLayoutType;
-      const perfTasks = perfMark("renderTodayWidget:collectTasks");
-      let tasks = await collectDashboardTasks();
-      perfLog(perfTasks, `tasks=${Array.isArray(tasks) ? tasks.length : 0}`);
-      if (!Array.isArray(tasks)) return;
-      const sections = buildTodaySections(tasks, { includeOverdue, showCompleted });
-      perfLog(perfMark("renderTodayWidget:sections"), "");
-      const anchorUid = await ensureTodayWidgetAnchor(placement);
-      if (!anchorUid) return;
-      try {
-        await window.roamAlphaAPI.updateBlock({ block: { uid: anchorUid, open: true } });
-      } catch (_) { }
-      if (layout === "roamInline") {
-        // If a panel child exists from a previous render, remove it before writing inline children.
+        const layout = getTodayWidgetLayout();
+        const perfRenderToday = perfMark(`renderTodayWidget ${layout}`);
+        const includeOverdue = getTodayWidgetIncludeOverdue();
+        const showCompleted = getTodayWidgetShowCompleted();
+        const placement = getTodayWidgetPlacement();
+        const layoutSignature = [layout, includeOverdue ? "overdue" : "nooverdue", showCompleted ? "showdone" : "hidedone", placement].join("|");
+        lastTodayConfigSignature = layoutSignature;
+        const prevLayout = lastTodayLayoutType;
+        const perfTasks = perfMark("renderTodayWidget:collectTasks");
+        let tasks = await collectDashboardTasks();
+        perfLog(perfTasks, `tasks=${Array.isArray(tasks) ? tasks.length : 0}`);
+        if (!Array.isArray(tasks)) return;
+        const sections = buildTodaySections(tasks, { includeOverdue, showCompleted });
+        perfLog(perfMark("renderTodayWidget:sections"), "");
+        const anchorUid = await ensureTodayWidgetAnchor(placement);
+        if (!anchorUid) return;
         try {
-          const anchorBlock = await getBlock(anchorUid);
-          const panelChild = (anchorBlock?.children || []).find(
-            (c) => (c?.string || "").trim() === TODAY_WIDGET_PANEL_CHILD_TEXT
-          );
-          if (panelChild?.uid) {
-            await deleteBlock(panelChild.uid);
-          }
+          await window.roamAlphaAPI.updateBlock({ block: { uid: anchorUid, open: true } });
         } catch (_) { }
-        const perfInline = perfMark("renderTodayWidget:inline");
-        await renderTodayInline(anchorUid, sections, { includeOverdue }, layoutSignature);
-        perfLog(perfInline);
+        if (layout === "roamInline") {
+          // If a panel child exists from a previous render, remove it before writing inline children.
+          try {
+            const anchorBlock = await getBlock(anchorUid);
+            const panelChild = (anchorBlock?.children || []).find(
+              (c) => (c?.string || "").trim() === TODAY_WIDGET_PANEL_CHILD_TEXT
+            );
+            if (panelChild?.uid) {
+              await deleteBlock(panelChild.uid);
+            }
+          } catch (_) { }
+          const perfInline = perfMark("renderTodayWidget:inline");
+          await renderTodayInline(anchorUid, sections, { includeOverdue }, layoutSignature);
+          perfLog(perfInline);
+          perfLog(perfRenderToday);
+          lastTodayLayoutType = "roamInline";
+          return;
+        }
+        // If switching from inline to panel, clear inline children once
+        const panelChildUid = await ensureTodayPanelChild(anchorUid);
+        // Always clear any inline children when rendering panel to avoid duplicated views.
+        await clearTodayInlineChildren(anchorUid, panelChildUid);
+        const panelHost = panelChildUid ? await findBlockHost(panelChildUid) : null;
+        panelHost?.classList.add("bt-today-panel-block");
+        panelHost?.classList.remove("bt-today-panel-inline-hidden");
+        const container = await getTodayPanelContainer(panelChildUid);
+        if (!container || !panelChildUid) {
+          scheduleTodayWidgetRender(300);
+          return;
+        }
+        todayWidgetPanelContainer = container;
+        const perfPanel = perfMark("renderTodayWidget:panel");
+        renderTodayPanelDom(container, sections, { includeOverdue }, layoutSignature);
+        perfLog(perfPanel);
         perfLog(perfRenderToday);
-        lastTodayLayoutType = "roamInline";
-        return;
+        lastTodayLayoutType = "panel";
+      } catch (err) {
+        console.warn("[BetterTasks] renderTodayWidget failed", err);
       }
-      // If switching from inline to panel, clear inline children once
-      const panelChildUid = await ensureTodayPanelChild(anchorUid);
-      // Always clear any inline children when rendering panel to avoid duplicated views.
-      await clearTodayInlineChildren(anchorUid, panelChildUid);
-      const panelHost = panelChildUid ? await findBlockHost(panelChildUid) : null;
-      panelHost?.classList.add("bt-today-panel-block");
-      panelHost?.classList.remove("bt-today-panel-inline-hidden");
-      const container = await getTodayPanelContainer(panelChildUid);
-      if (!container || !panelChildUid) {
-        scheduleTodayWidgetRender(300);
-        return;
-      }
-      todayWidgetPanelContainer = container;
-      const perfPanel = perfMark("renderTodayWidget:panel");
-      renderTodayPanelDom(container, sections, { includeOverdue }, layoutSignature);
-      perfLog(perfPanel);
-      perfLog(perfRenderToday);
-      lastTodayLayoutType = "panel";
-    } catch (err) {
-      console.warn("[BetterTasks] renderTodayWidget failed", err);
     }
-  }
 
 
     // ========================= Housekeeping =========================
@@ -8922,6 +8941,13 @@ export default {
       }
     }
 
+    const slashCommandAPI = window.roamAlphaAPI?.ui?.slashCommand;
+    slashCommandAPI?.removeCommand({
+      label: "Create a Better Task",
+    });
+    slashCommandAPI?.removeCommand({
+      label: "Convert TODO to Better Task",
+    });
     removeDashboardTopbarButton();
     disconnectTopbarObserver();
     clearDashboardWatches();
