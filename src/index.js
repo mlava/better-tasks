@@ -46,6 +46,7 @@ const TODAY_WIDGET_OVERDUE_SETTING = "bt-today-widget-include-overdue";
 const TODAY_WIDGET_COMPLETED_SETTING = "bt-today-widget-show-completed";
 const TODAY_WIDGET_PLACEMENT_SETTING = "bt-today-widget-placement";
 const TODAY_WIDGET_HEADING_SETTING = "bt-today-widget-heading";
+const TODAY_WIDGET_ENABLE_SETTING = "bt-today-widget-enabled";
 const TODAY_WIDGET_ANCHOR_TEXT = "Better Tasks - Today";
 const TODAY_WIDGET_ANCHOR_TEXT_LEGACY = ["BetterTasks Today Widget"];
 const TODAY_WIDGET_PANEL_CHILD_TEXT = "";
@@ -62,6 +63,14 @@ let teardownTodayPanelGlobal = null;
 let lastTodayConfigSignature = null;
 let lastTodayLayoutType = null;
 let pillRefreshTimer = null;
+let todayWidgetForceNext = false;
+let lastTodayRenderAt = 0;
+let lastPillDecorateRun = 0;
+let dashboardRefreshTimer = null;
+let dashboardWatchClearTimer = null;
+let pillScrollHandlerAttached = false;
+const MAX_BLOCKS_FOR_PILLS = 1500;
+const pillSkipDecorate = new Set();
 const TODAY_WIDGET_ENABLED = false; // temporary kill switch 
 const DEBUG_BT_PERF = false;
 
@@ -334,7 +343,18 @@ export default {
       label: "Toggle Better Tasks Dashboard",
       callback: () => activeDashboardController.toggle(),
     });
-    scheduleTodayWidgetRender();
+    if (getTodayWidgetEnabled()) scheduleTodayWidgetRender();
+    if (!dashboardRefreshTimer && typeof window !== "undefined") {
+      dashboardRefreshTimer = window.setInterval(() => {
+        try {
+          if (!activeDashboardController?.isOpen?.()) {
+            activeDashboardController?.refresh?.({ reason: "background" });
+          }
+        } catch (_) {
+          // ignore background refresh errors
+        }
+      }, 90_000);
+    }
     ensureDashboardTopbarButton();
     observeTopbarButton();
     observeThemeChanges();
@@ -5736,7 +5756,7 @@ export default {
         pendingSurfaceSync = null;
         const current = lastAttrSurface || surface || "Child";
         void syncPillsForSurface(current);
-      }, 0);
+      }, 200);
     }
 
     function clearAllPills(removeStyle = true) {
@@ -5921,6 +5941,11 @@ export default {
       return extensionAPI.settings.get(settingId);
     }
 
+    function getTodayWidgetEnabled() {
+      const raw = getTodaySetting(TODAY_WIDGET_ENABLE_SETTING);
+      return raw === true || raw === "true" || raw === 1 || raw === "1";
+    }
+
     function handleTodaySettingChange(settingId = null, value = undefined) {
       if (settingId) setTodaySettingOverride(settingId, value);
       lastTodayWidgetSignature = null;
@@ -6008,12 +6033,82 @@ export default {
     }
 
     function scheduleTodayWidgetRender(delayMs = 200, force = false) {
-      if (!TODAY_WIDGET_ENABLED) return;
+      if (!TODAY_WIDGET_ENABLED || !getTodayWidgetEnabled()) return;
       if (todayWidgetRenderTimer) clearTimeout(todayWidgetRenderTimer);
       todayWidgetRenderTimer = setTimeout(() => {
         todayWidgetRenderTimer = null;
-        void renderTodayWidget(force);
+        const idle = typeof requestIdleCallback === "function" ? requestIdleCallback : null;
+        if (idle) {
+          idle(
+            () => {
+              void renderTodayWidget(force);
+            },
+            { timeout: 1200 }
+          );
+        } else {
+          void renderTodayWidget(force);
+        }
       }, delayMs);
+    }
+
+    function createTodayRenderCache() {
+      return {
+        blocks: new Map(),
+        pages: new Map(),
+      };
+    }
+
+    async function getBlockCached(uid, cache = null) {
+      if (!uid) return null;
+      if (cache?.blocks?.has(uid)) return cache.blocks.get(uid);
+      const block = await getBlock(uid);
+      cache?.blocks?.set(uid, block);
+      return block;
+    }
+
+    async function getOrCreatePageUidCached(title, cache = null) {
+      if (!title) return null;
+      if (cache?.pages?.has(title)) return cache.pages.get(title);
+      const uid = await getOrCreatePageUid(title);
+      cache?.pages?.set(title, uid);
+      return uid;
+    }
+
+    async function getOpenPageTitleSafe(cache = null) {
+      try {
+        const main = window.roamAlphaAPI?.ui?.mainWindow;
+        const info = typeof main?.getOpenPageOrBlock === "function" ? main.getOpenPageOrBlock() : null;
+        const pageUid = info?.["page-uid"] || info?.pageUid || info?.page?.uid || null;
+        const blockUid = info?.["block-uid"] || info?.blockUid || info?.block?.uid || null;
+        if (pageUid) {
+          const page = await window.roamAlphaAPI.pull?.("[:node/title]", [":block/uid", pageUid]);
+          const title = page?.[":node/title"] || page?.title;
+          if (title) return title;
+        }
+        if (blockUid) {
+          const block = await getBlockCached(blockUid, cache);
+          return block?.page?.title || block?.page?.["node/title"] || null;
+        }
+      } catch (_) {
+        // fall through
+      }
+      return null;
+    }
+
+    async function shouldRenderTodayWidgetNow(cache = null) {
+      const todayTitle = toDnpTitle(todayLocal());
+      const check = async () => {
+        const currentTitle = await getOpenPageTitleSafe(cache);
+        if (!currentTitle) return null;
+        return currentTitle === todayTitle;
+      };
+      let match = await check();
+      if (match === null || match === false) {
+        await delay(160);
+        match = await check();
+      }
+      if (match === null) return true;
+      return !!match;
     }
 
     function renderPillDateSpan(span, { icon, date, set, label, tooltip }) {
@@ -6076,6 +6171,38 @@ export default {
 
     async function decorateBlockPills(rootEl) {
       if (!rootEl) return;
+      const now = Date.now();
+      if (now - lastPillDecorateRun < 500) return;
+      lastPillDecorateRun = now;
+      const pillSigCache = typeof window !== "undefined"
+        ? window.__btPillSignatureCache || (window.__btPillSignatureCache = new Map())
+        : new Map();
+      if (!pillScrollHandlerAttached && typeof window !== "undefined") {
+        const handler = (() => {
+          let t = null;
+          return () => {
+            if (t) return;
+            t = setTimeout(() => {
+              t = null;
+              schedulePillRefreshAll(80);
+            }, 180);
+          };
+        })();
+        try {
+          window.addEventListener("scroll", handler, { passive: true });
+          pillScrollHandlerAttached = true;
+        } catch (_) {
+          // ignore attach errors
+        }
+      }
+      try {
+        const blockCount = document.querySelectorAll?.(".rm-block-main, .roam-block-container, .roam-block")?.length || 0;
+        if (blockCount > MAX_BLOCKS_FOR_PILLS) {
+          return;
+        }
+      } catch (_) {
+        // ignore count errors
+      }
       const checkboxThreshold = getPillCheckboxThreshold();
       if (checkboxThreshold > 0) {
         try {
@@ -6099,12 +6226,27 @@ export default {
       const nodes = rootEl.matches?.(selector)
         ? [rootEl]
         : Array.from(rootEl.querySelectorAll?.(selector) || []);
+      const viewport = (() => {
+        try {
+          const rect = (document.documentElement || document.body)?.getBoundingClientRect?.();
+          const height = typeof window !== "undefined" ? window.innerHeight || rect?.height || 0 : 0;
+          return { height };
+        } catch (_) {
+          return null;
+        }
+      })();
+      let decoratedThisPass = 0;
+      const MAX_DECORATIONS_PER_PASS = 300;
       const seen = new Set();
       const set = S();
       const attrNames = set.attrNames;
       ensurePillMenuStyles();
       for (const node of nodes) {
         try {
+          if (MAX_DECORATIONS_PER_PASS && decoratedThisPass >= MAX_DECORATIONS_PER_PASS) {
+            schedulePillRefresh(rootEl, null, 80);
+            break;
+          }
           const mainCandidate =
             node.classList?.contains("rm-block-main")
               ? node
@@ -6112,18 +6254,28 @@ export default {
           const main = mainCandidate || document.querySelector(`.rm-block-main[data-uid="${normalizeUid(node.getAttribute?.("data-uid") || node.dataset?.uid)}"]`);
           if (!main) continue;
           if (main.closest?.(".rm-code-block")) continue;
+          if (viewport) {
+            try {
+              const r = main.getBoundingClientRect?.();
+              if (r && (r.bottom < -120 || r.top > viewport.height + 120)) {
+                continue;
+              }
+            } catch (_) {
+              // ignore viewport failures
+            }
+          }
 
           const uid =
             findBlockUidFromElement(main) ||
             findBlockUidFromElement(node) ||
             normalizeUid(node.getAttribute?.("data-uid") || node.dataset?.uid);
           if (!uid) continue;
+          if (pillSkipDecorate.has(uid)) {
+            continue;
+          }
           clearPendingPillTimer(uid);
 
           if (seen.has(uid)) {
-            if (main.querySelector?.(".rt-pill-wrap")) continue;
-            main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
-            schedulePillRefresh(main, uid, 60);
             continue;
           }
           seen.add(uid);
@@ -6227,7 +6379,28 @@ export default {
               ? "Repeating Better Task"
               : "Scheduled Better Task";
 
-          main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
+          const contextSig = Array.isArray(metadataInfo?.context)
+            ? [...metadataInfo.context].sort().join(",")
+            : "";
+          const signatureParts = [
+            humanRepeat || "",
+            startDate instanceof Date ? startDate.getTime() : "",
+            deferDate instanceof Date ? deferDate.getTime() : "",
+            dueDate instanceof Date ? dueDate.getTime() : "",
+            metadataInfo?.project || "",
+            metadataInfo?.waitingFor || "",
+            contextSig,
+            metadataInfo?.priority || "",
+            metadataInfo?.energy || "",
+            metadataInfo?.gtd || "",
+          ];
+          const signature = signatureParts.join("|");
+          const existingPill = main.querySelector(".rt-pill-wrap");
+          const prevSig = pillSigCache.get(uid);
+          if (prevSig === signature && existingPill) {
+            continue;
+          }
+          if (existingPill) existingPill.remove();
 
           const pillWrap = document.createElement("span");
           pillWrap.className = "rt-pill-wrap";
@@ -6369,12 +6542,16 @@ export default {
             const idx = order.indexOf(normalized);
             const next = order[(idx + 1) % order.length];
             await setRichAttribute(uid, type, next, attrNames);
+            pillSkipDecorate.add(uid);
+            setTimeout(() => pillSkipDecorate.delete(uid), 800);
             activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
             return next;
           };
           const cycleGtdInline = async (currentValue) => {
             const next = cycleGtdStatus(currentValue);
             await setRichAttribute(uid, "gtd", next, attrNames);
+            pillSkipDecorate.add(uid);
+            setTimeout(() => pillSkipDecorate.delete(uid), 800);
             activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
             if (typeof window !== "undefined") {
               window.__btInlineMetaCache?.delete?.(uid);
@@ -6527,6 +6704,9 @@ export default {
           pill.appendChild(menuBtn);
 
           pillWrap.appendChild(pill);
+          pillWrap.dataset.btSig = signature;
+          pillSigCache.set(uid, signature);
+          decoratedThisPass += 1;
 
           const check = main.querySelector?.(".check-container, .rm-checkbox") || main.firstElementChild;
           insertPillWrap(main, check, pillWrap);
@@ -7694,7 +7874,10 @@ export default {
           error: null,
         };
         emit();
-        refreshPromise = collectDashboardTasks()
+        const attachWatches = controller.isOpen();
+        const cacheKey = "dash:withDone";
+        const bypassCache = reason === "force";
+        refreshPromise = collectDashboardTasks({ attachWatches, cacheKey, bypassCache })
           .then((tasks) => {
             state = {
               ...state,
@@ -7794,6 +7977,10 @@ export default {
       }
 
       function open() {
+        if (dashboardWatchClearTimer) {
+          clearTimeout(dashboardWatchClearTimer);
+          dashboardWatchClearTimer = null;
+        }
         ensureContainer();
         root.render(
           <DashboardApp
@@ -7826,6 +8013,12 @@ export default {
         if (resizeListenerAttached && typeof window !== "undefined") {
           window.removeEventListener("resize", handleWindowResize);
           resizeListenerAttached = false;
+        }
+        if (!dashboardWatchClearTimer && typeof window !== "undefined") {
+          dashboardWatchClearTimer = setTimeout(() => {
+            clearDashboardWatches();
+            dashboardWatchClearTimer = null;
+          }, 180_000);
         }
       }
 
@@ -8305,11 +8498,42 @@ export default {
       }
     }
 
-    async function collectDashboardTasks() {
+    const dashboardTaskCache = (() => {
+      let lastKey = null;
+      let lastAt = 0;
+      let lastValue = null;
+      const TTL_MS = 5000;
+      return {
+        get(key) {
+          const now = Date.now();
+          if (lastKey === key && now - lastAt < TTL_MS) return lastValue;
+          return null;
+        },
+        set(key, value) {
+          lastKey = key;
+          lastAt = Date.now();
+          lastValue = value;
+          return value;
+        },
+        clear() {
+          lastKey = null;
+          lastAt = 0;
+          lastValue = null;
+        },
+      };
+    })();
+
+    async function collectDashboardTasks(options = {}) {
+      const { includeCompleted = true, attachWatches = true, cacheKey = null, bypassCache = false } = options;
+      const memoKey = cacheKey || `tasks:${includeCompleted ? "withDone" : "noDone"}`;
+      if (!bypassCache) {
+        const cached = dashboardTaskCache.get(memoKey);
+        if (cached) return cached;
+      }
       const set = S();
       const [todoRows, doneRows, attrRows] = await Promise.all([
         fetchBlocksByPageRef("TODO"),
-        fetchBlocksByPageRef("DONE"),
+        includeCompleted ? fetchBlocksByPageRef("DONE") : Promise.resolve([]),
         fetchBlocksByAttributes(set),
       ]);
       const blockMap = new Map();
@@ -8324,18 +8548,19 @@ export default {
       const tasks = [];
       for (const block of blockMap.values()) {
         try {
+          if (!includeCompleted && isBlockCompleted(block)) continue;
           const meta = await readRecurringMeta(block, set);
           if (!isBetterTasksTask(meta) || !isTaskBlock(block)) continue;
           const task = deriveDashboardTask(block, meta, set);
           if (task) {
             tasks.push(task);
-            ensureDashboardWatch(task.uid);
+            if (attachWatches && !task.isCompleted) ensureDashboardWatch(task.uid);
           }
         } catch (err) {
           console.warn("[BetterTasks] deriveDashboardTask failed", err);
         }
       }
-      return sortDashboardTasksList(tasks);
+      return dashboardTaskCache.set(memoKey, sortDashboardTasksList(tasks));
     }
 
     async function fetchBlocksByPageRef(title) {
@@ -8373,29 +8598,27 @@ export default {
           getAttrLabel("energy", attrNames),
         ].filter(Boolean)
       );
-      const results = [];
+      if (!labels.size) return [];
       const pull = `[:block/uid :block/string :block/props :block/order :block/open
         {:block/children [:block/uid :block/string]}
         {:block/page [:block/uid :node/title]}
         {:block/parents [:block/uid]}]`;
-      for (const label of labels) {
-        const safe = label.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-        const query = `
-          [:find (pull ?b ${pull})
-           :where
-            [?attr :node/title "${safe}"]
-            [?c :block/refs ?attr]
-            [?b :block/children ?c]]`;
-        try {
-          const rows = await window.roamAlphaAPI.q(query);
-          if (Array.isArray(rows)) {
-            results.push(...rows);
-          }
-        } catch (err) {
-          console.warn("[BetterTasks] fetchBlocksByAttributes failed", err);
-        }
+      const safeLabels = Array.from(labels).map((label) => label.replace(/\\/g, "\\\\").replace(/"/g, '\\"'));
+      const labelSet = safeLabels.map((l) => `"${l}"`).join(" ");
+      const query = `
+        [:find (pull ?b ${pull})
+         :where
+          [?attr :node/title ?title]
+          [(contains? #{${labelSet}} ?title)]
+          [?c :block/refs ?attr]
+          [?b :block/children ?c]]`;
+      try {
+        const rows = await window.roamAlphaAPI.q(query);
+        return Array.isArray(rows) ? rows : [];
+      } catch (err) {
+        console.warn("[BetterTasks] fetchBlocksByAttributes failed", err);
+        return [];
       }
-      return results;
     }
 
     function deriveDashboardTask(block, meta, set) {
@@ -8616,10 +8839,10 @@ export default {
       return sections;
     }
 
-    async function ensureTodayWidgetAnchor(placement = "Top", heading = 0) {
+    async function ensureTodayWidgetAnchor(placement = "Top", heading = 0, cache = null) {
       const dnpTitle = toDnpTitle(todayLocal());
-      const dnpUid = await getOrCreatePageUid(dnpTitle);
-      const parent = await getBlock(dnpUid);
+      const dnpUid = await getOrCreatePageUidCached(dnpTitle, cache);
+      const parent = await getBlockCached(dnpUid, cache);
       const children = Array.isArray(parent?.children) ? parent.children : [];
       const matchesAnchor = (str = "") => {
         const trimmed = str.trim().toLowerCase();
@@ -8658,9 +8881,9 @@ export default {
       return uid;
     }
 
-    async function clearTodayInlineChildren(anchorUid, panelChildUid = null) {
+    async function clearTodayInlineChildren(anchorUid, panelChildUid = null, cache = null) {
       if (!anchorUid) return;
-      const block = await getBlock(anchorUid);
+      const block = await getBlockCached(anchorUid, cache);
       const children = Array.isArray(block?.children) ? block.children : [];
       const uidPattern = /^[A-Za-z0-9_-]{9}$/;
       for (const child of children) {
@@ -8741,7 +8964,7 @@ export default {
     teardownTodayPanelGlobal = teardownTodayPanel;
 
 
-    async function renderTodayInline(anchorUid, sections, options = {}, layoutSignature = "") {
+    async function renderTodayInline(anchorUid, sections, options = {}, layoutSignature = "", cache = null) {
       if (!anchorUid) return;
       const perfInline = perfMark("renderTodayInline");
       await teardownTodayPanel();
@@ -8760,11 +8983,11 @@ export default {
         !sections.dueToday.length &&
         !sections.overdue.length
       ) {
-        await clearTodayInlineChildren(anchorUid, null);
+        await clearTodayInlineChildren(anchorUid, null, cache);
         lastTodayInlineSignature = null;
         return;
       }
-      await clearTodayInlineChildren(anchorUid, null);
+      await clearTodayInlineChildren(anchorUid, null, cache);
       lastTodayInlineSignature = signature;
       let order = 0;
       const writeSection = async (label, tasks) => {
@@ -8906,23 +9129,51 @@ export default {
     }
 
     async function renderTodayWidget(force = false) {
-      if (!TODAY_WIDGET_ENABLED) return;
+      if (!TODAY_WIDGET_ENABLED || !getTodayWidgetEnabled()) return;
       try {
+        const now = Date.now();
+        const MIN_INTERVAL = 1200;
+        if (!force && now - lastTodayRenderAt < MIN_INTERVAL) {
+          scheduleTodayWidgetRender(MIN_INTERVAL - (now - lastTodayRenderAt), true);
+          return;
+        }
+        if (force) todayWidgetForceNext = true;
         if (force) {
           lastTodayWidgetSignature = null;
           lastTodayInlineSignature = null;
+          dashboardTaskCache?.clear?.();
         }
         const { layout, includeOverdue, showCompleted, placement, heading, signature: layoutSignature } = readTodayConfig();
         const perfRenderToday = perfMark(`renderTodayWidget ${layout}`);
         lastTodayConfigSignature = layoutSignature;
         const prevLayout = lastTodayLayoutType;
         const perfTasks = perfMark("renderTodayWidget:collectTasks");
-        let tasks = await collectDashboardTasks();
+        const renderCache = createTodayRenderCache();
+        if (!(await shouldRenderTodayWidgetNow(renderCache))) {
+          todayWidgetForceNext = true;
+          scheduleTodayWidgetRender(800);
+          return;
+        }
+        const includeCompleted = !!showCompleted;
+        let tasks = null;
+        const dashSnapshot = activeDashboardController?.getSnapshot?.();
+        const shouldBypassCache = force || todayWidgetForceNext;
+        todayWidgetForceNext = false;
+        if (!shouldBypassCache && dashSnapshot?.status === "ready" && Array.isArray(dashSnapshot.tasks)) {
+          tasks = dashSnapshot.tasks.slice();
+        } else {
+          const attachWatches = activeDashboardController?.isOpen?.() || false;
+          const cacheKey = `today:${includeCompleted ? "withDone" : "noDone"}`;
+          tasks = await collectDashboardTasks({ includeCompleted, attachWatches, cacheKey, bypassCache: shouldBypassCache });
+        }
+        if (!includeCompleted && Array.isArray(tasks)) {
+          tasks = tasks.filter((t) => !t?.isCompleted);
+        }
         perfLog(perfTasks, `tasks=${Array.isArray(tasks) ? tasks.length : 0}`);
         if (!Array.isArray(tasks)) return;
         const sections = buildTodaySections(tasks, { includeOverdue, showCompleted });
         perfLog(perfMark("renderTodayWidget:sections"), "");
-        const anchorUid = await ensureTodayWidgetAnchor(placement, heading);
+        const anchorUid = await ensureTodayWidgetAnchor(placement, heading, renderCache);
         if (!anchorUid) return;
         try {
           await window.roamAlphaAPI.updateBlock({ block: { uid: anchorUid, open: true } });
@@ -8934,23 +9185,21 @@ export default {
         };
 
         if (layout === "roamInline") {
-          // If a panel child exists from a previous render, remove it before writing inline children.
           try {
-            const anchorBlock = await getBlock(anchorUid);
+            const anchorBlock = await getBlockCached(anchorUid, renderCache);
             const panelChild = (anchorBlock?.children || []).find((c) => isLegacyPanelLabel(c?.string || ""));
             if (panelChild?.uid) {
               await deleteBlock(panelChild.uid);
             }
           } catch (_) { }
           const perfInline = perfMark("renderTodayWidget:inline");
-          await renderTodayInline(anchorUid, sections, { includeOverdue }, layoutSignature);
+          await renderTodayInline(anchorUid, sections, { includeOverdue }, layoutSignature, renderCache);
           perfLog(perfInline);
           perfLog(perfRenderToday);
           lastTodayLayoutType = "roamInline";
           return;
         }
-        // Always clear any inline children when rendering panel to avoid duplicated views.
-        await clearTodayInlineChildren(anchorUid, null);
+        await clearTodayInlineChildren(anchorUid, null, renderCache);
         const panelHost = await findBlockHost(anchorUid);
         panelHost?.classList.add("bt-today-panel-block");
         panelHost?.classList.remove("bt-today-panel-inline-hidden");
@@ -8965,6 +9214,7 @@ export default {
         perfLog(perfPanel);
         perfLog(perfRenderToday);
         lastTodayLayoutType = "panel";
+        lastTodayRenderAt = Date.now();
       } catch (err) {
         console.warn("[BetterTasks] renderTodayWidget failed", err);
       }
@@ -9606,16 +9856,16 @@ function observeThemeChanges() {
   if (!document.body) return;
 
   if (!themeObserver) {
-    themeObserver = new MutationObserver(() => {
-      triggerThemeResync(180);
-    });
+    const cb = () => triggerThemeResync(180);
+    themeObserver = new MutationObserver(cb);
     try {
-      const targets = [document.body, document.documentElement].filter(Boolean);
+      const targets = [document.body, document.documentElement, document.head].filter(Boolean);
       for (const target of targets) {
-        themeObserver.observe(target, {
-          attributes: true,
-          attributeFilter: ["class", "data-theme"],
-        });
+        const opts =
+          target === document.head
+            ? { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "data-theme"] }
+            : { attributes: true, attributeFilter: ["class", "data-theme"], subtree: true };
+        themeObserver.observe(target, opts);
       }
     } catch (_) {
       themeObserver = null;
@@ -9631,30 +9881,8 @@ function observeThemeChanges() {
     }
   }
 
-  observeThemeStyles();
   observeThemeToggleClicks();
   observeRoamStudioToggleAttributes();
-}
-
-function observeThemeStyles() {
-  if (typeof document === "undefined") return;
-  const head = document.head;
-  if (!head || themeStyleObserver) return;
-
-  themeStyleObserver = new MutationObserver(() => {
-    triggerThemeResync(200);
-  });
-
-  try {
-    themeStyleObserver.observe(head, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["href", "data-theme"],
-    });
-  } catch (_) {
-    themeStyleObserver = null;
-  }
 }
 
 function triggerThemeResync(delay = 0) {
@@ -9662,7 +9890,7 @@ function triggerThemeResync(delay = 0) {
   themeSyncTimer = setTimeout(() => {
     syncDashboardThemeVars();
     themeSyncTimer = null;
-  }, delay);
+  }, Math.max(250, delay || 0));
 }
 
 function observeThemeToggleClicks() {
