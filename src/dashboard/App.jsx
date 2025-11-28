@@ -1010,8 +1010,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
               className={`bt-chip${filtersOpen ? " bt-chip--active" : ""}`}
               onClick={() => setFiltersOpen((v) => !v)}
               aria-expanded={filtersOpen}
+              aria-label="Filters"
             >
-              Filters
+              <span className="bp3-icon bp3-icon-filter" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -1139,14 +1140,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       </div>
 
       <footer className="bt-dashboard__footer">
-        <div>
-          <strong>Legend:</strong> Repeat shows recurrence rule; Start/Defer/Due show Roam dates.
-        </div>
-        <div className="bt-dashboard__footer-actions">
-          <button type="button" onClick={() => controller.openSettings?.()}>
-            Settings
-          </button>
-        </div>
+
       </footer>
     </div>
   );

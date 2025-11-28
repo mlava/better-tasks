@@ -45,11 +45,15 @@ const TODAY_WIDGET_LAYOUT_SETTING = "bt-today-widget-layout";
 const TODAY_WIDGET_OVERDUE_SETTING = "bt-today-widget-include-overdue";
 const TODAY_WIDGET_COMPLETED_SETTING = "bt-today-widget-show-completed";
 const TODAY_WIDGET_PLACEMENT_SETTING = "bt-today-widget-placement";
-const TODAY_WIDGET_ANCHOR_TEXT = "BetterTasks Today Widget";
-const TODAY_WIDGET_PANEL_CHILD_TEXT = "Today Widget Panel";
+const TODAY_WIDGET_HEADING_SETTING = "bt-today-widget-heading";
+const TODAY_WIDGET_ANCHOR_TEXT = "Better Tasks - Today";
+const TODAY_WIDGET_ANCHOR_TEXT_LEGACY = ["BetterTasks Today Widget"];
+const TODAY_WIDGET_PANEL_CHILD_TEXT = "";
+const TODAY_WIDGET_PANEL_CHILD_TEXT_LEGACY = ["Today Widget Panel"];
 const PILL_THRESHOLD_SETTING = "bt-pill-checkbox-threshold";
 const DEFAULT_PILL_THRESHOLD = 20; // skip pill rendering when too many checkboxes are present
 let todayWidgetRenderTimer = null;
+const todaySettingOverrides = new Map();
 let todayWidgetPanelRoot = null;
 let todayWidgetPanelContainer = null;
 let lastTodayWidgetSignature = null;
@@ -238,38 +242,44 @@ export default {
           description: "Sensitive: stored in Roam settings; used client-side only for AI parsing",
           action: { type: "input", placeholder: "sk-...", onChange: () => { } },
         },
-        /*
-        {
-          id: TODAY_WIDGET_LAYOUT_SETTING,
-          name: "Today widget layout",
-          description: "Choose how the Today widget appears on your DNP",
-          action: { type: "select", items: ["Panel", "Roam-style inline"], onChange: handleTodaySettingChange },
-        },
-        {
-          id: TODAY_WIDGET_PLACEMENT_SETTING,
-          name: "Today widget placement",
-          description: "Place the widget at the top or bottom of the DNP",
-          action: { type: "select", items: ["Top", "Bottom"], onChange: handleTodaySettingChange },
-        },
-        {
-          id: TODAY_WIDGET_OVERDUE_SETTING,
-          name: "Include overdue tasks in Today widget",
-          description: "Show tasks with due dates before today",
-          action: { type: "switch", onChange: handleTodaySettingChange },
-        },
-        {
-          id: TODAY_WIDGET_COMPLETED_SETTING,
-          name: "Show completed tasks in Today widget",
-          description: "Include completed tasks (hidden by default)",
-          action: { type: "switch", onChange: handleTodaySettingChange },
-        },
-        */
         {
           id: PILL_THRESHOLD_SETTING,
           name: "Inline pill checkbox threshold",
           description: "Max checkbox count before Better Tasks inline pills skip initial rendering (default 20). Higher values will render but the page may be slower.",
           action: { type: "input", placeholder: DEFAULT_PILL_THRESHOLD.toString() },
         },
+        /*
+        {
+          id: TODAY_WIDGET_LAYOUT_SETTING,
+          name: "Today widget layout",
+          description: "Choose how the Today widget appears on your DNP",
+          action: { type: "select", items: ["Panel", "Roam-style inline"], onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_LAYOUT_SETTING, v) },
+        },
+        {
+          id: TODAY_WIDGET_PLACEMENT_SETTING,
+          name: "Today widget placement",
+          description: "Place the widget at the top or bottom of the DNP",
+          action: { type: "select", items: ["Top", "Bottom"], onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_PLACEMENT_SETTING, v) },
+        },
+        {
+          id: TODAY_WIDGET_OVERDUE_SETTING,
+          name: "Include overdue tasks in Today widget",
+          description: "Show tasks with due dates before today",
+          action: { type: "switch", onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_OVERDUE_SETTING, v) },
+        },
+        {
+          id: TODAY_WIDGET_COMPLETED_SETTING,
+          name: "Show completed tasks in Today widget",
+          description: "Include completed tasks (hidden by default)",
+          action: { type: "switch", onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_COMPLETED_SETTING, v) },
+        },
+        {
+          id: TODAY_WIDGET_HEADING_SETTING,
+          name: "Today widget heading level",
+          description: "Apply heading styling to the Today widget anchor block",
+          action: { type: "select", items: ["None", "H1", "H2", "H3"], onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_HEADING_SETTING, v) },
+        },
+        */
       ],
     };
     extensionAPI.settings.panel.create(config);
@@ -5842,6 +5852,7 @@ export default {
           width: 100%;
           box-sizing: border-box;
           padding: 6px 8px;
+          margin-left: 14px;
         }
         .bt-today-panel__header {
           display: flex;
@@ -5860,7 +5871,7 @@ export default {
         }
         .bt-today-panel__list {
           list-style: none;
-          padding-left: 0;
+          padding-left: 14px;
           margin: 0;
         }
         .bt-today-panel__row {
@@ -5879,6 +5890,10 @@ export default {
           font: inherit;
           color: inherit;
         }
+        .bt-today-panel__item--completed .bt-today-panel__row-title {
+          text-decoration: line-through;
+          opacity: 0.6;
+        }
         .bt-today-panel__row-actions {
           display: flex;
           gap: 6px;
@@ -5894,7 +5909,20 @@ export default {
       document.head.appendChild(style);
     }
 
-    function handleTodaySettingChange() {
+    function setTodaySettingOverride(settingId, value) {
+      if (!settingId) return;
+      todaySettingOverrides.set(settingId, value);
+      // Clear override after a short window; settings should be persisted by then.
+      setTimeout(() => todaySettingOverrides.delete(settingId), 4000);
+    }
+
+    function getTodaySetting(settingId) {
+      if (todaySettingOverrides.has(settingId)) return todaySettingOverrides.get(settingId);
+      return extensionAPI.settings.get(settingId);
+    }
+
+    function handleTodaySettingChange(settingId = null, value = undefined) {
+      if (settingId) setTodaySettingOverride(settingId, value);
       lastTodayWidgetSignature = null;
       lastTodayInlineSignature = null;
       lastTodayConfigSignature = null;
@@ -5903,12 +5931,13 @@ export default {
         clearTimeout(todayWidgetRenderTimer);
         todayWidgetRenderTimer = null;
       }
-      // Render immediately to reflect setting changes on the DNP.
-      void renderTodayWidget();
+      // Force an immediate render using the override, plus a follow-up after settings persistence.
+      void renderTodayWidget(true);
+      scheduleTodayWidgetRender(200, true);
     }
 
     function getTodayWidgetLayout() {
-      const raw = extensionAPI.settings.get(TODAY_WIDGET_LAYOUT_SETTING);
+      const raw = getTodaySetting(TODAY_WIDGET_LAYOUT_SETTING);
       if (raw === "Panel") return "panel";
       if (raw === "Roam-style inline") return "roamInline";
       const norm = typeof raw === "string" ? raw.trim().toLowerCase() : String(raw ?? "").toLowerCase();
@@ -5920,7 +5949,7 @@ export default {
     }
 
     function getTodayWidgetIncludeOverdue() {
-      const raw = extensionAPI.settings.get(TODAY_WIDGET_OVERDUE_SETTING);
+      const raw = getTodaySetting(TODAY_WIDGET_OVERDUE_SETTING);
       if (raw === false) return false;
       const norm = typeof raw === "string" ? raw.trim().toLowerCase() : String(raw || "").toLowerCase();
       if (["false", "0", "off", "no"].includes(norm)) return false;
@@ -5928,12 +5957,42 @@ export default {
     }
 
     function getTodayWidgetShowCompleted() {
-      return !!extensionAPI.settings.get(TODAY_WIDGET_COMPLETED_SETTING);
+      return !!getTodaySetting(TODAY_WIDGET_COMPLETED_SETTING);
     }
 
     function getTodayWidgetPlacement() {
-      const raw = extensionAPI.settings.get(TODAY_WIDGET_PLACEMENT_SETTING);
+      const raw = getTodaySetting(TODAY_WIDGET_PLACEMENT_SETTING);
       return raw === "Bottom" ? "Bottom" : "Top";
+    }
+
+    function getTodayWidgetHeadingLevel() {
+      const raw = getTodaySetting(TODAY_WIDGET_HEADING_SETTING);
+      if (raw === 1 || raw === "1" || raw === "H1") return 1;
+      if (raw === 2 || raw === "2" || raw === "H2") return 2;
+      if (raw === 3 || raw === "3" || raw === "H3") return 3;
+      if (typeof raw === "string") {
+        const norm = raw.trim().toLowerCase();
+        if (norm === "h1" || norm === "heading 1") return 1;
+        if (norm === "h2" || norm === "heading 2") return 2;
+        if (norm === "h3" || norm === "heading 3") return 3;
+      }
+      return 0; // None / default
+    }
+
+    function readTodayConfig() {
+      const layout = getTodayWidgetLayout();
+      const includeOverdue = getTodayWidgetIncludeOverdue();
+      const showCompleted = getTodayWidgetShowCompleted();
+      const placement = getTodayWidgetPlacement();
+      const heading = getTodayWidgetHeadingLevel();
+      const signature = [
+        layout,
+        includeOverdue ? "overdue" : "nooverdue",
+        showCompleted ? "showdone" : "hidedone",
+        placement,
+        `h${heading}`,
+      ].join("|");
+      return { layout, includeOverdue, showCompleted, placement, heading, signature };
     }
 
     function getPillCheckboxThreshold() {
@@ -5948,12 +6007,12 @@ export default {
       return DEFAULT_PILL_THRESHOLD;
     }
 
-    function scheduleTodayWidgetRender(delayMs = 200) {
+    function scheduleTodayWidgetRender(delayMs = 200, force = false) {
       if (!TODAY_WIDGET_ENABLED) return;
       if (todayWidgetRenderTimer) clearTimeout(todayWidgetRenderTimer);
       todayWidgetRenderTimer = setTimeout(() => {
         todayWidgetRenderTimer = null;
-        void renderTodayWidget();
+        void renderTodayWidget(force);
       }, delayMs);
     }
 
@@ -8557,16 +8616,27 @@ export default {
       return sections;
     }
 
-    async function ensureTodayWidgetAnchor(placement = "Top") {
+    async function ensureTodayWidgetAnchor(placement = "Top", heading = 0) {
       const dnpTitle = toDnpTitle(todayLocal());
       const dnpUid = await getOrCreatePageUid(dnpTitle);
       const parent = await getBlock(dnpUid);
       const children = Array.isArray(parent?.children) ? parent.children : [];
-      const existingIndex = children.findIndex(
-        (c) => (c?.string || "").trim().toLowerCase() === TODAY_WIDGET_ANCHOR_TEXT.toLowerCase()
-      );
+      const matchesAnchor = (str = "") => {
+        const trimmed = str.trim().toLowerCase();
+        if (trimmed === TODAY_WIDGET_ANCHOR_TEXT.toLowerCase()) return true;
+        return TODAY_WIDGET_ANCHOR_TEXT_LEGACY.some((legacy) => trimmed === legacy.toLowerCase());
+      };
+      const existingIndex = children.findIndex((c) => matchesAnchor(c?.string || ""));
       const existing = existingIndex >= 0 ? children[existingIndex] : null;
       if (existing?.uid) {
+        if ((existing.string || "").trim() !== TODAY_WIDGET_ANCHOR_TEXT) {
+          try {
+            await window.roamAlphaAPI.updateBlock({ block: { uid: existing.uid, string: TODAY_WIDGET_ANCHOR_TEXT } });
+          } catch (_) { }
+        }
+        try {
+          await window.roamAlphaAPI.updateBlock({ block: { uid: existing.uid, heading } });
+        } catch (_) { }
         const desiredOrder = placement === "Bottom" ? Math.max(children.length, 0) : 0;
         const currentOrder = typeof existing.order === "number" ? existing.order : existingIndex;
         if (typeof desiredOrder === "number" && desiredOrder >= 0 && currentOrder !== desiredOrder) {
@@ -8582,25 +8652,8 @@ export default {
       const order = placement === "Bottom" ? children.length : 0;
       const uid = window.roamAlphaAPI.util.generateUID();
       await createBlock(dnpUid, order, TODAY_WIDGET_ANCHOR_TEXT, uid);
-      return uid;
-    }
-
-    async function ensureTodayPanelChild(anchorUid) {
-      if (!anchorUid) return null;
-      const block = await getBlock(anchorUid);
-      const children = Array.isArray(block?.children) ? block.children : [];
-      const existing = children.find((c) => (c?.string || "").trim() === TODAY_WIDGET_PANEL_CHILD_TEXT);
-      if (existing?.uid) {
-        try {
-          await window.roamAlphaAPI.updateBlock({ block: { uid: existing.uid, string: TODAY_WIDGET_PANEL_CHILD_TEXT } });
-          await window.roamAlphaAPI.updateBlock({ block: { uid: existing.uid, open: true } });
-        } catch (_) { }
-        return existing.uid;
-      }
-      const uid = window.roamAlphaAPI.util.generateUID();
-      await createBlock(anchorUid, 0, TODAY_WIDGET_PANEL_CHILD_TEXT, uid);
       try {
-        await window.roamAlphaAPI.updateBlock({ block: { uid, open: true } });
+        await window.roamAlphaAPI.updateBlock({ block: { uid, heading } });
       } catch (_) { }
       return uid;
     }
@@ -8648,9 +8701,9 @@ export default {
       return null;
     }
 
-    async function getTodayPanelContainer(panelChildUid) {
-      if (!panelChildUid || typeof document === "undefined") return null;
-      const host = await findBlockHost(panelChildUid);
+    async function getTodayPanelContainer(blockUid) {
+      if (!blockUid || typeof document === "undefined") return null;
+      const host = await findBlockHost(blockUid);
       if (!host) return null;
       host.classList.add("bt-today-panel-block");
 
@@ -8693,7 +8746,8 @@ export default {
       const perfInline = perfMark("renderTodayInline");
       await teardownTodayPanel();
       const signatureParts = [];
-      const pushSection = (arr) => signatureParts.push(...(arr || []).map((t) => t.uid));
+      const pushSection = (arr) =>
+        signatureParts.push(...(arr || []).map((t) => `${t.uid}:${t.isCompleted ? "done" : "todo"}`));
       pushSection(sections.startingToday);
       pushSection(sections.deferredToToday);
       pushSection(sections.dueToday);
@@ -8712,10 +8766,7 @@ export default {
       }
       await clearTodayInlineChildren(anchorUid, null);
       lastTodayInlineSignature = signature;
-      const todayLabel = toDnpTitle(todayLocal());
       let order = 0;
-      const headerUid = window.roamAlphaAPI.util.generateUID();
-      await createBlock(anchorUid, order++, `🔆 TODAY — ${todayLabel}`, headerUid);
       const writeSection = async (label, tasks) => {
         if (!tasks?.length) return;
         const sectionUid = window.roamAlphaAPI.util.generateUID();
@@ -8725,11 +8776,11 @@ export default {
           await createBlock(sectionUid, childOrder++, `((${task.uid}))`);
         }
       };
-      await writeSection("Starting", sections.startingToday);
-      await writeSection("Deferred", sections.deferredToToday);
-      await writeSection("Due", sections.dueToday);
+      await writeSection("Starting Today", sections.startingToday);
+      await writeSection("Deferred Until Today", sections.deferredToToday);
+      await writeSection("Due Today", sections.dueToday);
       if (options.includeOverdue) {
-        await writeSection("Overdue", sections.overdue);
+        await writeSection(`Overdue (${sections.overdue.length})`, sections.overdue);
       }
       perfLog(perfInline, `totalBlocks=${order}`);
     }
@@ -8745,7 +8796,8 @@ export default {
         sections.dueToday.length ||
         (options.includeOverdue && sections.overdue.length);
       const signatureParts = [];
-      const pushSection = (arr) => signatureParts.push(...(arr || []).map((t) => t.uid));
+      const pushSection = (arr) =>
+        signatureParts.push(...(arr || []).map((t) => `${t.uid}:${t.isCompleted ? "done" : "todo"}`));
       pushSection(sections.startingToday);
       pushSection(sections.deferredToToday);
       pushSection(sections.dueToday);
@@ -8760,19 +8812,6 @@ export default {
         container.appendChild(empty);
         return;
       }
-      const set = S();
-      const header = document.createElement("div");
-      header.className = "bt-today-panel__header";
-      const icon = document.createElement("span");
-      icon.textContent = "🔆";
-      icon.className = "bt-today-panel__icon";
-      const title = document.createElement("span");
-      title.className = "bt-today-panel__title";
-      title.textContent = `Today — ${formatFriendlyDate(todayLocal(), set)}`;
-      header.appendChild(icon);
-      header.appendChild(title);
-      container.appendChild(header);
-
       const renderSection = (label, tasks, highlight) => {
         if (!tasks?.length) return;
         const section = document.createElement("div");
@@ -8788,13 +8827,22 @@ export default {
         for (const task of tasks) {
           const li = document.createElement("li");
           li.className = "bt-today-panel__item";
+          if (task.isCompleted) li.classList.add("bt-today-panel__item--completed");
           const row = document.createElement("div");
           row.className = "bt-today-panel__row";
           const titleBtn = document.createElement("button");
           titleBtn.type = "button";
           titleBtn.className = "bt-today-panel__row-title";
           titleBtn.textContent = task.title || "(Untitled)";
-          titleBtn.addEventListener("click", () => openBlock(task.uid));
+          titleBtn.addEventListener("click", () => {
+            if (activeDashboardController?.openBlock) {
+              activeDashboardController.openBlock(task.uid);
+            } else {
+              try {
+                window.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: task.uid } });
+              } catch (_) { }
+            }
+          });
           row.appendChild(titleBtn);
           const meta = document.createElement("span");
           meta.className = "bt-today-panel__row-meta";
@@ -8806,27 +8854,41 @@ export default {
             meta.textContent = metaBits.join(" • ");
             row.appendChild(meta);
           }
-          const actions = document.createElement("div");
-          actions.className = "bt-today-panel__row-actions";
-          const doneBtn = document.createElement("button");
-          doneBtn.type = "button";
-          doneBtn.className = "bt-today-panel__icon-btn";
-          doneBtn.textContent = "✓";
-          doneBtn.title = "Complete";
-          doneBtn.addEventListener("click", () =>
-            activeDashboardController?.toggleTask?.(task.uid, "complete")
-          );
-          const snoozeBtn = document.createElement("button");
-          snoozeBtn.type = "button";
-          snoozeBtn.className = "bt-today-panel__icon-btn";
-          snoozeBtn.textContent = "⏱";
-          snoozeBtn.title = "Snooze +1d";
-          snoozeBtn.addEventListener("click", () =>
-            activeDashboardController?.snoozeTask?.(task.uid, 1)
-          );
-          actions.appendChild(doneBtn);
-          actions.appendChild(snoozeBtn);
-          row.appendChild(actions);
+          if (!task.isCompleted) {
+            const actions = document.createElement("div");
+            actions.className = "bt-today-panel__row-actions";
+            const doneBtn = document.createElement("button");
+            doneBtn.type = "button";
+            doneBtn.className = "bt-today-panel__icon-btn";
+            doneBtn.textContent = "✓";
+            doneBtn.title = "Complete";
+            const snoozeBtn = document.createElement("button");
+            snoozeBtn.type = "button";
+            snoozeBtn.className = "bt-today-panel__icon-btn";
+            snoozeBtn.textContent = "⏱";
+            snoozeBtn.title = "Snooze +1d";
+            snoozeBtn.addEventListener("click", async () => {
+              doneBtn.disabled = true;
+              snoozeBtn.disabled = true;
+              try {
+                await activeDashboardController?.snoozeTask?.(task.uid, 1);
+              } finally {
+                scheduleTodayWidgetRender(30, true);
+              }
+            });
+            doneBtn.addEventListener("click", async () => {
+              doneBtn.disabled = true;
+              snoozeBtn.disabled = true;
+              try {
+                await activeDashboardController?.toggleTask?.(task.uid, "complete");
+              } finally {
+                scheduleTodayWidgetRender(30, true);
+              }
+            });
+            actions.appendChild(doneBtn);
+            actions.appendChild(snoozeBtn);
+            row.appendChild(actions);
+          }
           li.appendChild(row);
           list.appendChild(li);
         }
@@ -8843,15 +8905,15 @@ export default {
       perfLog(perfPanel);
     }
 
-    async function renderTodayWidget() {
+    async function renderTodayWidget(force = false) {
       if (!TODAY_WIDGET_ENABLED) return;
       try {
-        const layout = getTodayWidgetLayout();
+        if (force) {
+          lastTodayWidgetSignature = null;
+          lastTodayInlineSignature = null;
+        }
+        const { layout, includeOverdue, showCompleted, placement, heading, signature: layoutSignature } = readTodayConfig();
         const perfRenderToday = perfMark(`renderTodayWidget ${layout}`);
-        const includeOverdue = getTodayWidgetIncludeOverdue();
-        const showCompleted = getTodayWidgetShowCompleted();
-        const placement = getTodayWidgetPlacement();
-        const layoutSignature = [layout, includeOverdue ? "overdue" : "nooverdue", showCompleted ? "showdone" : "hidedone", placement].join("|");
         lastTodayConfigSignature = layoutSignature;
         const prevLayout = lastTodayLayoutType;
         const perfTasks = perfMark("renderTodayWidget:collectTasks");
@@ -8860,18 +8922,22 @@ export default {
         if (!Array.isArray(tasks)) return;
         const sections = buildTodaySections(tasks, { includeOverdue, showCompleted });
         perfLog(perfMark("renderTodayWidget:sections"), "");
-        const anchorUid = await ensureTodayWidgetAnchor(placement);
+        const anchorUid = await ensureTodayWidgetAnchor(placement, heading);
         if (!anchorUid) return;
         try {
           await window.roamAlphaAPI.updateBlock({ block: { uid: anchorUid, open: true } });
         } catch (_) { }
+        const isLegacyPanelLabel = (str = "") => {
+          const trimmed = str.trim();
+          if (trimmed === TODAY_WIDGET_PANEL_CHILD_TEXT) return true;
+          return TODAY_WIDGET_PANEL_CHILD_TEXT_LEGACY.some((legacy) => trimmed === legacy);
+        };
+
         if (layout === "roamInline") {
           // If a panel child exists from a previous render, remove it before writing inline children.
           try {
             const anchorBlock = await getBlock(anchorUid);
-            const panelChild = (anchorBlock?.children || []).find(
-              (c) => (c?.string || "").trim() === TODAY_WIDGET_PANEL_CHILD_TEXT
-            );
+            const panelChild = (anchorBlock?.children || []).find((c) => isLegacyPanelLabel(c?.string || ""));
             if (panelChild?.uid) {
               await deleteBlock(panelChild.uid);
             }
@@ -8883,15 +8949,13 @@ export default {
           lastTodayLayoutType = "roamInline";
           return;
         }
-        // If switching from inline to panel, clear inline children once
-        const panelChildUid = await ensureTodayPanelChild(anchorUid);
         // Always clear any inline children when rendering panel to avoid duplicated views.
-        await clearTodayInlineChildren(anchorUid, panelChildUid);
-        const panelHost = panelChildUid ? await findBlockHost(panelChildUid) : null;
+        await clearTodayInlineChildren(anchorUid, null);
+        const panelHost = await findBlockHost(anchorUid);
         panelHost?.classList.add("bt-today-panel-block");
         panelHost?.classList.remove("bt-today-panel-inline-hidden");
-        const container = await getTodayPanelContainer(panelChildUid);
-        if (!container || !panelChildUid) {
+        const container = await getTodayPanelContainer(anchorUid);
+        if (!container) {
           scheduleTodayWidgetRender(300);
           return;
         }
