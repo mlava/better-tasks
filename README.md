@@ -132,7 +132,7 @@ Weekly rules that span multiple days or intervals (e.g., `every 2 weeks on Sat &
 - Data safety: only the task text you supply plus your API key are sent directly to OpenAI; no proxy/server is involved. Nothing else from your graph is transmitted. If you hit quota issues, you’ll see a toast pointing you to the provider’s billing/limits page (`https://platform.openai.com/settings/organization/billing/overview`).
 
 ### Inline pill checkbox threshold
-Caps how many checkboxes can be on the page before inline pill rendering is skipped. Default is 20. Increase to show pills on very large pages (slower), or decrease to prioritise performance; pills will still render on-demand when you interact with a specific block.
+Caps how many checkboxes can be on the page before inline pill rendering is skipped. Default is 100. Increase to show pills on very large pages (slower), or decrease to prioritise performance; pills will still render on-demand when you interact with a specific block.
 
 **Note:** 
 The settings pane for the extension allows you to use whatever name for the repeat and start/defer/due date atttributes you choose. The extension defaults to using 'BT_attrRepeat', 'BT_attrStart', 'BT_attrDefer' and 'BT_attrDue' for the recurrence pattern and start/defer/due dates respectively. If you happen to already use these attributes for other purposes, the extension will recognise and attempt to use them if you don't set alternatives in the settings. Using 'frequency' and 'when' for example, would prevent the extension from acting on anything for which you already use 'BT_attrRepeat' and 'BT_attrDue'.
