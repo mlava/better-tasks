@@ -52,7 +52,7 @@ const TODAY_WIDGET_ANCHOR_TEXT_LEGACY = ["BetterTasks Today Widget"];
 const TODAY_WIDGET_PANEL_CHILD_TEXT = "";
 const TODAY_WIDGET_PANEL_CHILD_TEXT_LEGACY = ["Today Widget Panel"];
 const PILL_THRESHOLD_SETTING = "bt-pill-checkbox-threshold";
-const DEFAULT_PILL_THRESHOLD = 20; // skip pill rendering when too many checkboxes are present
+const DEFAULT_PILL_THRESHOLD = 100; // skip pill rendering when too many checkboxes are present
 let todayWidgetRenderTimer = null;
 const todaySettingOverrides = new Map();
 let todayWidgetPanelRoot = null;
@@ -254,7 +254,7 @@ export default {
         {
           id: PILL_THRESHOLD_SETTING,
           name: "Inline pill checkbox threshold",
-          description: "Max checkbox count before Better Tasks inline pills skip initial rendering (default 20). Higher values will render but the page may be slower.",
+          description: "Max checkbox count before Better Tasks inline pills skip initial rendering (default 100). Higher values will render but the page may be slower.",
           action: { type: "input", placeholder: DEFAULT_PILL_THRESHOLD.toString() },
         },
         /*
@@ -1194,9 +1194,12 @@ export default {
       iziToast.show({
         theme: "light",
         color: "black",
-        class: "betterTasks",
+        class: "betterTasks bt-toast-strong-icon",
         position: "center",
         timeout: 5000,
+        icon: "icon-check",
+        iconText: "✓",
+        iconColor: "#1f7a34",
         close: true,
         closeOnClick: false,
         message: payload.message || "Due updated",
@@ -3553,7 +3556,7 @@ export default {
       iziToast.show({
         theme: "light",
         color: "black",
-        class: "betterTasks",
+        class: "betterTasks bt-toast-undo",
         position: "center",
         message,
         timeout: 5000,
@@ -4911,11 +4914,14 @@ export default {
           theme: 'light',
           color: 'black',
           layout: 2,
-          class: 'betterTasks',
+          class: 'betterTasks bt-toast-strong-icon',
           drag: false,
           timeout: false,
           close: true,
           overlay: true,
+          icon: "icon-check",
+          iconText: "✓",
+          iconColor: "#1f7a34",
           title: "Better Tasks",
           message: "Spawn next occurrence?",
           position: 'center',
@@ -4936,28 +4942,13 @@ export default {
         });
       });
     }
-    /*
-        function ensureToastStyles() {
-          if (document.getElementById("rt-toast-style")) return;
-          const style = document.createElement("style");
-          style.id = "rt-toast-style";
-          style.textContent = `
-            .iziToast.betterTasks .iziToast-body {
-              display: flex;
-              align-items: center;
-            }
-          `;
-          document.head.appendChild(style);
-        }
-        */
 
     function toast(msg, timer = 3000) {
-      // ensureToastStyles();
       iziToast.show({
         theme: 'light',
         color: 'black',
         message: msg,
-        class: 'betterTasks',
+        class: 'betterTasks bt-toast-info',
         position: 'center',
         close: false,
         timeout: timer,
@@ -5057,12 +5048,15 @@ export default {
           theme: "light",
           color: "black",
           layout: 2,
-          class: "betterTasks2",
+          class: "betterTasks bt-toast-strong-icon",
           position: "center",
           drag: false,
           timeout: false,
           close: true,
           overlay: true,
+          icon: "icon-check",
+          iconText: "✓",
+          iconColor: "#1f7a34",
           title,
           message,
           inputs: [
@@ -5140,12 +5134,15 @@ export default {
           theme: "light",
           color: "black",
           layout: 2,
-          class: "betterTasks2",
+          class: "betterTasks bt-toast-strong-icon",
           position: "center",
           drag: false,
           timeout: false,
           close: true,
           overlay: true,
+          icon: "icon-check",
+          iconText: "✓",
+          iconColor: "#1f7a34",
           title,
           message,
           inputs: [
@@ -5407,7 +5404,7 @@ export default {
           theme: "light",
           color: "black",
           layout: 2,
-          class: "betterTasks2",
+          class: "betterTasks2 bt-toast-strong-icon",
           position: "center",
           drag: false,
           timeout: false,
@@ -5415,8 +5412,9 @@ export default {
           closeOnEscape: true,
           overlay: true,
           title: "Better Tasks",
-          icon: "",
+          icon: "icon-check",
           iconText: "✓",
+          iconColor: "#3a7c2b",
           message: messageHtml,
           inputs,
           buttons: [
@@ -5669,12 +5667,15 @@ export default {
           theme: "light",
           color: "black",
           layout: 2,
-          class: "betterTasks",
+          class: "betterTasks bt-toast-strong-icon",
           position: "center",
           drag: false,
           timeout: false,
           close: true,
           overlay: true,
+          icon: "icon-check",
+          iconText: "✓",
+          iconColor: "#1f7a34",
           title: "Choose scheduling mode",
           message,
           buttons: [
@@ -5831,33 +5832,6 @@ export default {
         }
         .rt-pill-menu-btn:hover {
           background: rgba(0,0,0,0.12);
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    function ensurePromptStyles() {
-      if (document.getElementById("rt-prompt-style")) return;
-      const style = document.createElement("style");
-      style.id = "rt-prompt-style";
-      style.textContent = `
-        .rt-meta-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-          gap: 8px 12px;
-        }
-        .rt-meta-grid select,
-        .rt-meta-grid input {
-          width: 100%;
-          box-sizing: border-box;
-        }
-        .iziToast-message {
-          overflow: visible !important;
-        }
-        .iziToast-body {
-          display: flex !important;
-          flex-direction: column !important;
-          min-height: 520px;
         }
       `;
       document.head.appendChild(style);
@@ -7131,11 +7105,14 @@ export default {
       iziToast.show({
         theme: "light",
         color: "black",
-        class: "betterTasks",
+        class: "betterTasks bt-toast-strong-icon",
         overlay: true,
         timeout: false,
         close: true,
         drag: false,
+        icon: "icon-check",
+        iconText: "✓",
+        iconColor: "#1f7a34",
         message: html,
         position: "center",
         onOpening: (_instance, toastEl) => {

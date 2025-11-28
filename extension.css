@@ -41,17 +41,7 @@
     ;
 }
 
-.betterTasks>.iziToast-body {
-    position: relative;
-    padding: 0 10px 0 10px;
-    height: auto;
-    min-height: 52px;
-    margin: 0 15px 0 15px;
-    text-align: left;
-    display: flex;
-    align-items: center;
-}
-
+.betterTasks>.iziToast-body,
 .betterTasks2>.iziToast-body {
     position: relative;
     padding: 0 10px 0 10px;
@@ -113,6 +103,11 @@
 .betterTasks2 .iziToast-body {
     position: relative;
 }
+
+.betterTasks .iziToast-buttons {
+    display: flex !important;
+}
+
 .betterTasks2 .iziToast-buttons {
     display: flex !important;
     justify-content: flex-end;
@@ -123,35 +118,66 @@
     top: 40%;
     transform: translateY(-50%);
 }
+.bt-toast-undo > .iziToast-body .iziToast-texts {
+    margin: 10px 0 0 0;
+    padding-right: 2px;
+    display: inline-block;
+    transform: translateY(50%);
+}
+.bt-toast-undo > .iziToast-body .iziToast-buttons {
+    min-height: 17px;
+    transform: translateY(15%);
+}
+.bt-toast-info >.iziToast-body .iziToast-texts {
+    margin: 10px 0 0 0;
+    display: inline-block;
+    transform: translateY(50%);
+}
+
+.bt-toast-strong-icon .iziToast-icon {
+    font-size: 28px !important;
+    font-weight: 800 !important;
+    color: #1f7a34 !important;
+    opacity: 0.95 !important;
+}
+
 .betterTasks2 .iziToast-buttons-child {
     float: none !important;
     position: static !important;
     top: auto !important;
 }
-.bt-today-panel-block .rm-block__content > span:first-child {
+
+.bt-today-panel-block .rm-block__content>span:first-child {
     display: none !important;
 }
-.bt-today-panel-inline-hidden .rm-block__content > span:first-child,
-.bt-today-panel-inline-hidden .rm-block__input > span:first-child {
+
+.bt-today-panel-inline-hidden .rm-block__content>span:first-child,
+.bt-today-panel-inline-hidden .rm-block__input>span:first-child {
     display: none !important;
 }
+
 .bt-today-panel-inline-hidden .rm-block__children {
     display: none !important;
 }
+
 .bt-today-panel-inline-hidden .rm-bullet,
 .bt-today-panel-inline-hidden .controls {
     display: none !important;
 }
+
 .bt-today-panel-block .rm-block__children {
     padding-top: 4px;
     position: relative;
 }
+
 .bt-today-panel-block .rm-block__input {
     position: relative;
 }
-.bt-today-panel-block .rm-block__children > .rm-multibar {
+
+.bt-today-panel-block .rm-block__children>.rm-multibar {
     display: none;
 }
+
 .bt-today-panel-root {
     min-height: 0;
     width: 100%;
