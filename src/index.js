@@ -60,7 +60,6 @@ let todayWidgetPanelContainer = null;
 let lastTodayWidgetSignature = null;
 let lastTodayInlineSignature = null;
 let teardownTodayPanelGlobal = null;
-let lastTodayConfigSignature = null;
 let lastTodayLayoutType = null;
 let pillRefreshTimer = null;
 let todayWidgetForceNext = false;
@@ -81,7 +80,6 @@ let topbarButtonObserver = null;
 let themeObserver = null;
 let themeSyncTimer = null;
 let lastThemeSample = null;
-let themeStyleObserver = null;
 let roamStudioToggleObserver = null;
 let btPendingRoamStudioTheme = false;
 const ReactDOMGlobal = typeof window !== "undefined" ? window.ReactDOM || null : null;
@@ -4039,7 +4037,14 @@ export default {
       }
 
       // 6) Monthly: explicit EOM
-      if (t === "last day of the month" || t === "last day of each month" || t === "eom")
+      if (
+        t === "last day of the month" ||
+        t === "last day of each month" ||
+        t === "last day of every month" ||
+        t === "last day each month" ||
+        t === "last day every month" ||
+        t === "eom"
+      )
         return { kind: "MONTHLY_LAST_DAY" };
 
       // 7) Monthly: semimonthly / multi-day
@@ -4327,7 +4332,10 @@ export default {
     function nextMonthLastDay(base) {
       const y = base.getFullYear();
       const m = base.getMonth();
-      return new Date(y, m + 1, 0, 12, 0, 0, 0);
+      const thisMonthEom = new Date(y, m + 1, 0, 12, 0, 0, 0);
+      const isAtOrAfterEom = base.getDate() >= thisMonthEom.getDate();
+      const targetMonth = isAtOrAfterEom ? m + 2 : m + 1;
+      return new Date(y, targetMonth, 0, 12, 0, 0, 0);
     }
 
     function resolveYearlyMonth(rule, meta) {
@@ -9122,8 +9130,6 @@ export default {
         }
         const { layout, includeOverdue, showCompleted, placement, heading, signature: layoutSignature } = readTodayConfig();
         const perfRenderToday = perfMark(`renderTodayWidget ${layout}`);
-        lastTodayConfigSignature = layoutSignature;
-        const prevLayout = lastTodayLayoutType;
         const perfTasks = perfMark("renderTodayWidget:collectTasks");
         const renderCache = createTodayRenderCache();
         if (!(await shouldRenderTodayWidgetNow(renderCache))) {
@@ -9489,14 +9495,6 @@ function disconnectThemeObserver() {
       // ignore
     }
     themeObserver = null;
-  }
-  if (themeStyleObserver) {
-    try {
-      themeStyleObserver.disconnect();
-    } catch (_) {
-      // ignore
-    }
-    themeStyleObserver = null;
   }
   if (themeSyncTimer) {
     clearTimeout(themeSyncTimer);

@@ -1,103 +1,158 @@
-# Better Tasks — Master Roadmap
-_Updated 27 Nov 2025_
+# Better Tasks — Roadmap (Regenerated, 28 Nov 2025)
 
-## ✅ Phases 1–3 — Completed
-Core recurring-tasks engine + attributes + inline UI
+## Phase 1 — Core Engine & Attributes (✓ Completed)
+- Task attribute model
+- Repeat engine (daily/weekly/monthly/custom)
+- Start / Defer / Due
+- Completed state
+- Canonical attribute child blocks
+- Inline pills (initial version)
+- Spawn logic + confirmation
 
-- Configurable attribute names (`BT_attrRepeat`, `BT_attrStart`, `BT_attrDefer`, `BT_attrDue`, `BT_attrCompleted`)
-- Hidden child blocks (non-destructive architecture)
-- Natural-language repeat rule parser
-- Inline pills for repeat/start/defer/due with click → dashboard sync
-- AI task parsing (Phase 1): strict JSON via user OpenAI API key
-- React dashboard (v1) with lazy-loading, sync, filters, and grouping
-- Settings: next-task destination, first-day-of-week, attribute names, confirmation
+## Phase 2 — Inline Pills Upgrade (✓ Completed)
+- Click menus
+- Alt/Shift click semantics
+- Inline date picker
+- Snoozing
+- Scheduling mode
+- Refined spacing, alignment, hover states
+- Keyboard & mouse parity
 
-# Phase 4 — Dashboard, UI, Attributes
-_Status: Mostly complete_
+## Phase 3 — AI Task Input (Phase 1 ✓ Completed, Phase 2 Planned)
+### Phase 1 (Completed)
+- Strict JSON schema
+- GPT-4o-mini backend
+- Bring-your-own-OpenAI-key
+- Robust parser with error correction
 
-## 4.1 Adaptive Theming — **COMPLETE**
-- Supports Roam light/dark, Blueprint, and RoamStudio
-- Real-time theme listener + CSS variable sync
+### Phase 2 (Planned)
+- “Help Me Plan” interaction
+- Clipboard event parser
+- Smart suggestions for dates and repeats
 
-## 4.2 Dashboard Enhancements — **IN PROGRESS**
-Completed:
-- Attribute filters (repeat/start/defer/due + GTD/context/project/priority/energy)
-- Grouping modes
-- Snooze / complete actions
-- Draggable + persisted position
-- Block-reference rendering `((uid))`
+## Phase 4 — Dashboard & UI Enhancements (In Progress)
+
+### 4.1 Dashboard Core (✓ Completed)
+- Fully React dashboard
+- Filters, grouping, snooze/complete actions
+- Draggable dashboard with persisted position
 - Live sync with inline pills
+- Attribute editing (repeat, start, defer, due, waiting-for, project, context, priority, energy)
+- First-day-of-week setting
+- Project picker from Roam pages
+- Theme-distinct priority color system
 
-Remaining:
-- Sidebar “unread” badge (today-only OR today+overdue)
-- Today widget (multiple layout variants)
-- UI polish & theme-safe transitions
+### 4.2 Adaptive Theming (In Progress)
+- Automated dark/light alignment
+- Theme-safe priority indicators
+- Pill contrast & token tuning
 
-## 4.3 Attribute Support Expansion — **COMP COMPLETE**
-- **Project**, **Context**, **Energy**, **Priority**, **Waiting-for**
-- Noise-free minimal indicator pills
-- Full dashboard filters + grouping
+### 4.3 Inline Pill Parity (✓ Completed)
+- One-to-one parity between dashboard and inline views
+- Attribute editing from pill menus
+- Visual consistency improvements
 
-# Phase 5 — Cleanup & Reliability
-_Status: Active_
+---
 
-- Mutation observer hardening (prevent duplicate spawns on older DNP opens)
-- Fix collapse toggle freeze regression
-- izoToast: single-toast mode
-- Remove legacy deletion codepaths
-- Performance optimisation for large graphs
-- Stress test with 100 messy test tasks
+## Phase 4 — Performance & Stability Pass (✓ Completed)
 
-# Phase 6 — AI Task Parsing
+### Today Widget Throttling & Caching
+- 1.2s minimum render interval
+- Idle-scheduled updates
+- DNP gating with retry
+- Per-render block/page cache
+- 5s memo cache (cleared on force refresh)
+- Skip completed tasks when hidden
+- Watches only attach when dashboard is open
+- Background refresh every 90 seconds when widget closed
 
-## Phase 1 — **COMPLETE**
-- Strict JSON schema for task parsing
-- Maps: title, repeatRule, dates, project/context/priority/energy
-- Uses user’s OpenAI API key
+### Dashboard Watches & Refresh
+- Watches cleared 3 minutes after dashboard closes
+- Periodic refresh without watchers
+- Cached results reused unless forced
+- Never attaches watches when hidden
 
-## Phase 2 — PLANNED
-- “Help Me Plan” → structured tasks
-- Clipboard-to-tasks auto-ingest
-- Enriched NL repeat patterns (business days, AU/UK synonyms)
-- Intelligent inference of context/energy/priority from language
+### Pill Rendering Stabilization
+- Per-block signature cache — no re-render if unchanged
+- Offscreen skipping
+- Pass cap to avoid runaway traversal
+- Global guard (skip if >1500 blocks)
+- 500ms throttle
+- Scroll-based refresh
+- Debounced pill sync (200ms)
 
-# Phase 7 — GTD Workflow
-_Status: Partially Complete_
+### Attribute Query Optimization
+- Unified Datalog query replacing multi-query per attribute
 
-Completed:
-- GTD attributes: **Next**, **Waiting-for**, **Delegated**, **Someday/Maybe**
-- Dashboard filters for all GTD attributes
+### Theme Observer Simplification
+- Single debounced observer (≥250ms) across body/html/head
 
-Remaining:
+### UI & Toast Polish
+- Reduced flicker on pill interactions
+- Consistent bold check icons in menus:
+  - Repeat / Due
+  - GTD
+  - Project / Context / Waiting For
+  - Scheduling mode
+  - Spawn confirmation
+
+---
+
+## Phase 5 — Cleanup Pass (✓ Completed)
+- Consolidated helpers
+- Removed unused code paths ✓
+- Improved type discipline ✓
+- Expanded test harness
+- Telemetry toggle scaffold
+
+---
+
+## Phase 6 — GTD Expansion (✓ Completed — Cycling States)
+
+### Unified GTD Attribute
+One cycling attribute with four states:
+1. Next Action
+2. Delegated
+3. Deferred
+4. Someday / Maybe
+
+Click = forward cycle; shift-click = backward cycle.
+Cleared state = no GTD classification.
+
+### UI Integration
+- Inline pill icons + theme colors
+- Dashboard GTD column with cycle control
+- Filters for each GTD type
+- Delegated state can include an optional “person” string
+
+### Engine Integration
+- Stored via canonical attribute child block
+- Integrated with task collection, caching, pill signatures
+- Non-conflicting with Start/Defer/Due + repeat logic
+
+---
+
+## Phase 7 — Today Widget (Next Up)
+- Daily Today widget showing:
+  - Starts today
+  - Deferred to today
+  - Due today
+- Setting to include overdue tasks
+- User-selectable variant (1 or 4)
+- All items shown as ((block-uid)) references
+- Scrollable + theme-safe layout
+
+---
+
+## Future Enhancements
+- Recurrence anchored to defer date
+- Task dependencies
 - Weekly Review module
-- GTD Widgets (Next / Waiting / Delegated etc.)
-
-# Phase 8 — Views & Visualisations
-_(Later / Maybe)_
-
-- Kanban board
-- Timeline / Gantt
-- Calendar heatmap
-- Week-ahead view
-- Streaks / stats
-- Backburner / Someday list
-- Recurring series history (spawn timeline)
-
-# Phase 9 — Task Dependencies
-_(Future, complex)_
-
-- Blocked-by / Blocks relations
-- DAG-safe (cycle prevention)
-- Visual dependency graph
-- Dashboard “unblocked tasks” filter
-- Shared-graph safety handling
-
-# Additional / Optional
-- Simple reminders (local notifications)
-- Recurrence anchored on defer-date
-- Optional @mentions integration
-- GTD literature review for conceptual alignment
-
-# Newly Added Items (Nov 2025)
-- **Dashboard**: Project attribute picker using searchable list of Roam pages
-- **Dashboard + inline pills**: Priority-level theme distinctions (safe in all themes)
+- Series history & past completions
+- Stats & analytics
+- Week-ahead planner
+- Kanban / Timeline / Calendar views
+- Shared-graph-safe features
+- Reminder service
+- Mobile-optimised views
+- Sidebar metrics (unread-style badges)

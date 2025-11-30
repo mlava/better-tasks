@@ -279,7 +279,7 @@ https://www.loom.com/share/f8856114bfd14d40a228292e7bcff9ee
 | `every month on day 15` | 15th of each month |
 | `the 1st day of each month` | 1st day every month |
 | `day 31 of each month` | clamps to end of shorter months |
-| `last day of the month` \| `EOM` | last calendar day each month |
+| `last day of the month` \| `last day of each month` \| `last day of every month` \| `EOM` | last calendar day each month |
 | `on the 1st and 15th of each month` | 1st & 15th |
 | `on the 15th and last day of each month` | 15th + EOM |
 | `on the 5th, 12th, 20th of each month` \| `on the 5th/12th/20th of each month` \| `on the 5th & 12th & 20th of each month` | multiple specific dates |
