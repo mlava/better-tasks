@@ -15,6 +15,16 @@ https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
 
 ---
 
+## 📜 Changelog (recent highlights)
+
+- Added i18n support (en, zh, zhHant) across settings, prompts, dashboard, pills and toasts.
+- Optimised performance (caching, throttled renders, diffed updates, pill debounce).
+- Localised pill tooltips and metadata labels.
+- Dynamic Roam settings panel refresh on language change with compatibility for legacy anchors/values.
+- Improved theme handling (localised notices) and observer stability for theme toggles.
+
+---
+
 ## 📘 Quick Overview
 
 You can create a Better Task directly or via the Command Palette — both behave identically, store their data in child blocks for reliability, and can include either a repeat rule or just start/defer/due dates for one-off scheduling.
