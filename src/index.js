@@ -1,5 +1,6 @@
 import iziToast from "izitoast";
 import DashboardApp from "./dashboard/App";
+import { i18n as I18N_MAP } from "./i18n";
 
 const DEFAULT_REPEAT_ATTR = "BT_attrRepeat";
 const DEFAULT_START_ATTR = "BT_attrStart";
@@ -47,18 +48,38 @@ const TODAY_WIDGET_COMPLETED_SETTING = "bt-today-widget-show-completed";
 const TODAY_WIDGET_PLACEMENT_SETTING = "bt-today-widget-placement";
 const TODAY_WIDGET_HEADING_SETTING = "bt-today-widget-heading";
 const TODAY_WIDGET_ENABLE_SETTING = "bt-today-widget-enabled";
-const TODAY_WIDGET_ANCHOR_TEXT = "Better Tasks - Today";
-const TODAY_WIDGET_ANCHOR_TEXT_LEGACY = ["BetterTasks Today Widget"];
+const LANGUAGE_SETTING = "bt-language";
+const TODAY_WIDGET_ANCHOR_TEXT_DEFAULT = "Better Tasks - Today";
+const TODAY_WIDGET_ANCHOR_TEXT_LEGACY = ["BetterTasks Today Widget", "Better Tasks - Today"];
 const TODAY_WIDGET_PANEL_CHILD_TEXT = "";
 const TODAY_WIDGET_PANEL_CHILD_TEXT_LEGACY = ["Today Widget Panel"];
 const PILL_THRESHOLD_SETTING = "bt-pill-checkbox-threshold";
 const DEFAULT_PILL_THRESHOLD = 100; // skip pill rendering when too many checkboxes are present
+const SUPPORTED_LANGUAGES = Object.keys(I18N_MAP || { en: {} });
+const EN_STRING_PATH_MAP = new Map();
+let currentLanguage = "en";
+
+function buildEnStringLookup(obj, prefix = []) {
+  if (!obj || typeof obj !== "object") return;
+  Object.entries(obj).forEach(([key, value]) => {
+    if (typeof value === "string") {
+      const path = [...prefix, key];
+      if (!EN_STRING_PATH_MAP.has(value)) {
+        EN_STRING_PATH_MAP.set(value, path);
+      }
+    } else if (value && typeof value === "object" && !Array.isArray(value)) {
+      buildEnStringLookup(value, [...prefix, key]);
+    }
+  });
+}
+buildEnStringLookup(I18N_MAP?.en || {});
 let todayWidgetRenderTimer = null;
 const todaySettingOverrides = new Map();
 let todayWidgetPanelRoot = null;
 let todayWidgetPanelContainer = null;
 let lastTodayWidgetSignature = null;
 let lastTodayInlineSignature = null;
+let lastTodayConfigSignature = null;
 let teardownTodayPanelGlobal = null;
 let lastTodayLayoutType = null;
 let pillRefreshTimer = null;
@@ -144,115 +165,123 @@ const MONTH_KEYWORD_INTERVAL_LOOKUP = {
 
 export default {
   onload: ({ extensionAPI }) => {
-    const config = {
-      tabTitle: "Better Tasks",
+    const buildSettingsConfig = () => ({
+      tabTitle: t("settings.tabTitle", getLanguageSetting()) || "Better Tasks",
       settings: [
         {
+          id: LANGUAGE_SETTING,
+          name: t("settings.language", getLanguageSetting()) || "Language",
+          description: t("settings.languageDescription", getLanguageSetting()) || "Preferred language for Better Tasks",
+          action: { type: "select", items: SUPPORTED_LANGUAGES, onChange: (v) => handleLanguageChange(v) },
+        },
+        {
           id: "rt-destination",
-          name: "Destination for next task",
-          description: "Where to create the next occurrence",
-          action: { type: "select", items: ["DNP", "Same Page", "DNP under heading"] },
+          name: t("settings.destNextTask", getLanguageSetting()) || "Destination for next task",
+          description: t("settings.destNextTaskDescription", getLanguageSetting()) || "Where to create the next occurrence",
+          action: { type: "select", items: t("settings.destinationOptions", getLanguageSetting()) || ["DNP", "Same Page", "DNP under heading"] },
         },
         {
           id: "rt-dnp-heading",
-          name: "DNP heading (optional)",
-          description: "Create under this heading on DNP when destination is DNP under heading",
+          name: t("settings.dnpHeading", getLanguageSetting()) || "DNP heading (optional)",
+          description: t("settings.dnpHeadingDescription", getLanguageSetting()) || "Create under this heading on DNP when destination is DNP under heading",
           action: { type: "input", placeholder: "Tasks" },
         },
         {
           id: "rt-repeat-attr",
-          name: "Repeat attribute name",
-          description: "Label for the recurrence rule attribute",
+          name: t("settings.repeatAttr", getLanguageSetting()) || "Repeat attribute name",
+          description: t("settings.repeatAttrDescription", getLanguageSetting()) || "Label for the recurrence rule attribute",
           action: { type: "input", placeholder: DEFAULT_REPEAT_ATTR, onChange: handleAttributeNameChange },
         },
         {
           id: "rt-start-attr",
-          name: "Start attribute name",
-          description: "Label for start/available date attribute",
+          name: t("settings.startAttr", getLanguageSetting()) || "Start attribute name",
+          description: t("settings.startAttrDescription", getLanguageSetting()) || "Label for start/available date attribute",
           action: { type: "input", placeholder: DEFAULT_START_ATTR, onChange: handleAttributeNameChange },
         },
         {
           id: "rt-defer-attr",
-          name: "Defer attribute name",
-          description: "Label for defer/snooze date attribute",
+          name: t("settings.deferAttr", getLanguageSetting()) || "Defer attribute name",
+          description: t("settings.deferAttrDescription", getLanguageSetting()) || "Label for defer/snooze date attribute",
           action: { type: "input", placeholder: DEFAULT_DEFER_ATTR, onChange: handleAttributeNameChange },
         },
         {
           id: "rt-due-attr",
-          name: "Due attribute name",
-          description: "Label for due date attribute",
+          name: t("settings.dueAttr", getLanguageSetting()) || "Due attribute name",
+          description: t("settings.dueAttrDescription", getLanguageSetting()) || "Label for due date attribute",
           action: { type: "input", placeholder: DEFAULT_DUE_ATTR, onChange: handleAttributeNameChange },
         },
         {
           id: "rt-completed-attr",
-          name: "Completed attribute name",
-          description: "Label written when a recurring/scheduled task is completed",
+          name: t("settings.completedAttr", getLanguageSetting()) || "Completed attribute name",
+          description: t("settings.completedAttrDescription", getLanguageSetting()) || "Label written when a recurring/scheduled task is completed",
           action: { type: "input", placeholder: DEFAULT_COMPLETED_ATTR, onChange: handleAttributeNameChange },
         },
         {
           id: "bt-attr-project",
-          name: "Project attribute name",
-          description: "Label for project attribute (child block)",
+          name: t("settings.projectAttr", getLanguageSetting()) || "Project attribute name",
+          description: t("settings.projectAttrDescription", getLanguageSetting()) || "Label for project attribute (child block)",
           action: { type: "input", placeholder: "BT_attrProject", onChange: handleAttributeNameChange },
         },
         {
           id: "bt-attr-gtd",
-          name: "GTD status attribute name",
-          description: "Label for GTD status attribute (child block)",
+          name: t("settings.gtdAttr", getLanguageSetting()) || "GTD status attribute name",
+          description: t("settings.gtdAttrDescription", getLanguageSetting()) || "Label for GTD status attribute (child block)",
           action: { type: "input", placeholder: DEFAULT_GTD_ATTR, onChange: handleAttributeNameChange },
         },
         {
           id: "bt-attr-waitingFor",
-          name: "Waiting-for attribute name",
-          description: "Label for waiting-for attribute (child block)",
+          name: t("settings.waitingAttr", getLanguageSetting()) || "Waiting-for attribute name",
+          description: t("settings.waitingAttrDescription", getLanguageSetting()) || "Label for waiting-for attribute (child block)",
           action: { type: "input", placeholder: "BT_attrWaitingFor", onChange: handleAttributeNameChange },
         },
         {
           id: "bt-attr-context",
-          name: "Context attribute name",
-          description: "Label for context/tags attribute (child block)",
+          name: t("settings.contextAttr", getLanguageSetting()) || "Context attribute name",
+          description: t("settings.contextAttrDescription", getLanguageSetting()) || "Label for context/tags attribute (child block)",
           action: { type: "input", placeholder: "BT_attrContext", onChange: handleAttributeNameChange },
         },
         {
           id: "bt-attr-priority",
-          name: "Priority attribute name",
-          description: "Label for priority attribute (child block)",
+          name: t("settings.priorityAttr", getLanguageSetting()) || "Priority attribute name",
+          description: t("settings.priorityAttrDescription", getLanguageSetting()) || "Label for priority attribute (child block)",
           action: { type: "input", placeholder: "BT_attrPriority", onChange: handleAttributeNameChange },
         },
         {
           id: "bt-attr-energy",
-          name: "Energy attribute name",
-          description: "Label for energy attribute (child block)",
+          name: t("settings.energyAttr", getLanguageSetting()) || "Energy attribute name",
+          description: t("settings.energyAttrDescription", getLanguageSetting()) || "Label for energy attribute (child block)",
           action: { type: "input", placeholder: "BT_attrEnergy", onChange: handleAttributeNameChange },
         },
         {
           id: "rt-confirm",
-          name: "Confirm before spawning next task",
-          description: "Ask for confirmation before spawning when a repeating Better Task is completed",
+          name: t("settings.confirmBeforeSpawn", getLanguageSetting()) || "Confirm before spawning next task",
+          description: t("settings.confirmBeforeSpawnDescription", getLanguageSetting()) || "Ask for confirmation before spawning when a repeating Better Task is completed",
           action: { type: "switch" },
         },
         {
           id: "rt-week-start",
-          name: "First day of the week",
-          description: "Used to align weekly schedules with your graph preference",
-          action: { type: "select", items: WEEK_START_OPTIONS },
+          name: t("settings.weekStart", getLanguageSetting()) || "First day of the week",
+          description: t("settings.weekStartDescription", getLanguageSetting()) || "Used to align weekly schedules with your graph preference",
+          action: { type: "select", items: t("settings.weekStartOptions", getLanguageSetting()) || WEEK_START_OPTIONS },
         },
         {
           id: AI_MODE_SETTING,
-          name: "AI parsing mode",
-          description: "Optional: use your OpenAI API key for AI-assisted task parsing",
-          action: { type: "select", items: AI_MODE_OPTIONS },
+          name: t("settings.aiMode", getLanguageSetting()) || "AI parsing mode",
+          description: t("settings.aiModeDescription", getLanguageSetting()) || "Optional: use your OpenAI API key for AI-assisted task parsing",
+          action: { type: "select", items: t("settings.aiModeOptions", getLanguageSetting()) || AI_MODE_OPTIONS },
         },
         {
           id: AI_KEY_SETTING,
-          name: "OpenAI API key",
-          description: "Sensitive: stored in Roam settings; used client-side only for AI parsing",
+          name: t("settings.aiKey", getLanguageSetting()) || "OpenAI API key",
+          description: t("settings.aiKeyDescription", getLanguageSetting()) || "Sensitive: stored in Roam settings; used client-side only for AI parsing",
           action: { type: "input", placeholder: "sk-...", onChange: () => { } },
         },
         {
           id: PILL_THRESHOLD_SETTING,
-          name: "Inline pill checkbox threshold",
-          description: "Max checkbox count before Better Tasks inline pills skip initial rendering (default 100). Higher values will render but the page may be slower.",
+          name: t("settings.pillThreshold", getLanguageSetting()) || "Inline pill checkbox threshold",
+          description:
+            t("settings.pillThresholdDescription", getLanguageSetting()) ||
+            "Max checkbox count before Better Tasks inline pills skip initial rendering (default 100). Higher values will render but the page may be slower.",
           action: { type: "input", placeholder: DEFAULT_PILL_THRESHOLD.toString() },
         },
         /*
@@ -288,38 +317,48 @@ export default {
         },
         */
       ],
-    };
+    });
+    const config = buildSettingsConfig();
     extensionAPI.settings.panel.create(config);
     lastAttrNames = resolveAttributeNames();
 
     const introSeen = extensionAPI.settings.get(INSTALL_TOAST_KEY);
     if (!introSeen) {
       toast(
-        "This extension automatically recognises {{[[TODO]]}} tasks in your graph and uses attributes to determine a recurrence pattern and other attributes. By default, it uses attributes like 'BT_attrRepeat' and 'BT_attrDue'. These can be changed in the extension settings.<BR><BR>If you already happen to use attributes like 'BT_attrRepeat' or 'BT_attrDue' for other functions in your graph, please change the defaults in the Roam Depot Settings for this extension BEFORE testing its functionality to avoid any unexpected behaviour.", 10000
+        translateString(
+          "This extension automatically recognises {{[[TODO]]}} tasks in your graph and uses attributes to determine a recurrence pattern and other attributes. By default, it uses attributes like 'BT_attrRepeat' and 'BT_attrDue'. These can be changed in the extension settings.<BR><BR>If you already happen to use attributes like 'BT_attrRepeat' or 'BT_attrDue' for other functions in your graph, please change the defaults in the Roam Depot Settings for this extension BEFORE testing its functionality to avoid any unexpected behaviour.",
+          getLanguageSetting()
+        ),
+        10000
       );
       extensionAPI.settings.set(INSTALL_TOAST_KEY, "1");
     }
+    currentLanguage = getLanguageSetting();
 
+    const cmdConvert = translateString("Convert TODO to Better Task", getLanguageSetting());
     extensionAPI.ui.commandPalette.addCommand({
-      label: "Convert TODO to Better Task",
+      label: cmdConvert,
       callback: () => convertTODO(null),
     });
     window.roamAlphaAPI.ui.blockContextMenu.addCommand({
-      label: "Convert TODO to Better Task",
+      label: cmdConvert,
       callback: (e) => convertTODO(e),
     });
+    const cmdCreate = translateString("Create a Better Task", getLanguageSetting());
     extensionAPI.ui.commandPalette.addCommand({
-      label: "Create a Better Task",
+      label: cmdCreate,
       callback: () => createBetterTaskEntryPoint(),
     });
     window.roamAlphaAPI.ui.blockContextMenu.addCommand({
-      label: "Create a Better Task",
+      label: cmdCreate,
       callback: (e) => createBetterTaskEntryPoint(e),
     });
     const slashCommandAPI = window.roamAlphaAPI?.ui?.slashCommand;
     if (slashCommandAPI) {
+      const slashCreate = translateString("Create a Better Task", getLanguageSetting());
+      const slashConvert = translateString("Convert TODO to Better Task", getLanguageSetting());
       slashCommandAPI.addCommand({
-        label: "Create a Better Task",
+        label: slashCreate,
         callback: (args) => {
           const blockUid = args["block-uid"];
           createBetterTaskEntryPoint({ "block-uid": blockUid });
@@ -327,7 +366,7 @@ export default {
         },
       });
       slashCommandAPI.addCommand({
-        label: "Convert TODO to Better Task",
+        label: slashConvert,
         callback: (args) => {
           const blockUid = args["block-uid"];
           convertTODO({ "block-uid": blockUid });
@@ -338,7 +377,7 @@ export default {
 
     activeDashboardController = createDashboardController(extensionAPI);
     extensionAPI.ui.commandPalette.addCommand({
-      label: "Toggle Better Tasks Dashboard",
+      label: translateString("Toggle Better Tasks Dashboard", getLanguageSetting()),
       callback: () => activeDashboardController.toggle(),
     });
     if (getTodayWidgetEnabled()) scheduleTodayWidgetRender();
@@ -378,14 +417,14 @@ export default {
         const focused = await window.roamAlphaAPI.ui.getFocusedBlock();
         fuid = focused && focused["block-uid"];
         if (!fuid) {
-          toast("Place the cursor in the block you wish to convert.");
+        toast(t(["toasts", "placeCursorConvert"], getLanguageSetting()) || "Place the cursor in the block you wish to convert.");
           return;
         }
       }
 
       const block = await getBlock(fuid);
       if (!block) {
-        toast("Unable to read the current block.");
+        toast(t(["toasts", "unableReadBlock"], getLanguageSetting()) || "Unable to read the current block.");
         return;
       }
       const fstring = block.string || "";
@@ -434,7 +473,7 @@ export default {
       const normalizedRepeat =
         promptResult.repeat ? normalizeRepeatRuleText(promptResult.repeat) || promptResult.repeat : "";
       if (normalizedRepeat && !parseRuleText(normalizedRepeat, set)) {
-        toast("Unable to understand that repeat rule.");
+        toast(t(["toasts", "unableUnderstandRepeat"], getLanguageSetting()) || "Unable to understand that repeat rule.");
         return;
       }
 
@@ -447,7 +486,7 @@ export default {
             ? new Date(promptResult.dueDate.getTime())
             : parseRoamDate(promptDueSource);
         if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) {
-          toast("Couldn't parse that due date.");
+          toast(t(["toasts", "cannotParseDue"], getLanguageSetting()) || "Couldn't parse that due date.");
           return;
         }
         dueStr = formatDate(dueDate, set);
@@ -464,7 +503,7 @@ export default {
             ? new Date(promptResult.startDate.getTime())
             : parseRoamDate(startSource);
         if (!(startDate instanceof Date) || Number.isNaN(startDate.getTime())) {
-          toast("Couldn't parse that start date.");
+          toast(t(["toasts", "cannotParseStart"], getLanguageSetting()) || "Couldn't parse that start date.");
           return;
         }
         startStr = formatDate(startDate, set);
@@ -481,7 +520,7 @@ export default {
             ? new Date(promptResult.deferDate.getTime())
             : parseRoamDate(deferSource);
         if (!(deferDate instanceof Date) || Number.isNaN(deferDate.getTime())) {
-          toast("Couldn't parse that defer date.");
+          toast(t(["toasts", "cannotParseDefer"], getLanguageSetting()) || "Couldn't parse that defer date.");
           return;
         }
         deferStr = formatDate(deferDate, set);
@@ -510,7 +549,7 @@ export default {
         (promptResult.gtd || "").trim()
       );
       if (!hasRepeat && !hasTimingInput && !hasMetadataInput) {
-        toast("Add a repeat rule, a date, or metadata.");
+        toast(t(["toasts", "addRepeatDateOrMetadata"], getLanguageSetting()) || "Add a repeat rule, a date, or metadata.");
         return;
       }
 
@@ -563,14 +602,14 @@ export default {
         const focused = await window.roamAlphaAPI.ui.getFocusedBlock();
         targetUid = focused && focused["block-uid"];
         if (!targetUid) {
-          toast("Place the cursor in the block where you wish to create the Better Task.");
+          toast(t(["toasts", "placeCursorCreate"], getLanguageSetting()) || "Place the cursor in the block where you wish to create the Better Task.");
           return;
         }
       }
 
       const block = await getBlock(targetUid);
       if (!block) {
-        toast("Unable to read the current block.");
+        toast(t(["toasts", "unableReadBlock"], getLanguageSetting()) || "Unable to read the current block.");
         return;
       }
 
@@ -591,7 +630,7 @@ export default {
         if (!input) return;
         rawText = input.trim();
         if (!rawText) {
-          toast("Enter some task text.");
+          toast(t(["toasts", "enterText"], getLanguageSetting()) || "Enter some task text.");
           return;
         }
         await updateBlockString(targetUid, input);
@@ -630,7 +669,7 @@ export default {
       if (aiResult.ok) {
         const applied = await createTaskFromParsedJson(targetUid, aiResult.task, aiInput);
         if (applied) {
-          toast("Created Better Task with AI parsing");
+          toast(t(["toasts", "createdWithAi"], getLanguageSetting()) || "Created Better Task with AI parsing");
           return;
         }
       } else {
@@ -640,7 +679,7 @@ export default {
             `AI parsing unavailable (429 from OpenAI). Check your billing/credit: https://platform.openai.com/settings/organization/billing/overview`
           );
         } else {
-          toast("AI parsing unavailable, creating a normal Better Task instead.");
+          toast(t(["toasts", "aiFallback"], getLanguageSetting()) || "AI parsing unavailable, creating a normal Better Task instead.");
         }
       }
 
@@ -652,14 +691,14 @@ export default {
         const focused = await window.roamAlphaAPI.ui.getFocusedBlock();
         const fuid = focused && focused["block-uid"];
         if (fuid == null || fuid == undefined) {
-          toast("Place the cursor in the block where you wish to create the TODO.");
+          toast(t(["toasts", "placeCursorTodo"], getLanguageSetting()) || "Place the cursor in the block where you wish to create the TODO.");
           return;
         }
       }
 
       const block = await getBlock(fuid);
       if (!block) {
-        toast("Unable to read the current block.");
+        toast(t(["toasts", "unableReadBlock"], getLanguageSetting()) || "Unable to read the current block.");
         return;
       }
 
@@ -700,7 +739,7 @@ export default {
       const normalizedRepeat =
         promptResult.repeat ? normalizeRepeatRuleText(promptResult.repeat) || promptResult.repeat : "";
       if (normalizedRepeat && !parseRuleText(normalizedRepeat, set)) {
-        toast("Unable to understand that repeat rule.");
+        toast(t(["toasts", "unableUnderstandRepeat"], getLanguageSetting()) || "Unable to understand that repeat rule.");
         return;
       }
 
@@ -713,7 +752,7 @@ export default {
             ? new Date(promptResult.dueDate.getTime())
             : parseRoamDate(promptDueSource);
         if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) {
-          toast("Couldn't parse that due date.");
+          toast(t(["toasts", "cannotParseDue"], getLanguageSetting()) || "Couldn't parse that due date.");
           return;
         }
         dueStr = formatDate(dueDate, set);
@@ -730,7 +769,7 @@ export default {
             ? new Date(promptResult.startDate.getTime())
             : parseRoamDate(startSource);
         if (!(startDate instanceof Date) || Number.isNaN(startDate.getTime())) {
-          toast("Couldn't parse that start date.");
+          toast(t(["toasts", "cannotParseStart"], getLanguageSetting()) || "Couldn't parse that start date.");
           return;
         }
         startStr = formatDate(startDate, set);
@@ -747,7 +786,7 @@ export default {
             ? new Date(promptResult.deferDate.getTime())
             : parseRoamDate(deferSource);
         if (!(deferDate instanceof Date) || Number.isNaN(deferDate.getTime())) {
-          toast("Couldn't parse that defer date.");
+          toast(t(["toasts", "cannotParseDefer"], getLanguageSetting()) || "Couldn't parse that defer date.");
           return;
         }
         deferStr = formatDate(deferDate, set);
@@ -756,7 +795,7 @@ export default {
       const hasRepeat = !!normalizedRepeat;
       const hasTimingInput = !!(dueStr || startStr || deferStr);
       if (!hasRepeat && !hasTimingInput) {
-        toast("Add a repeat rule or at least one start/defer/due date.");
+        toast(t(["toasts", "addRepeatOrDate"], getLanguageSetting()) || "Add a repeat rule or at least one start/defer/due date.");
         return;
       }
 
@@ -889,7 +928,8 @@ export default {
       const attrNames = attrNamesOverride || resolveAttributeNames();
       lastAttrNames = attrNames;
       let tz = "UTC";
-      let locale = "en-US";
+      const langSetting = getLanguageSetting();
+      let locale = langSetting === "en" ? "en-US" : langSetting;
       try {
         tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
       } catch (_) {
@@ -897,6 +937,7 @@ export default {
       }
       try {
         locale =
+          langSetting ||
           (typeof navigator !== "undefined" && navigator.language) ||
           Intl.DateTimeFormat().resolvedOptions().locale ||
           "en-US";
@@ -1200,10 +1241,10 @@ export default {
         iconColor: "#1f7a34",
         close: true,
         closeOnClick: false,
-        message: payload.message || "Due updated",
+        message: translateString(payload.message || "Due updated", getLanguageSetting()),
         buttons: [
           [
-            "<button>Undo</button>",
+            `<button>${escapeHtml(t(["buttons", "undo"], getLanguageSetting()) || "Undo")}</button>`,
             (instance, toastEl) => {
               instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
               performDueUndo(payload).catch((err) => console.error("[RecurringTasks] due undo failed", err));
@@ -1332,7 +1373,7 @@ export default {
           repeatOverrides.delete(uid);
         }
 
-        toast("Changes un-done successfully");
+        toast(t(["toasts", "undoSuccess"], getLanguageSetting()) || "Changes un-done successfully");
       } catch (err) {
         console.warn("[RecurringTasks] due undo error", err);
       }
@@ -1874,8 +1915,11 @@ export default {
     function initiateObserver() {
       disconnectObserver();
       // Targets: main + right sidebar
-      const targetNode1 = document.getElementsByClassName("roam-main")[0];
-      const targetNode2 = document.getElementById("right-sidebar");
+      if (typeof document === "undefined") return;
+      const targetNode1 = document?.getElementsByClassName
+        ? document.getElementsByClassName("roam-main")[0]
+        : null;
+      const targetNode2 = document?.getElementById ? document.getElementById("right-sidebar") : null;
       if (!targetNode1 && !targetNode2) return;
 
       lastNavigationAt = Date.now();
@@ -2762,9 +2806,27 @@ export default {
         .filter(Boolean);
     }
 
+    function normalizeFromLocalized(raw, keys) {
+      if (!raw || typeof raw !== "string" || !Array.isArray(keys)) return null;
+      const input = raw.trim().toLowerCase();
+      const langs = Array.from(
+        new Set([currentLanguage, getLanguageSetting(), ...(SUPPORTED_LANGUAGES || [])].filter(Boolean))
+      );
+      for (const key of keys) {
+        for (const lang of langs) {
+          const localized = t(["dashboard", "filterValues", key], lang);
+          if (typeof localized === "string" && localized.trim().toLowerCase() === input) return key;
+        }
+        if (input === key.toLowerCase()) return key;
+      }
+      return null;
+    }
+
     function normalizePriorityValue(raw) {
       if (!raw || typeof raw !== "string") return null;
       const s = raw.trim().toLowerCase();
+      const localized = normalizeFromLocalized(s, ["low", "medium", "high"]);
+      if (localized) return localized;
       if (["high", "h", "p1", "urgent", "important", "critical"].includes(s)) return "high";
       if (["medium", "med", "m", "p2", "normal", "standard"].includes(s)) return "medium";
       if (["low", "l", "p3", "minor"].includes(s)) return "low";
@@ -2774,6 +2836,8 @@ export default {
     function normalizeEnergyValue(raw) {
       if (!raw || typeof raw !== "string") return null;
       const s = raw.trim().toLowerCase();
+      const localized = normalizeFromLocalized(s, ["low", "medium", "high"]);
+      if (localized) return localized;
       if (["high", "h", "p1", "full"].includes(s)) return "high";
       if (["medium", "med", "m", "p2", "normal"].includes(s)) return "medium";
       if (["low", "l", "p3", "tired"].includes(s)) return "low";
@@ -2784,6 +2848,8 @@ export default {
       if (!raw || typeof raw !== "string") return null;
       const stripped = stripLinkOrTag(raw).replace(/:+$/, "");
       const s = stripped.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+      const localized = normalizeFromLocalized(s, ["next action", "delegated", "deferred", "someday"]);
+      if (localized) return localized;
       const aliases = {
         "next action": "next action",
         "next": "next action",
@@ -2804,10 +2870,12 @@ export default {
       return orderedHit || null;
     }
 
-    function formatGtdStatusDisplay(value) {
+    function formatGtdStatusDisplay(value, lang = getLanguageSetting()) {
       const normalized = normalizeGtdStatus(value);
       const source = normalized || (typeof value === "string" ? value.trim().toLowerCase() : "");
       if (!source) return "";
+      const translated = t(["dashboard", "filterValues", source], lang);
+      if (translated) return translated;
       return source
         .split(/\s+/)
         .filter(Boolean)
@@ -2823,9 +2891,11 @@ export default {
       return next;
     }
 
-    function formatPriorityEnergyDisplay(value) {
+    function formatPriorityEnergyDisplay(value, lang = getLanguageSetting()) {
       if (!value || typeof value !== "string") return "";
       const v = value.trim().toLowerCase();
+      const translated = t(["dashboard", "filterValues", v], lang);
+      if (translated) return translated;
       if (v === "low" || v === "medium" || v === "high") {
         return v.charAt(0).toUpperCase() + v.slice(1);
       }
@@ -3549,8 +3619,11 @@ export default {
       const message = toastMessage
         ? toastMessage
         : displaySource
-          ? `Next occurrence scheduled for ${displayDate}`
-          : "Next occurrence scheduled";
+          ? translateString("Next occurrence scheduled for {{date}}", getLanguageSetting())?.replace(
+            "{{date}}",
+            displayDate
+          ) || `Next occurrence scheduled for ${displayDate}`
+          : translateString("Next occurrence scheduled", getLanguageSetting());
       iziToast.show({
         theme: "light",
         color: "black",
@@ -3562,7 +3635,7 @@ export default {
         closeOnClick: false,
         buttons: [
           [
-            "<button>Undo</button>",
+            `<button>${escapeHtml(t(["buttons", "undo"], getLanguageSetting()) || "Undo")}</button>`,
             (instance, toastEl) => {
               instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
               performUndo(data).catch((err) =>
@@ -3657,7 +3730,7 @@ export default {
           await activeDashboardController.refresh?.({ reason: "undo" });
         }
       }
-      toast("Changes un-done successfully");
+      toast(t(["toasts", "undoSuccess"], getLanguageSetting()) || "Changes un-done successfully");
       void syncPillsForSurface(lastAttrSurface);
     }
 
@@ -3843,7 +3916,7 @@ export default {
       }
       if (!targetPageUid) {
         console.warn("[BetterTasks] quick add parsed task missing target page");
-        toast("Couldn't find a page to create that task.");
+        toast(t(["toasts", "pageNotFound"], getLanguageSetting()) || "Couldn't find a page to create that task.");
         return false;
       }
       const newUid = window.roamAlphaAPI.util.generateUID();
@@ -3875,7 +3948,7 @@ export default {
         (typeof promptResult.taskTextRaw === "string" && promptResult.taskTextRaw.trim()) ||
         "";
       if (!title) {
-        toast("Task text is required.");
+        toast(t(["toasts", "taskTextRequired"], getLanguageSetting()) || "Task text is required.");
         return false;
       }
       const cleanedTitle = stripSchedulingFromTitle(title, null);
@@ -3883,7 +3956,7 @@ export default {
 
       const repeatVal = promptResult.repeat || "";
       if (repeatVal && !parseRuleText(repeatVal, set)) {
-        toast("Unable to understand that repeat rule.");
+        toast(t(["toasts", "unableUnderstandRepeat"], getLanguageSetting()) || "Unable to understand that repeat rule.");
         return false;
       }
 
@@ -3917,7 +3990,7 @@ export default {
       }
       if (!targetPageUid) {
         console.warn("[BetterTasks] quick add prompt task missing target page");
-        toast("Couldn't find a page to create that task.");
+        toast(t(["toasts", "pageNotFound"], getLanguageSetting()) || "Couldn't find a page to create that task.");
         return false;
       }
       const newUid = window.roamAlphaAPI.util.generateUID();
@@ -4918,6 +4991,11 @@ export default {
           settled = true;
           resolve(value);
         };
+        const lang = getLanguageSetting();
+        const titleText = translateString("Better Tasks", lang);
+        const messageText = translateString("Spawn next occurrence?", lang);
+        const yesLabel = t("buttons.yes", lang) || "Yes";
+        const noLabel = t("buttons.no", lang) || "No";
         iziToast.question({
           theme: 'light',
           color: 'black',
@@ -4930,16 +5008,16 @@ export default {
           icon: "icon-check",
           iconText: "✓",
           iconColor: "#1f7a34",
-          title: "Better Tasks",
-          message: "Spawn next occurrence?",
+          title: titleText,
+          message: messageText,
           position: 'center',
           buttons: [
-            ['<button>Yes</button>', function (instance, toast, button, e, inputs) {
+            [`<button>${escapeHtml(yesLabel)}</button>`, function (instance, toast, button, e, inputs) {
               instance.hide({ transitionOut: 'fadeOut' }, toast, 'button');
               finish(true);
             }, true], // true to focus
             [
-              "<button>No</button>",
+              `<button>${escapeHtml(noLabel)}</button>`,
               function (instance, toast, button, e) {
                 instance.hide({ transitionOut: "fadeOut" }, toast, "button");
                 finish(false);
@@ -4952,10 +5030,15 @@ export default {
     }
 
     function toast(msg, timer = 3000) {
+      const lang = getLanguageSetting();
+      const message =
+        typeof msg === "string"
+          ? translateString(msg, lang)
+          : msg;
       iziToast.show({
         theme: 'light',
         color: 'black',
-        message: msg,
+        message: message,
         class: 'betterTasks bt-toast-info',
         position: 'center',
         close: false,
@@ -4966,11 +5049,13 @@ export default {
     }
 
     function showPersistentToast(msg) {
+      const lang = getLanguageSetting();
+      const message = typeof msg === "string" ? translateString(msg, lang) : msg;
       try {
         return iziToast.show({
           theme: "light",
           color: "black",
-          message: msg,
+          message,
           class: "betterTasks",
           position: "center",
           id: "betterTasks-ai-pending",
@@ -5011,7 +5096,7 @@ export default {
     function noteRepeatParseFailure(uid) {
       if (!uid || invalidRepeatToasted.has(uid)) return;
       invalidRepeatToasted.add(uid);
-      toast("Could not parse the task recurrence pattern. Please check your task and review the README for supported patterns.");
+      toast(t(["toasts", "couldNotParseRecurrence"], getLanguageSetting()) || "Could not parse the task recurrence pattern. Please check your task and review the README for supported patterns.");
     }
 
     function clearRepeatParseFailure(uid) {
@@ -5022,7 +5107,7 @@ export default {
     function noteDueParseFailure(uid) {
       if (!uid || invalidDueToasted.has(uid)) return;
       invalidDueToasted.add(uid);
-      toast("Could not parse the task due date. Please ensure it uses Roam's standard date format (e.g. [[November 8th, 2025]]).");
+      toast(t(["toasts", "cannotParseDue"], getLanguageSetting()) || "Could not parse the task due date. Please ensure it uses Roam's standard date format (e.g. [[November 8th, 2025]]).");
     }
 
     function clearDueParseFailure(uid) {
@@ -5048,9 +5133,15 @@ export default {
           settled = true;
           resolve(value);
         };
+        const lang = getLanguageSetting();
+        const titleText = translateString(title, lang);
+        const messageText = translateString(message, lang);
+        const placeholderText = translateString(placeholder || "", lang);
+        const saveLabel = t("buttons.save", lang) || "Save";
+        const cancelLabel = t("buttons.cancel", lang) || "Cancel";
         const inputClass = `rt-prompt-input-${Date.now()}`;
         const inputHtml = `<input type="text" class="${inputClass}" placeholder="${escapeHtml(
-          placeholder || ""
+          placeholderText || ""
         )}" value="${escapeHtml(initial || "")}" />`;
         iziToast.question({
           theme: "light",
@@ -5065,8 +5156,8 @@ export default {
           icon: "icon-check",
           iconText: "✓",
           iconColor: "#1f7a34",
-          title,
-          message,
+          title: titleText,
+          message: messageText,
           inputs: [
             [
               inputHtml,
@@ -5096,7 +5187,7 @@ export default {
               },
             ],*/
             [
-              "<button>Save</button>",
+              `<button>${escapeHtml(saveLabel)}</button>`,
               (instance, toastInstance, _button, _e, inputs) => {
                 const val = inputs?.[0]?.value?.trim();
                 instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
@@ -5105,7 +5196,7 @@ export default {
               true,
             ],
             [
-              "<button>Cancel</button>",
+              `<button>${escapeHtml(cancelLabel)}</button>`,
               (instance, toastInstance) => {
                 instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
                 finish(null);
@@ -5135,6 +5226,11 @@ export default {
           settled = true;
           resolve(value);
         };
+        const lang = getLanguageSetting();
+        const titleText = translateString(title, lang);
+        const messageText = translateString(message, lang);
+        const saveLabel = t("buttons.save", lang) || "Save";
+        const cancelLabel = t("buttons.cancel", lang) || "Cancel";
         const dateInputClass = `rt-inline-date-${Date.now()}`;
         const inputHtml = `<input type="date" class="${dateInputClass}" value="${escapeHtml(current)}" />`;
         const shortcutSet = S();
@@ -5151,8 +5247,8 @@ export default {
           icon: "icon-check",
           iconText: "✓",
           iconColor: "#1f7a34",
-          title,
-          message,
+          title: titleText,
+          message: messageText,
           inputs: [
             [
               inputHtml,
@@ -5165,7 +5261,7 @@ export default {
           ],
           buttons: [
             [
-              "<button>Save</button>",
+              `<button>${escapeHtml(saveLabel)}</button>`,
               (instance, toastInstance, _button, _e, inputs) => {
                 const raw =
                   inputEl?.value ??
@@ -5179,7 +5275,7 @@ export default {
               true,
             ],
             [
-              "<button>Cancel</button>",
+              `<button>${escapeHtml(cancelLabel)}</button>`,
               (instance, toastInstance) => {
                 instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
                 finish(null);
@@ -5282,63 +5378,97 @@ export default {
           settled = true;
           resolve(value);
         };
-        const taskInputHtml = `<label class="rt-input-wrap">Task *<br/><input data-rt-field="task" type="text" placeholder="Task text" value="${escapeHtml(
-          snapshot.task || ""
-        )}" /></label>`;
-        const repeatInputHtml = `<label class="rt-input-wrap">Repeat<br/><input data-rt-field="repeat" type="text" placeholder="Repeat rule (optional)" value="${escapeHtml(
-          snapshot.repeat || ""
-        )}" /></label>`;
+        const lang = getLanguageSetting();
+        const formStrings = t("prompts.form", lang) || {};
+        const metaStrings = t("metadata", lang) || {};
+        const filterValues = t("dashboard.filterValues", lang) || {};
+        const labelOr = (key, fallback) => formStrings[key] || metaStrings[key] || fallback;
+        const placeholderOr = (key, fallback) => formStrings[key] || fallback;
+        const optionLabel = (group, val, fallback) => {
+          const grp = formStrings[group] || {};
+          if (grp && grp[val]) return grp[val];
+          if (filterValues && filterValues[val]) return filterValues[val];
+          return fallback;
+        };
+        const taskInputHtml = `<label class="rt-input-wrap">${escapeHtml(
+          formStrings.taskLabel || "Task *"
+        )}<br/><input data-rt-field="task" type="text" placeholder="${escapeHtml(
+          formStrings.taskPlaceholder || "Task text"
+        )}" value="${escapeHtml(snapshot.task || "")}" /></label>`;
+        const repeatInputHtml = `<label class="rt-input-wrap">${escapeHtml(
+          formStrings.repeatLabel || "Repeat"
+        )}<br/><input data-rt-field="repeat" type="text" placeholder="${escapeHtml(
+          formStrings.repeatPlaceholder || "Repeat rule (optional)"
+        )}" value="${escapeHtml(snapshot.repeat || "")}" /></label>`;
         const dateInputClass = `rt-date-input-${Date.now()}`;
-        const startInputHtml = `<label class="rt-input-wrap">Start<br/><input data-rt-field="start" type="date" value="${escapeHtml(
-          snapshot.startIso || ""
-        )}" /></label>`;
-        const deferInputHtml = `<label class="rt-input-wrap">Defer<br/><input data-rt-field="defer" type="date" value="${escapeHtml(
-          snapshot.deferIso || ""
-        )}" /></label>`;
-        const dueInputHtml = `<label class="rt-input-wrap">Due<br/><input data-rt-field="due" type="date" class="${dateInputClass}" value="${escapeHtml(
+        const startInputHtml = `<label class="rt-input-wrap">${escapeHtml(
+          formStrings.startLabel || "Start"
+        )}<br/><input data-rt-field="start" type="date" value="${escapeHtml(snapshot.startIso || "")}" /></label>`;
+        const deferInputHtml = `<label class="rt-input-wrap">${escapeHtml(
+          formStrings.deferLabel || "Defer"
+        )}<br/><input data-rt-field="defer" type="date" value="${escapeHtml(snapshot.deferIso || "")}" /></label>`;
+        const dueInputHtml = `<label class="rt-input-wrap">${escapeHtml(
+          formStrings.dueLabel || "Due"
+        )}<br/><input data-rt-field="due" type="date" class="${dateInputClass}" value="${escapeHtml(
           snapshot.dueIso || ""
         )}" /></label>`;
+        const projectLabel = formStrings.projectLabel || metaStrings.project || "Project";
+        const gtdLabel = formStrings.gtdLabel || metaStrings.gtd || "GTD status";
+        const waitingLabel = formStrings.waitingLabel || metaStrings.waitingFor || "Waiting-for";
+        const priorityLabel = formStrings.priorityLabel || metaStrings.priority || "Priority";
+        const energyLabel = formStrings.energyLabel || metaStrings.energy || "Energy";
+        const contextLabel = formStrings.contextLabel || metaStrings.context || "Context(s)";
         const metadataHtml = `
           <div class="rt-meta-section">
             <div class="rt-meta-grid">
-              <label class="rt-input-wrap">Project<br/>
-                <input data-rt-field="project" type="text" placeholder="Project" value="${escapeHtml(
-          snapshot.project || ""
-        )}" />
+              <label class="rt-input-wrap">${escapeHtml(projectLabel)}<br/>
+                <input data-rt-field="project" type="text" placeholder="${escapeHtml(
+          placeholderOr("projectPlaceholder", "Project")
+        )}" value="${escapeHtml(snapshot.project || "")}" />
               </label>
-              <label class="rt-input-wrap">GTD status<br/>
+              <label class="rt-input-wrap">${escapeHtml(gtdLabel)}<br/>
                 <select data-rt-field="gtd">
                   <option value=""></option>
-                  <option value="next action"${snapshot.gtd === "next action" ? " selected" : ""}>Next Action</option>
-                  <option value="delegated"${snapshot.gtd === "delegated" ? " selected" : ""}>Delegated</option>
-                  <option value="deferred"${snapshot.gtd === "deferred" ? " selected" : ""}>Deferred</option>
-                  <option value="someday"${snapshot.gtd === "someday" ? " selected" : ""}>Someday</option>
+                  <option value="next action"${snapshot.gtd === "next action" ? " selected" : ""
+          }>${escapeHtml(optionLabel("gtdOptions", "next action", "Next Action"))}</option>
+                  <option value="delegated"${snapshot.gtd === "delegated" ? " selected" : ""
+          }>${escapeHtml(optionLabel("gtdOptions", "delegated", "Delegated"))}</option>
+                  <option value="deferred"${snapshot.gtd === "deferred" ? " selected" : ""
+          }>${escapeHtml(optionLabel("gtdOptions", "deferred", "Deferred"))}</option>
+                  <option value="someday"${snapshot.gtd === "someday" ? " selected" : ""
+          }>${escapeHtml(optionLabel("gtdOptions", "someday", "Someday"))}</option>
                 </select>
               </label>
-              <label class="rt-input-wrap">Waiting-for<br/>
-                <input data-rt-field="waitingFor" type="text" placeholder="Waiting-for" value="${escapeHtml(
-          snapshot.waitingFor || ""
-        )}" />
+              <label class="rt-input-wrap">${escapeHtml(waitingLabel)}<br/>
+                <input data-rt-field="waitingFor" type="text" placeholder="${escapeHtml(
+            placeholderOr("waitingPlaceholder", "Waiting-for")
+          )}" value="${escapeHtml(snapshot.waitingFor || "")}" />
               </label>
-              <label class="rt-input-wrap">Priority<br/>
+              <label class="rt-input-wrap">${escapeHtml(priorityLabel)}<br/>
                 <select data-rt-field="priority">
                   <option value=""></option>
-                  <option value="low"${snapshot.priority === "low" ? " selected" : ""}>Low</option>
-                  <option value="medium"${snapshot.priority === "medium" ? " selected" : ""}>Medium</option>
-                  <option value="high"${snapshot.priority === "high" ? " selected" : ""}>High</option>
+                  <option value="low"${snapshot.priority === "low" ? " selected" : ""
+          }>${escapeHtml(optionLabel("priorityOptions", "low", "Low"))}</option>
+                  <option value="medium"${snapshot.priority === "medium" ? " selected" : ""
+          }>${escapeHtml(optionLabel("priorityOptions", "medium", "Medium"))}</option>
+                  <option value="high"${snapshot.priority === "high" ? " selected" : ""
+          }>${escapeHtml(optionLabel("priorityOptions", "high", "High"))}</option>
                 </select>
               </label>
-              <label class="rt-input-wrap">Context(s)<br/>
-                <input data-rt-field="context" type="text" placeholder="@home, @work" value="${escapeHtml(
-          snapshot.context || ""
-        )}" />
+              <label class="rt-input-wrap">${escapeHtml(contextLabel)}<br/>
+                <input data-rt-field="context" type="text" placeholder="${escapeHtml(
+            placeholderOr("contextPlaceholder", "@home, @work")
+          )}" value="${escapeHtml(snapshot.context || "")}" />
               </label>
-              <label class="rt-input-wrap">Energy<br/>
+              <label class="rt-input-wrap">${escapeHtml(energyLabel)}<br/>
                 <select data-rt-field="energy">
                   <option value=""></option>
-                  <option value="low"${snapshot.energy === "low" ? " selected" : ""}>Low</option>
-                  <option value="medium"${snapshot.energy === "medium" ? " selected" : ""}>Medium</option>
-                  <option value="high"${snapshot.energy === "high" ? " selected" : ""}>High</option>
+                  <option value="low"${snapshot.energy === "low" ? " selected" : ""
+          }>${escapeHtml(optionLabel("energyOptions", "low", "Low"))}</option>
+                  <option value="medium"${snapshot.energy === "medium" ? " selected" : ""
+          }>${escapeHtml(optionLabel("energyOptions", "medium", "Medium"))}</option>
+                  <option value="high"${snapshot.energy === "high" ? " selected" : ""
+          }>${escapeHtml(optionLabel("energyOptions", "high", "High"))}</option>
                 </select>
               </label>
             </div>
@@ -5358,8 +5488,8 @@ export default {
           gtd: '[data-rt-field="gtd"]',
         };
         const promptMessage = includeTaskText
-          ? "Enter the task text, optional repeat rule, dates, and metadata."
-          : "Enter an optional repeat rule, dates, and metadata.";
+          ? formStrings.messageWithTask || "Enter the task text, optional repeat rule, dates, and metadata."
+          : formStrings.messageWithoutTask || "Enter an optional repeat rule, dates, and metadata.";
         const messageHtml = promptMessage;
         const inputs = [];
         if (includeTaskText) {
@@ -5408,6 +5538,9 @@ export default {
             }
           },
         ]);
+        const titleText = translateString("Better Tasks", lang);
+        const saveLabel = t("buttons.save", lang) || "Save";
+        const cancelLabel = t("buttons.cancel", lang) || "Cancel";
         iziToast.question({
           theme: "light",
           color: "black",
@@ -5419,15 +5552,15 @@ export default {
           close: true,
           closeOnEscape: true,
           overlay: true,
-          title: "Better Tasks",
+          title: titleText,
           icon: "icon-check",
           iconText: "✓",
           iconColor: "#3a7c2b",
-          message: messageHtml,
+          message: translateString(messageHtml, lang),
           inputs,
           buttons: [
             [
-              "<button type=\"button\">Save</button>",
+              `<button type="button">${escapeHtml(saveLabel)}</button>`,
               async (instance, toastEl, _btn, _event, inputsArray) => {
                 const getFieldValue = (name) => {
                   const el = toastEl?.querySelector(fieldSelectors[name]);
@@ -5547,7 +5680,7 @@ export default {
               true,
             ],
             [
-              "<button type=\"button\">Cancel</button>",
+              `<button type="button">${escapeHtml(cancelLabel)}</button>`,
               (instance, toastEl) => {
                 instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
                 finish(null);
@@ -5684,11 +5817,11 @@ export default {
           icon: "icon-check",
           iconText: "✓",
           iconColor: "#1f7a34",
-          title: "Choose scheduling mode",
+          title: translateString("Choose scheduling mode", getLanguageSetting()),
           message,
           buttons: [
             [
-              "<button>Due date</button>",
+              `<button>${escapeHtml(t(["buttons", "dueDate"], getLanguageSetting()) || "Due date")}</button>`,
               (instance, toastEl) => {
                 instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
                 finish("due");
@@ -5696,14 +5829,14 @@ export default {
               true,
             ],
             [
-              "<button>Completion date</button>",
+              `<button>${escapeHtml(t(["buttons", "completionDate"], getLanguageSetting()) || "Completion date")}</button>`,
               (instance, toastEl) => {
                 instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
                 finish("completion");
               },
             ],
             [
-              "<button>Cancel</button>",
+              `<button>${escapeHtml(t(["buttons", "cancel"], getLanguageSetting()) || "Cancel")}</button>`,
               (instance, toastEl) => {
                 instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
                 finish(null);
@@ -5923,6 +6056,52 @@ export default {
       return extensionAPI.settings.get(settingId);
     }
 
+    function getLanguageSetting() {
+      const raw = extensionAPI?.settings?.get?.(LANGUAGE_SETTING);
+      const lang =
+        (typeof raw === "string" && SUPPORTED_LANGUAGES.includes(raw)) || SUPPORTED_LANGUAGES.includes(raw)
+          ? raw
+          : "en";
+      currentLanguage = lang || "en";
+      return currentLanguage;
+    }
+
+    function t(path, lang = "en") {
+      const parts = Array.isArray(path) ? path : String(path || "").split(".");
+      const resolve = (obj) =>
+        parts.reduce((acc, key) => (acc && Object.prototype.hasOwnProperty.call(acc, key) ? acc[key] : undefined), obj);
+      const primary = resolve(I18N_MAP?.[lang]);
+      if (primary !== undefined) return primary;
+      if (lang !== "en") {
+        const fallback = resolve(I18N_MAP?.en);
+        if (fallback !== undefined) return fallback;
+      }
+      return undefined;
+    }
+
+    function translateString(raw, lang = getLanguageSetting()) {
+      if (typeof raw !== "string") return raw;
+      const path = EN_STRING_PATH_MAP.get(raw);
+      if (path) {
+        const translated = t(path, lang);
+        if (typeof translated === "string") return translated;
+      }
+      return raw;
+    }
+
+    function translateMetaValue(type, value, lang = getLanguageSetting()) {
+      if (!value) return "";
+      const key = String(value).trim().toLowerCase();
+      const val =
+        t(["dashboard", "filterValues", key], lang) ||
+        t(["metadata", type], lang) ||
+        null;
+      if (val) return val;
+      if (type === "gtd") return formatGtdStatusDisplay(value);
+      if (type === "priority" || type === "energy") return formatPriorityEnergyDisplay(value);
+      return value;
+    }
+
     function getTodayWidgetEnabled() {
       const raw = getTodaySetting(TODAY_WIDGET_ENABLE_SETTING);
       return raw === true || raw === "true" || raw === 1 || raw === "1";
@@ -5941,6 +6120,28 @@ export default {
       // Force an immediate render using the override, plus a follow-up after settings persistence.
       void renderTodayWidget(true);
       scheduleTodayWidgetRender(200, true);
+    }
+
+    function handleLanguageChange(nextValue = null) {
+      if (typeof nextValue === "string" && SUPPORTED_LANGUAGES.includes(nextValue)) {
+        currentLanguage = nextValue;
+      } else {
+        currentLanguage = getLanguageSetting();
+      }
+      try {
+        delay(10).then(() => {
+          extensionAPI.settings.panel.create(buildSettingsConfig());
+        });
+      } catch (err) {
+        console.warn("[BetterTasks] failed to rebuild settings panel for language change", err);
+      }
+      try {
+        activeDashboardController?.refreshLanguage?.();
+      } catch (err) {
+        console.warn("[BetterTasks] failed to refresh dashboard for language change", err);
+      }
+      scheduleTodayWidgetRender(100, true);
+      scheduleSurfaceSync(lastAttrSurface || "Child");
     }
 
     function getTodayWidgetLayout() {
@@ -6351,15 +6552,17 @@ export default {
           const startDisplay = startDate ? formatFriendlyDate(startDate, set) : null;
           const deferDisplay = deferDate ? formatFriendlyDate(deferDate, set) : null;
           const dueDisplay = dueDate ? formatFriendlyDate(dueDate, set) : null;
+          const lang = getLanguageSetting();
+          const metaLabels = t(["metadata"], lang) || {};
           const tooltipParts = [];
-          if (startDate) tooltipParts.push(`Start: ${formatIsoDate(startDate, set)}`);
-          if (deferDate) tooltipParts.push(`Defer: ${formatIsoDate(deferDate, set)}`);
-          if (dueDate) tooltipParts.push(`Next: ${formatIsoDate(dueDate, set)}`);
+          if (startDate) tooltipParts.push(`${metaLabels.start || "Start"}: ${formatIsoDate(startDate, set)}`);
+          if (deferDate) tooltipParts.push(`${metaLabels.defer || "Defer"}: ${formatIsoDate(deferDate, set)}`);
+          if (dueDate) tooltipParts.push(`${metaLabels.next || metaLabels.due || "Next"}: ${formatIsoDate(dueDate, set)}`);
           const tooltip = tooltipParts.length
             ? tooltipParts.join(" • ")
             : isRecurring
-              ? "Repeating Better Task"
-              : "Scheduled Better Task";
+              ? metaLabels.repeatingTask || "Repeating Better Task"
+              : metaLabels.scheduledTask || "Scheduled Better Task";
 
           const contextSig = Array.isArray(metadataInfo?.context)
             ? [...metadataInfo.context].sort().join(",")
@@ -6427,7 +6630,7 @@ export default {
             repeatSpan = document.createElement("span");
             repeatSpan.className = "rt-pill-repeat";
             repeatSpan.textContent = `↻ ${humanRepeat}`;
-            repeatSpan.title = `Repeat rule: ${humanRepeat}`;
+            repeatSpan.title = `${t(["metadata", "repeatRule"], getLanguageSetting()) || "Repeat rule"}: ${humanRepeat}`;
             repeatSpan.addEventListener("click", (e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -6448,15 +6651,15 @@ export default {
             if (repeatSpan) addSeparator();
             else if (pill.childElementCount > 0) addSeparator();
 
-            startSpan = document.createElement("span");
-            startSpan.className = "rt-pill-start";
-            renderPillDateSpan(startSpan, {
-              icon: START_ICON,
-              date: startDate,
-              set,
-              label: "Start",
-              tooltip: `Start: ${formatIsoDate(startDate, set)}`,
-            });
+          startSpan = document.createElement("span");
+          startSpan.className = "rt-pill-start";
+           renderPillDateSpan(startSpan, {
+             icon: START_ICON,
+             date: startDate,
+             set,
+             label: metaLabels.start || "Start",
+             tooltip: `${metaLabels.start || "Start"}: ${formatIsoDate(startDate, set)}`,
+           });
             startSpan.addEventListener("click", (e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -6469,15 +6672,15 @@ export default {
             if (repeatSpan || startSpan) addSeparator();
             else if (pill.childElementCount > 0) addSeparator();
 
-            deferSpan = document.createElement("span");
-            deferSpan.className = "rt-pill-defer";
-            renderPillDateSpan(deferSpan, {
-              icon: DEFER_ICON,
-              date: deferDate,
-              set,
-              label: "Defer",
-              tooltip: `Defer: ${formatIsoDate(deferDate, set)}`,
-            });
+          deferSpan = document.createElement("span");
+          deferSpan.className = "rt-pill-defer";
+          renderPillDateSpan(deferSpan, {
+            icon: DEFER_ICON,
+            date: deferDate,
+            set,
+            label: metaLabels.defer || "Defer",
+            tooltip: `${metaLabels.defer || "Defer"}: ${formatIsoDate(deferDate, set)}`,
+          });
             deferSpan.addEventListener("click", (e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -6490,15 +6693,15 @@ export default {
             if (repeatSpan || startSpan || deferSpan) addSeparator();
             else if (pill.childElementCount > 0) addSeparator();
 
-            dueSpan = document.createElement("span");
-            dueSpan.className = "rt-pill-due";
-            renderPillDateSpan(dueSpan, {
-              icon: DUE_ICON,
-              date: dueDate,
-              set,
-              label: "Due",
-              tooltip: `Due: ${formatIsoDate(dueDate, set)}`,
-            });
+          dueSpan = document.createElement("span");
+          dueSpan.className = "rt-pill-due";
+          renderPillDateSpan(dueSpan, {
+            icon: DUE_ICON,
+            date: dueDate,
+            set,
+            label: metaLabels.due || "Due",
+            tooltip: `${metaLabels.due || "Due"}: ${formatIsoDate(dueDate, set)}`,
+          });
             dueSpan.addEventListener("click", (e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -6545,7 +6748,7 @@ export default {
             const span = appendMetaSpan(
               "📁",
               metadataInfo.project,
-              `Project: ${metadataInfo.project}`
+              `${metaLabels.projectLabel || metaLabels.project || "Project"}: ${metadataInfo.project}`
             );
             span?.addEventListener("click", (event) => {
               event.preventDefault();
@@ -6563,7 +6766,7 @@ export default {
             const span = appendMetaSpan(
               "⌛",
               metadataInfo.waitingFor,
-              `Waiting for: ${metadataInfo.waitingFor}`
+              `${metaLabels.waitingLabel || metaLabels.waitingFor || "Waiting for"}: ${metadataInfo.waitingFor}`
             );
             span?.addEventListener("click", (event) => {
               event.preventDefault();
@@ -6587,7 +6790,7 @@ export default {
             const span = appendMetaSpan(
               "@",
               display,
-              `Context: ${metadataInfo.context.join(", ")}`
+              `${metaLabels.contextLabel || metaLabels.context || "Context"}: ${metadataInfo.context.join(", ")}`
             );
             span?.addEventListener("click", (event) => {
               event.preventDefault();
@@ -6602,8 +6805,8 @@ export default {
             });
           }
           if (metadataInfo?.gtd) {
-            const display = formatGtdStatusDisplay(metadataInfo.gtd);
-            const tooltip = `GTD: ${display}`;
+            const display = formatGtdStatusDisplay(metadataInfo.gtd, getLanguageSetting());
+            const tooltip = `${metaLabels.gtdLabel || metaLabels.gtd || "GTD"}: ${display}`;
             const span = appendMetaSpan(
               "➡",
               display,
@@ -6613,25 +6816,28 @@ export default {
               span.dataset.metaValue = metadataInfo.gtd || "";
               span.addEventListener("click", async (event) => {
                 event.preventDefault();
-                event.stopPropagation();
-                const current = span.dataset.metaValue || null;
-                const next = await cycleGtdInline(current);
-                if (next) {
-                  const nextDisplay = formatGtdStatusDisplay(next);
-                  span.dataset.metaValue = next || "";
-                  span.textContent = `➡ ${nextDisplay}`;
-                  span.title = `GTD: ${nextDisplay}`;
-                } else {
-                  span.remove();
-                }
-              });
-            }
+                  event.stopPropagation();
+                  const current = span.dataset.metaValue || null;
+                  const next = await cycleGtdInline(current);
+                  if (next) {
+                    const nextDisplay = formatGtdStatusDisplay(next, getLanguageSetting());
+                    span.dataset.metaValue = next || "";
+                    span.textContent = `➡ ${nextDisplay}`;
+                    span.title = `${metaLabels.gtdLabel || metaLabels.gtd || "GTD"}: ${nextDisplay}`;
+                  } else {
+                    span.remove();
+                  }
+                });
+              }
           }
           if (metadataInfo?.priority) {
             const span = appendMetaSpan(
               "!",
-              formatPriorityEnergyDisplay(metadataInfo.priority),
-              `Priority: ${formatPriorityEnergyDisplay(metadataInfo.priority)} (click to cycle)`
+              formatPriorityEnergyDisplay(metadataInfo.priority, getLanguageSetting()),
+              `${metaLabels.priorityLabel || metaLabels.priority || "Priority"}: ${formatPriorityEnergyDisplay(
+                metadataInfo.priority,
+                getLanguageSetting()
+              )} (${t(["pillMenu", "cyclePriority"], getLanguageSetting()) || "Click to cycle"})`
             );
             if (span) {
               span.dataset.metaValue = metadataInfo.priority || "";
@@ -6642,8 +6848,11 @@ export default {
                 const next = await cyclePriorityEnergy("priority", current);
                 if (next) {
                   span.dataset.metaValue = next || "";
-                  span.textContent = `! ${formatPriorityEnergyDisplay(next)}`;
-                  span.title = `Priority: ${formatPriorityEnergyDisplay(next)} (click to cycle)`;
+                  span.textContent = `! ${formatPriorityEnergyDisplay(next, getLanguageSetting())}`;
+                  span.title = `${metaLabels.priorityLabel || metaLabels.priority || "Priority"}: ${formatPriorityEnergyDisplay(
+                    next,
+                    getLanguageSetting()
+                  )} (${t(["pillMenu", "cyclePriority"], getLanguageSetting()) || "Click to cycle"})`;
                 } else {
                   span.remove();
                 }
@@ -6653,8 +6862,11 @@ export default {
           if (metadataInfo?.energy) {
             const span = appendMetaSpan(
               "🔋",
-              formatPriorityEnergyDisplay(metadataInfo.energy),
-              `Energy: ${formatPriorityEnergyDisplay(metadataInfo.energy)} (click to cycle)`
+              formatPriorityEnergyDisplay(metadataInfo.energy, getLanguageSetting()),
+              `${metaLabels.energyLabel || metaLabels.energy || "Energy"}: ${formatPriorityEnergyDisplay(
+                metadataInfo.energy,
+                getLanguageSetting()
+              )} (${t(["pillMenu", "cycleEnergy"], getLanguageSetting()) || "Click to cycle"})`
             );
             if (span) {
               span.dataset.metaValue = metadataInfo.energy || "";
@@ -6665,8 +6877,11 @@ export default {
                 const next = await cyclePriorityEnergy("energy", current);
                 if (next) {
                   span.dataset.metaValue = next || "";
-                  span.textContent = `🔋 ${formatPriorityEnergyDisplay(next)}`;
-                  span.title = `Energy: ${formatPriorityEnergyDisplay(next)} (click to cycle)`;
+                  span.textContent = `🔋 ${formatPriorityEnergyDisplay(next, getLanguageSetting())}`;
+                  span.title = `${metaLabels.energyLabel || metaLabels.energy || "Energy"}: ${formatPriorityEnergyDisplay(
+                    next,
+                    getLanguageSetting()
+                  )} (${t(["pillMenu", "cycleEnergy"], getLanguageSetting()) || "Click to cycle"})`;
                 } else {
                   span.remove();
                 }
@@ -6752,35 +6967,44 @@ export default {
         moved: false,
         targetUid: currentLocation.parentUid,
       };
-      if (span) {
-        span.textContent = `↻ ${normalized}`;
-        span.title = `Repeat rule: ${normalized}`;
-        const pill = span.closest(".rt-pill");
-        if (pill) {
-          const dueSpanEl = pill.querySelector(".rt-pill-due");
-          if (dueDateToPersist && dueSpanEl) {
-            const friendly = formatFriendlyDate(dueDateToPersist, set);
-            const tooltip = `Due: ${formatIsoDate(dueDateToPersist, set)}`;
-            renderPillDateSpan(dueSpanEl, {
-              icon: DUE_ICON,
-              date: dueDateToPersist,
-              set,
-              label: "Due",
-              tooltip,
-            });
-            pill.title = tooltip;
-          } else {
-            pill.title = `Repeat rule: ${normalized}`;
+          if (span) {
+            span.textContent = `↻ ${normalized}`;
+            span.title = `${t(["metadata", "repeatRule"], getLanguageSetting()) || "Repeat rule"}: ${normalized}`;
+            const pill = span.closest(".rt-pill");
+            if (pill) {
+              const dueSpanEl = pill.querySelector(".rt-pill-due");
+              if (dueDateToPersist && dueSpanEl) {
+                const friendly = formatFriendlyDate(dueDateToPersist, set);
+                const tooltip = `${t(["metadata", "due"], getLanguageSetting()) || "Due"}: ${formatIsoDate(dueDateToPersist, set)}`;
+                renderPillDateSpan(dueSpanEl, {
+                  icon: DUE_ICON,
+                  date: dueDateToPersist,
+                  set,
+                  label: t(["metadata", "due"], getLanguageSetting()) || "Due",
+                  tooltip,
+                });
+                pill.title = tooltip;
+              } else {
+                const repeatLabel = t(["metadata", "repeatRule"], getLanguageSetting()) || "Repeat rule";
+            pill.title = `${repeatLabel}: ${normalized}`;
           }
         }
       }
-      toast(`Repeat → ${normalized}`);
+      const repeatMsgTemplate = t(["toasts", "repeatUpdated"], getLanguageSetting());
+      const repeatMsg = repeatMsgTemplate
+        ? repeatMsgTemplate.replace("{{value}}", normalized)
+        : `Repeat \u2192 ${normalized}`;
+      toast(repeatMsg);
       const dueChanged =
         (priorDue ? priorDue.getTime() : null) !== (dueDateToPersist ? dueDateToPersist.getTime() : null);
       if (dueChanged || relocation.moved) {
+        const nextTemplate = t(["toasts", "nextOccurrenceTo"], getLanguageSetting());
+        const cleared = translateString("Next occurrence cleared", getLanguageSetting()) || "Next occurrence cleared";
         const message = dueDateToPersist
-          ? `Next occurrence → [[${formatRoamDateTitle(dueDateToPersist)}]]`
-          : "Next occurrence cleared";
+          ? nextTemplate
+            ? nextTemplate.replace("{{date}}", formatRoamDateTitle(dueDateToPersist))
+            : `Next occurrence \u2192 [[${formatRoamDateTitle(dueDateToPersist)}]]`
+          : cleared;
         registerDueUndoAction({
           blockUid: uid,
           message,
@@ -6833,45 +7057,48 @@ export default {
         await openDatePage(currentDate, { inSidebar: true });
         return;
       }
-      const shouldPrompt = forcePrompt || !hasDate || event.altKey || event.metaKey || event.ctrlKey;
-      if (shouldPrompt) {
-        const existing = hasDate ? formatIsoDate(currentDate, set) : "";
-        const nextIso = await promptForDate({
-          title: `Edit ${label} Date`,
-          message: `Select the ${label.toLowerCase()} date`,
-          initial: existing,
-        });
-        if (!nextIso) return;
-        const parsed = parseRoamDate(nextIso);
-        if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) {
-          toast("Couldn't parse that date.");
-          return;
-        }
-        const nextStr = formatDate(parsed, set);
-        await updateBlockProps(uid, { [type]: nextStr });
-        const childInfo = await ensureChildAttrForType(uid, type, nextStr, attrNames);
+        const shouldPrompt = forcePrompt || !hasDate || event.altKey || event.metaKey || event.ctrlKey;
+        if (shouldPrompt) {
+          const existing = hasDate ? formatIsoDate(currentDate, set) : "";
+          const nextIso = await promptForDate({
+            title: translateString(`Edit ${label} Date`, getLanguageSetting()),
+            message: translateString(`Select the ${label.toLowerCase()} date`, getLanguageSetting()),
+            initial: existing,
+          });
+          if (!nextIso) return;
+          const parsed = parseRoamDate(nextIso);
+          if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) {
+            toast(t(["toasts", "cannotParseDate"], getLanguageSetting()) || "Couldn't parse that date.");
+            return;
+          }
+          const nextStr = formatDate(parsed, set);
+          await updateBlockProps(uid, { [type]: nextStr });
+          const childInfo = await ensureChildAttrForType(uid, type, nextStr, attrNames);
         await ensureInlineAttrForType(block, type, nextStr, attrNames);
         meta.childAttrMap = meta.childAttrMap || {};
         const existingEntry = getMetaChildAttr(meta, type, attrNames, { allowFallback: false });
         const storedUid = childInfo?.uid || existingEntry?.uid || null;
         setMetaChildAttr(meta, type, { value: nextStr, uid: storedUid }, attrNames);
-        meta[type] = parsed;
-        if (span) {
-          renderPillDateSpan(span, {
-            icon: type === "start" ? START_ICON : DEFER_ICON,
-            date: parsed,
-            set,
-            label,
-            tooltip: `${label}: ${formatIsoDate(parsed, set)}`,
-          });
+          meta[type] = parsed;
+          if (span) {
+            const labelStr = type === "start" ? (t(["metadata", "start"], getLanguageSetting()) || "Start") : (t(["metadata", "defer"], getLanguageSetting()) || "Defer");
+            renderPillDateSpan(span, {
+              icon: type === "start" ? START_ICON : DEFER_ICON,
+              date: parsed,
+              set,
+              label: labelStr,
+              tooltip: `${labelStr}: ${formatIsoDate(parsed, set)}`,
+            });
+          }
+          if (type === "start" || !isValidDateValue(meta.start)) {
+            await relocateBlockForPlacement(block, meta, set);
+          }
+          toast(
+            `${(type === "start" ? t(["metadata", "start"], getLanguageSetting()) || "Start" : t(["metadata", "defer"], getLanguageSetting()) || "Defer")} \u2192 [[${formatRoamDateTitle(parsed)}]]`
+          );
+          void syncPillsForSurface(lastAttrSurface);
+          return parsed;
         }
-        if (type === "start" || !isValidDateValue(meta.start)) {
-          await relocateBlockForPlacement(block, meta, set);
-        }
-        toast(`${label} → [[${formatRoamDateTitle(parsed)}]]`);
-        void syncPillsForSurface(lastAttrSurface);
-        return parsed;
-      }
 
       if (hasDate) {
         await openDatePage(currentDate);
@@ -6925,8 +7152,8 @@ export default {
             icon: DUE_ICON,
             date: parsed,
             set,
-            label: "Due",
-            tooltip: `Due: ${formatIsoDate(parsed, set)}`,
+            label: t(["metadata", "due"], getLanguageSetting()) || "Due",
+            tooltip: `${t(["metadata", "due"], getLanguageSetting()) || "Due"}: ${formatIsoDate(parsed, set)}`,
           });
           const pill = span.closest?.(".rt-pill");
           if (pill) pill.title = span.title;
@@ -6936,7 +7163,11 @@ export default {
         if (dueChanged) {
           registerDueUndoAction({
             blockUid: uid,
-            message: `Due date changed to ${formatRoamDateTitle(parsed)}`,
+            message:
+              translateString("Due date changed to {{date}}", getLanguageSetting())?.replace(
+                "{{date}}",
+                formatRoamDateTitle(parsed)
+              ) || `Due date changed to ${formatRoamDateTitle(parsed)}`,
             setSnapshot: { ...set },
             previousDueDate: contextSnapshot.previousDueDate
               ? new Date(contextSnapshot.previousDueDate.getTime())
@@ -7021,6 +7252,10 @@ export default {
 
     function showPillMenu({ uid, set, isRecurring = true, metadata = null }) {
       const menuId = `rt-pill-menu-${uid}-${Date.now()}`;
+      const lang = getLanguageSetting();
+      const pmStrings = t("pillMenu", lang) || {};
+      const metaStrings = t("metadata", lang) || {};
+      const labelOr = (key, fallback) => escapeHtml(pmStrings[key] || fallback);
       const pillMetaCache =
         typeof window !== "undefined"
           ? window.__btInlineMetaCache || (window.__btInlineMetaCache = new Map())
@@ -7075,37 +7310,38 @@ export default {
         void syncPillsForSurface(lastAttrSurface);
       };
 
+      const metaHeading = t(["pillMenu", "metaHeading"], lang) || "Metadata";
       const metaSection = `
-        <small>Metadata</small>
-        <button data-action="meta-gtd-cycle">Cycle GTD status</button>
+        <small>${escapeHtml(metaHeading)}</small>
+        <button data-action="meta-gtd-cycle">${labelOr("cycleGtd", "Cycle GTD")}</button>
         ${hasProject
-          ? `<button data-action="meta-project-remove" data-danger="1">Remove project</button>`
-          : `<button data-action="meta-project-add">Add project</button>`
+          ? `<button data-action="meta-project-remove" data-danger="1">${labelOr("removeProject", "Remove project")}</button>`
+          : `<button data-action="meta-project-add">${labelOr("addProject", "Add project")}</button>`
         }
         ${hasContext
-          ? `<button data-action="meta-context-remove" data-danger="1">Remove context</button>`
-          : `<button data-action="meta-context-add">Add context</button>`
+          ? `<button data-action="meta-context-remove" data-danger="1">${labelOr("removeContext", "Remove context")}</button>`
+          : `<button data-action="meta-context-add">${labelOr("addContext", "Add context")}</button>`
         }
         ${hasWaiting
-          ? `<button data-action="meta-waiting-remove" data-danger="1">Remove waiting-for</button>`
-          : `<button data-action="meta-waiting-add">Add waiting-for</button>`
+          ? `<button data-action="meta-waiting-remove" data-danger="1">${labelOr("removeWaiting", "Remove waiting-for")}</button>`
+          : `<button data-action="meta-waiting-add">${labelOr("addWaiting", "Add waiting-for")}</button>`
         }
-        <button data-action="meta-priority-cycle">Cycle priority</button>
-        <button data-action="meta-energy-cycle">Cycle energy</button>
+        <button data-action="meta-priority-cycle">${labelOr("cyclePriority", "Cycle priority")}</button>
+        <button data-action="meta-energy-cycle">${labelOr("cycleEnergy", "Cycle energy")}</button>
       `;
       const recurringBlock = isRecurring
         ? `
-         <button data-action="skip">Skip this occurrence</button>
-         <button data-action="generate">Generate next now</button>
-          <button data-action="end" data-danger="1">End recurrence</button>
+         <button data-action="skip">${labelOr("skipOccurrence", "Skip this occurrence")}</button>
+         <button data-action="generate">${labelOr("generateNext", "Generate next now")}</button>
+          <button data-action="end" data-danger="1">${labelOr("endRecurrence", "End recurrence")}</button>
         `
         : "";
       const html = `
         <div class="rt-pill-menu" id="${menuId}">
-         <button data-action="snooze-1">Snooze +1 day</button>
-         <button data-action="snooze-3">Snooze +3 days</button>
-         <button data-action="snooze-next-mon">Snooze to next Monday</button>
-         <button data-action="snooze-pick">Snooze (pick date)</button>
+         <button data-action="snooze-1">${labelOr("snoozePlus1", "Snooze +1 day")}</button>
+         <button data-action="snooze-3">${labelOr("snoozePlus3", "Snooze +3 days")}</button>
+         <button data-action="snooze-next-mon">${labelOr("snoozeNextMon", "Snooze to next Monday")}</button>
+         <button data-action="snooze-pick">${labelOr("snoozePick", "Snooze (pick date)")}</button>
          ${recurringBlock}
          ${metaSection}
         </div>
@@ -7813,6 +8049,7 @@ export default {
         editDate,
         openPillMenuForTask,
         removeTaskAttribute,
+        refreshLanguage,
         dispose,
       };
 
@@ -7972,6 +8209,7 @@ export default {
             controller={controller}
             onRequestClose={close}
             onHeaderReady={registerDragHandle}
+            language={getLanguageSetting()}
           />
         );
         ensureInitialLoad();
@@ -7981,6 +8219,19 @@ export default {
             applySavedPosition();
           });
         }
+      }
+
+      function refreshLanguage() {
+        if (!root) return;
+        ensureContainer();
+        root.render(
+          <DashboardApp
+            controller={controller}
+            onRequestClose={close}
+            onHeaderReady={registerDragHandle}
+            language={getLanguageSetting()}
+          />
+        );
       }
 
       function close() {
@@ -8621,10 +8872,10 @@ export default {
       const availabilityLabel = isCompleted
         ? null
         : startBucket === "not-started"
-          ? "Not started"
+          ? translateString("Not started", getLanguageSetting())
           : deferBucket === "deferred"
-            ? "Deferred"
-            : "Available";
+            ? translateString("Deferred", getLanguageSetting())
+            : translateString("Available", getLanguageSetting());
       const richMeta = meta?.metadata || parseRichMetadata(meta?.childAttrMap || {}, set?.attrNames || resolveAttributeNames());
       const metaPills = buildDashboardPills(
         { startAt, deferUntil, dueAt, repeatText: meta?.repeat, metadata: richMeta },
@@ -8658,12 +8909,15 @@ export default {
 
     function buildDashboardPills(info, set) {
       const pills = [];
+      const lang = getLanguageSetting();
+      const metaLabels = t(["metadata"], lang) || {};
       if (info.repeatText) {
+        const label = metaLabels.repeatRule || metaLabels.repeat || "Repeat";
         pills.push({
           type: "repeat",
           icon: "↻",
           value: info.repeatText,
-          label: `Repeat: ${info.repeatText}`,
+          label: `${label}: ${info.repeatText}`,
         });
       }
       if (info.startAt instanceof Date && !Number.isNaN(info.startAt.getTime())) {
@@ -8671,7 +8925,7 @@ export default {
           type: "start",
           icon: START_ICON,
           value: formatPillDateText(info.startAt, set),
-          label: `Start: ${formatIsoDate(info.startAt, set)}`,
+          label: `${metaLabels.start || "Start"}: ${formatIsoDate(info.startAt, set)}`,
         });
       }
       if (info.deferUntil instanceof Date && !Number.isNaN(info.deferUntil.getTime())) {
@@ -8679,7 +8933,7 @@ export default {
           type: "defer",
           icon: DEFER_ICON,
           value: formatPillDateText(info.deferUntil, set),
-          label: `Defer: ${formatIsoDate(info.deferUntil, set)}`,
+          label: `${metaLabels.defer || "Defer"}: ${formatIsoDate(info.deferUntil, set)}`,
         });
       }
       if (info.dueAt instanceof Date && !Number.isNaN(info.dueAt.getTime())) {
@@ -8687,7 +8941,7 @@ export default {
           type: "due",
           icon: DUE_ICON,
           value: formatPillDateText(info.dueAt, set),
-          label: `Due: ${formatIsoDate(info.dueAt, set)}`,
+          label: `${metaLabels.due || "Due"}: ${formatIsoDate(info.dueAt, set)}`,
         });
       }
       if (info.metadata?.project) {
@@ -8695,7 +8949,7 @@ export default {
           type: "project",
           icon: "📁",
           value: info.metadata.project,
-          label: `Project: ${info.metadata.project}`,
+          label: `${metaLabels.projectLabel || metaLabels.project || "Project"}: ${info.metadata.project}`,
           raw: info.metadata.project,
         });
       }
@@ -8704,7 +8958,7 @@ export default {
           type: "waitingFor",
           icon: "⌛",
           value: info.metadata.waitingFor,
-          label: `Waiting for: ${info.metadata.waitingFor}`,
+          label: `${metaLabels.waitingLabel || metaLabels.waitingFor || "Waiting for"}: ${info.metadata.waitingFor}`,
           raw: info.metadata.waitingFor,
         });
       }
@@ -8715,18 +8969,18 @@ export default {
           type: "context",
           icon: "@",
           value: `${display}${more}`,
-          label: `Context: ${info.metadata.context.join(", ")}`,
+          label: `${metaLabels.contextLabel || metaLabels.context || "Context"}: ${info.metadata.context.join(", ")}`,
           rawList: info.metadata.context,
         });
       }
       if (info.metadata?.gtd) {
-        const display = formatGtdStatusDisplay(info.metadata.gtd);
+        const display = formatGtdStatusDisplay(info.metadata.gtd, lang);
         const next = cycleGtdStatus(info.metadata.gtd);
         pills.push({
           type: "gtd",
           icon: "➡",
           value: display,
-          label: `GTD: ${display}`,
+          label: `${metaLabels.gtdLabel || metaLabels.gtd || "GTD"}: ${display}`,
           nextValue: next,
         });
       }
@@ -8737,8 +8991,8 @@ export default {
         pills.push({
           type: "priority",
           icon: "!",
-          value: formatPriorityEnergyDisplay(info.metadata.priority),
-          label: `Priority: ${formatPriorityEnergyDisplay(info.metadata.priority)} (click to cycle)`,
+          value: formatPriorityEnergyDisplay(info.metadata.priority, lang),
+          label: `${metaLabels.priorityLabel || metaLabels.priority || "Priority"}: ${formatPriorityEnergyDisplay(info.metadata.priority, lang)} (click to cycle)`,
           nextValue: next,
         });
       }
@@ -8749,8 +9003,8 @@ export default {
         pills.push({
           type: "energy",
           icon: "🔋",
-          value: formatPriorityEnergyDisplay(info.metadata.energy),
-          label: `Energy: ${formatPriorityEnergyDisplay(info.metadata.energy)} (click to cycle)`,
+          value: formatPriorityEnergyDisplay(info.metadata.energy, lang),
+          label: `${metaLabels.energyLabel || metaLabels.energy || "Energy"}: ${formatPriorityEnergyDisplay(info.metadata.energy, lang)} (click to cycle)`,
           nextValue: next,
         });
       }
@@ -8824,22 +9078,29 @@ export default {
       return sections;
     }
 
+    function getTodayAnchorText() {
+      const lang = getLanguageSetting();
+      const translated = t(["today", "title"], lang);
+      return (typeof translated === "string" && translated.trim()) ? translated : TODAY_WIDGET_ANCHOR_TEXT_DEFAULT;
+    }
+
     async function ensureTodayWidgetAnchor(placement = "Top", heading = 0, cache = null) {
       const dnpTitle = toDnpTitle(todayLocal());
       const dnpUid = await getOrCreatePageUidCached(dnpTitle, cache);
       const parent = await getBlockCached(dnpUid, cache);
       const children = Array.isArray(parent?.children) ? parent.children : [];
+      const anchorText = getTodayAnchorText();
       const matchesAnchor = (str = "") => {
         const trimmed = str.trim().toLowerCase();
-        if (trimmed === TODAY_WIDGET_ANCHOR_TEXT.toLowerCase()) return true;
+        if (trimmed === anchorText.toLowerCase()) return true;
         return TODAY_WIDGET_ANCHOR_TEXT_LEGACY.some((legacy) => trimmed === legacy.toLowerCase());
       };
       const existingIndex = children.findIndex((c) => matchesAnchor(c?.string || ""));
       const existing = existingIndex >= 0 ? children[existingIndex] : null;
       if (existing?.uid) {
-        if ((existing.string || "").trim() !== TODAY_WIDGET_ANCHOR_TEXT) {
+        if ((existing.string || "").trim() !== anchorText) {
           try {
-            await window.roamAlphaAPI.updateBlock({ block: { uid: existing.uid, string: TODAY_WIDGET_ANCHOR_TEXT } });
+            await window.roamAlphaAPI.updateBlock({ block: { uid: existing.uid, string: anchorText } });
           } catch (_) { }
         }
         try {
@@ -8859,7 +9120,7 @@ export default {
       }
       const order = placement === "Bottom" ? children.length : 0;
       const uid = window.roamAlphaAPI.util.generateUID();
-      await createBlock(dnpUid, order, TODAY_WIDGET_ANCHOR_TEXT, uid);
+      await createBlock(dnpUid, order, anchorText, uid);
       try {
         await window.roamAlphaAPI.updateBlock({ block: { uid, heading } });
       } catch (_) { }
@@ -8984,11 +9245,17 @@ export default {
           await createBlock(sectionUid, childOrder++, `((${task.uid}))`);
         }
       };
-      await writeSection("Starting Today", sections.startingToday);
-      await writeSection("Deferred Until Today", sections.deferredToToday);
-      await writeSection("Due Today", sections.dueToday);
+      const lang = getLanguageSetting();
+      const todayStrings = t(["today"], lang) || {};
+      await writeSection(todayStrings.starting || "Starting Today", sections.startingToday);
+      await writeSection(todayStrings.deferred || "Deferred Until Today", sections.deferredToToday);
+      await writeSection(todayStrings.due || "Due Today", sections.dueToday);
       if (options.includeOverdue) {
-        await writeSection(`Overdue (${sections.overdue.length})`, sections.overdue);
+        const label =
+          typeof todayStrings.overdue === "function"
+            ? todayStrings.overdue(sections.overdue.length)
+            : `Overdue (${sections.overdue.length})`;
+        await writeSection(label, sections.overdue);
       }
       perfLog(perfInline, `totalBlocks=${order}`);
     }
@@ -9013,9 +9280,11 @@ export default {
       const signature = `${layoutSignature}|${signatureParts.join("|")}`;
       lastTodayWidgetSignature = signature;
       container.innerHTML = "";
+      const lang = getLanguageSetting();
+      const todayStrings = t(["today"], lang) || {};
       if (!hasAny) {
         const empty = document.createElement("div");
-        empty.textContent = "No tasks for today.";
+        empty.textContent = todayStrings.empty || "No tasks for today.";
         empty.className = "bt-today-panel__empty";
         container.appendChild(empty);
         return;
@@ -9041,7 +9310,7 @@ export default {
           const titleBtn = document.createElement("button");
           titleBtn.type = "button";
           titleBtn.className = "bt-today-panel__row-title";
-          titleBtn.textContent = task.title || "(Untitled)";
+          titleBtn.textContent = task.title || todayStrings.untitled || "(Untitled)";
           titleBtn.addEventListener("click", () => {
             if (activeDashboardController?.openBlock) {
               activeDashboardController.openBlock(task.uid);
@@ -9055,9 +9324,9 @@ export default {
           const meta = document.createElement("span");
           meta.className = "bt-today-panel__row-meta";
           const metaBits = [];
-          if (task.metadata?.priority) metaBits.push(`!${formatPriorityEnergyDisplay(task.metadata.priority)}`);
-          if (task.metadata?.energy) metaBits.push(`🔋${formatPriorityEnergyDisplay(task.metadata.energy)}`);
-          if (task.metadata?.gtd) metaBits.push(`➡ ${formatGtdStatusDisplay(task.metadata.gtd)}`);
+          if (task.metadata?.priority) metaBits.push(`!${translateMetaValue("priority", task.metadata.priority, lang)}`);
+          if (task.metadata?.energy) metaBits.push(`🔋${translateMetaValue("energy", task.metadata.energy, lang)}`);
+          if (task.metadata?.gtd) metaBits.push(`➡ ${translateMetaValue("gtd", task.metadata.gtd, lang)}`);
           if (metaBits.length) {
             meta.textContent = metaBits.join(" • ");
             row.appendChild(meta);
@@ -9069,12 +9338,12 @@ export default {
             doneBtn.type = "button";
             doneBtn.className = "bt-today-panel__icon-btn";
             doneBtn.textContent = "✓";
-            doneBtn.title = "Complete";
+            doneBtn.title = todayStrings.complete || "Complete";
             const snoozeBtn = document.createElement("button");
             snoozeBtn.type = "button";
             snoozeBtn.className = "bt-today-panel__icon-btn";
             snoozeBtn.textContent = "⏱";
-            snoozeBtn.title = "Snooze +1d";
+            snoozeBtn.title = todayStrings.snoozeShort || "Snooze +1d";
             snoozeBtn.addEventListener("click", async () => {
               doneBtn.disabled = true;
               snoozeBtn.disabled = true;
@@ -9104,11 +9373,15 @@ export default {
         container.appendChild(section);
       };
 
-      renderSection("Starting Today", sections.startingToday);
-      renderSection("Deferred Until Today", sections.deferredToToday);
-      renderSection("Due Today", sections.dueToday, "due");
+      renderSection(todayStrings.starting || "Starting Today", sections.startingToday);
+      renderSection(todayStrings.deferred || "Deferred Until Today", sections.deferredToToday);
+      renderSection(todayStrings.due || "Due Today", sections.dueToday, "due");
       if (options.includeOverdue) {
-        renderSection(`Overdue (${sections.overdue.length})`, sections.overdue, "overdue");
+        const label =
+          typeof todayStrings.overdue === "function"
+            ? todayStrings.overdue(sections.overdue.length)
+            : `Overdue (${sections.overdue.length})`;
+        renderSection(label, sections.overdue, "overdue");
       }
       perfLog(perfPanel);
     }
@@ -9282,6 +9555,19 @@ function dowFromAlias(token) {
   return DOW_MAP[norm] || null;
 }
 
+function tGlobal(path, lang = currentLanguage || "en") {
+  const parts = Array.isArray(path) ? path : String(path || "").split(".");
+  const resolve = (obj) =>
+    parts.reduce((acc, key) => (acc && Object.prototype.hasOwnProperty.call(acc, key) ? acc[key] : undefined), obj);
+  const primary = resolve(I18N_MAP?.[lang]);
+  if (primary !== undefined) return primary;
+  if (lang !== "en") {
+    const fallback = resolve(I18N_MAP?.en);
+    if (fallback !== undefined) return fallback;
+  }
+  return undefined;
+}
+
 function perfMark(label) {
   if (!DEBUG_BT_PERF || typeof performance === "undefined") return null;
   return { label, t: performance.now() };
@@ -9409,10 +9695,12 @@ function ensureDashboardTopbarButton(retry = true) {
     button.id = DASHBOARD_TOPBAR_BUTTON_ID;
     button.className = "bp3-button bp3-minimal bp3-small bp3-icon-form";
     button.setAttribute("role", "button");
-    button.setAttribute("title", "Better Tasks Dashboard");
-    button.setAttribute("aria-label", "Better Tasks Dashboard");
     button.addEventListener("click", () => activeDashboardController?.toggle());
   }
+  const lang = currentLanguage || "en";
+  const topbarTitle = tGlobal(["dashboard", "topbarTitle"], lang) || "Better Tasks Dashboard";
+  button.setAttribute("title", topbarTitle);
+  button.setAttribute("aria-label", topbarTitle);
 
   let spacer = document.getElementById(DASHBOARD_TOPBAR_SPACER_ID);
   if (!spacer) {
@@ -9900,6 +10188,11 @@ function observeRoamStudioToggleAttributes() {
   roamStudioToggleObserver = new MutationObserver((mutations) => {
     if (mutations.some(m => m.type === "attributes" && m.attributeName === "class")) {
       triggerThemeResync(120);
+      const msg =
+        t(["metadata", "themeChanged"], getLanguageSetting()) ||
+        translateString("Detected change to themes. Reloading page to apply changes.", getLanguageSetting()) ||
+        "Detected change to themes. Reloading page to apply changes.";
+      toast(msg, 3500);
     }
   });
 

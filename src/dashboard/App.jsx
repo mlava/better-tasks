@@ -9,6 +9,25 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import { useVirtualizer, measureElement } from "@tanstack/react-virtual";
+import { i18n as I18N_MAP } from "../i18n";
+
+function resolvePath(obj, parts = []) {
+  return parts.reduce(
+    (acc, key) => (acc && Object.prototype.hasOwnProperty.call(acc, key) ? acc[key] : undefined),
+    obj
+  );
+}
+
+function tPath(path, lang = "en") {
+  const parts = Array.isArray(path) ? path : String(path || "").split(".");
+  const primary = resolvePath(I18N_MAP?.[lang], parts);
+  if (primary !== undefined) return primary;
+  if (lang !== "en") {
+    const fallback = resolvePath(I18N_MAP?.en, parts);
+    if (fallback !== undefined) return fallback;
+  }
+  return undefined;
+}
 function formatPriorityEnergyDisplay(value) {
   if (!value || typeof value !== "string") return "";
   const v = value.trim().toLowerCase();
@@ -37,47 +56,6 @@ function cycleGtdStatus(current) {
   const idx = order.indexOf(normalized ?? null);
   return order[(idx + 1) % order.length];
 }
-
-const FILTER_DEFS = {
-  Recurrence: [
-    { value: "recurring", label: "Recurring" },
-    { value: "one-off", label: "One-off" },
-  ],
-  Start: [
-    { value: "not-started", label: "Not Started" },
-    { value: "started", label: "Started" },
-  ],
-  Defer: [
-    { value: "deferred", label: "Deferred" },
-    { value: "available", label: "Available" },
-  ],
-  Due: [
-    { value: "overdue", label: "Overdue" },
-    { value: "today", label: "Today" },
-    { value: "upcoming", label: "Upcoming" },
-    { value: "none", label: "No Due" },
-  ],
-  Completion: [
-    { value: "open", label: "Open" },
-    { value: "completed", label: "Completed" },
-  ],
-  Priority: [
-    { value: "high", label: "High" },
-    { value: "medium", label: "Medium" },
-    { value: "low", label: "Low" },
-  ],
-  Energy: [
-    { value: "high", label: "High" },
-    { value: "medium", label: "Medium" },
-    { value: "low", label: "Low" },
-  ],
-  GTD: [
-    { value: "next action", label: "Next action" },
-    { value: "delegated", label: "Delegated" },
-    { value: "deferred", label: "Deferred" },
-    { value: "someday", label: "Someday" },
-  ],
-};
 
 const DEFAULT_FILTERS = {
   Recurrence: [],
@@ -120,11 +98,6 @@ function saveFilters(filters) {
 const FILTER_SECTIONS_LEFT = ["Recurrence", "Start", "Defer"];
 const FILTER_SECTIONS_RIGHT = ["Completion", "Priority", "Energy"];
 
-const GROUPING_OPTIONS = [
-  { value: "time", label: "By Time" },
-  { value: "recurrence", label: "By Recurrence" },
-];
-
 const GROUP_LABELS = {
   overdue: "Overdue",
   today: "Today",
@@ -132,6 +105,7 @@ const GROUP_LABELS = {
   none: "No Due Date",
   recurring: "Recurring",
   "one-off": "One-off",
+  completed: "Completed",
 };
 
 const GROUP_ORDER_TIME = ["overdue", "today", "upcoming", "none"];
@@ -229,27 +203,28 @@ function groupTasks(tasks, grouping, options = {}) {
   const completedOnly = completionFilter.length === 1 && completionFilter[0] === "completed";
   const completedTasks = completedOnly ? tasks.filter((task) => task.isCompleted) : [];
   const workingTasks = completedOnly ? tasks.filter((task) => !task.isCompleted) : tasks;
+  const labels = options.groupLabels || GROUP_LABELS;
   const groups = [];
   if (grouping === "recurrence") {
     for (const key of GROUP_ORDER_RECURRENCE) {
       const items = workingTasks.filter((task) => task.recurrenceBucket === key);
       if (items.length) {
-        groups.push({ id: key, title: GROUP_LABELS[key], items });
+        groups.push({ id: key, title: labels[key] || GROUP_LABELS[key], items });
       }
     }
     if (completedTasks.length) {
-      groups.unshift({ id: "completed", title: "Completed", items: completedTasks });
+      groups.unshift({ id: "completed", title: labels["completed"] || "Completed", items: completedTasks });
     }
     return groups;
   }
   for (const key of GROUP_ORDER_TIME) {
     const items = workingTasks.filter((task) => task.dueBucket === key);
     if (items.length) {
-      groups.push({ id: key, title: GROUP_LABELS[key], items });
+      groups.push({ id: key, title: labels[key] || GROUP_LABELS[key], items });
     }
   }
   if (completedTasks.length) {
-    groups.unshift({ id: "completed", title: "Completed", items: completedTasks });
+    groups.unshift({ id: "completed", title: labels["completed"] || "Completed", items: completedTasks });
   }
   return groups;
 }
@@ -288,12 +263,12 @@ function Pill({ icon, label, value, muted, onClick }) {
   );
 }
 
-function FilterChips({ section, chips, activeValues, onToggle, singleChoice = false }) {
+function FilterChips({ sectionKey, label, chips, activeValues, onToggle, singleChoice = false }) {
   const chipList = Array.isArray(chips) ? chips : [];
   const active = Array.isArray(activeValues) ? activeValues : [];
   return (
     <div className="bt-filter-row">
-      <span className="bt-filter-row__label">{section}</span>
+      <span className="bt-filter-row__label">{label}</span>
       <div className="bt-filter-row__chips">
         {chipList.map((chip) => {
           const isActive = active.includes(chip.value);
@@ -302,7 +277,7 @@ function FilterChips({ section, chips, activeValues, onToggle, singleChoice = fa
               key={chip.value}
               type="button"
               className={`bt-chip${isActive ? " bt-chip--active" : ""}`}
-              onClick={() => onToggle(section, chip.value, singleChoice)}
+              onClick={() => onToggle(sectionKey, chip.value, singleChoice)}
             >
               {chip.label}
             </button>
@@ -332,7 +307,7 @@ function GroupHeader({ title, count, isExpanded, onToggle }) {
   );
 }
 
-function TaskActionsMenu({ task, controller, onOpenChange }) {
+function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
   const buttonRef = useRef(null);
@@ -427,11 +402,31 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
   const actions = useMemo(() => {
     if (!task || !controller) return [];
     const list = [];
+    const tm = strings?.taskMenu || {};
+    const metaLabels = strings?.metaLabels || {};
+    const filterDefs = strings?.filterDefs || {};
+    const labelFor = (key) => metaLabels[key] || key;
+    const valueLabel = (type, value) => {
+      if (!value) return "";
+      if (type === "priority") {
+        const match = (filterDefs.Priority || []).find((f) => f.value === value);
+        return match?.label || formatPriorityEnergyDisplay(value);
+      }
+      if (type === "energy") {
+        const match = (filterDefs.Energy || []).find((f) => f.value === value);
+        return match?.label || formatPriorityEnergyDisplay(value);
+      }
+      if (type === "gtd") {
+        const match = (filterDefs.GTD || []).find((f) => f.value === value);
+        return match?.label || formatGtdStatusDisplay(value);
+      }
+      return value;
+    };
     const labels = {
-      repeat: "repeat",
-      start: "start date",
-      defer: "defer date",
-      due: "due date",
+      repeat: labelFor("repeat") || "repeat",
+      start: labelFor("start") || "start date",
+      defer: labelFor("defer") || "defer date",
+      due: labelFor("due") || "due date",
     };
     const hasRepeat = !!task.repeatText;
     const hasStart = task.startAt instanceof Date;
@@ -442,20 +437,20 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
       if (hasValue) {
         list.push({
           key: `edit-${type}`,
-          label: `Edit ${labels[type]}`,
+          label: `${tm[`edit${type[0].toUpperCase()}${type.slice(1)}`] || `Edit ${labels[type]}`}`,
           handler: () =>
             controller.editDate(task.uid, type, { intent: "menu-edit" }),
         });
         list.push({
           key: `remove-${type}`,
-          label: `Remove ${labels[type]}`,
+          label: `${tm[`remove${type[0].toUpperCase()}${type.slice(1)}`] || `Remove ${labels[type]}`}`,
           handler: () => controller.removeTaskAttribute(task.uid, type),
           danger: true,
         });
       } else {
         list.push({
           key: `add-${type}`,
-          label: `Add ${labels[type]}`,
+          label: `${tm[`add${type[0].toUpperCase()}${type.slice(1)}`] || `Add ${labels[type]}`}`,
           handler: () =>
             controller.editDate(task.uid, type, { intent: "menu-add" }),
         });
@@ -465,19 +460,19 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
     if (hasRepeat) {
       list.push({
         key: "edit-repeat",
-        label: "Edit repeat",
+        label: tm.editRepeat || "Edit repeat",
         handler: () => controller.editRepeat(task.uid),
       });
       list.push({
         key: "remove-repeat",
-        label: "Remove repeat",
+        label: tm.removeRepeat || "Remove repeat",
         handler: () => controller.removeTaskAttribute(task.uid, "repeat"),
         danger: true,
       });
     } else {
       list.push({
         key: "add-repeat",
-        label: "Add repeat",
+        label: tm.addRepeat || "Add repeat",
         handler: () => controller.editRepeat(task.uid),
       });
     }
@@ -487,29 +482,29 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
     pushDateActions("due", hasDue);
 
     const meta = task.metadata || {};
-    list.push({ key: "meta-separator", label: "Metadata", separator: true });
+    list.push({ key: "meta-separator", label: tm.metaHeading || "Metadata", separator: true });
     list.push({
       key: "meta-gtd",
-      label: `GTD: ${meta.gtd ? formatGtdStatusDisplay(meta.gtd) : "none"} (click to cycle)`,
+      label: `${labelFor("gtd")}: ${meta.gtd ? valueLabel("gtd", meta.gtd) : ""} (${tm.cycleGtd || "Click to cycle"})`,
       handler: () => cycleGtd(),
     });
 
     if (meta.project) {
       list.push({
         key: "meta-project-edit",
-        label: `Edit project (${meta.project})`,
+        label: `${tm.editProject || "Edit project"} (${meta.project})`,
         handler: () => handleEditText("project", meta.project),
       });
       list.push({
         key: "meta-project-remove",
-        label: "Remove project",
+        label: tm.removeProject || "Remove project",
         handler: () => controller.updateMetadata?.(task.uid, { project: null }),
         danger: true,
       });
     } else {
       list.push({
         key: "meta-project-add",
-        label: "Set project",
+        label: tm.setProject || "Set project",
         handler: () => handleEditText("project", meta.project),
       });
     }
@@ -517,19 +512,19 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
     if (meta.context && meta.context.length) {
       list.push({
         key: "meta-context-edit",
-        label: `Edit context (${meta.context.join(", ")})`,
+        label: `${tm.editContext || "Edit context"} (${meta.context.join(", ")})`,
         handler: () => handleEditText("context", (meta.context || []).join(", ")),
       });
       list.push({
         key: "meta-context-remove",
-        label: "Remove context",
+        label: tm.removeContext || "Remove context",
         handler: () => controller.updateMetadata?.(task.uid, { context: [] }),
         danger: true,
       });
     } else {
       list.push({
         key: "meta-context-add",
-        label: "Set context",
+        label: tm.setContext || "Set context",
         handler: () => handleEditText("context", (meta.context || []).join(", ")),
       });
     }
@@ -537,35 +532,39 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
     if (meta.waitingFor) {
       list.push({
         key: "meta-waiting-edit",
-        label: `Edit waiting-for (${meta.waitingFor})`,
+        label: `${tm.editWaiting || "Edit waiting-for"} (${meta.waitingFor})`,
         handler: () => handleEditText("waitingFor", meta.waitingFor),
       });
       list.push({
         key: "meta-waiting-remove",
-        label: "Remove waiting-for",
+        label: tm.removeWaiting || "Remove waiting-for",
         handler: () => controller.updateMetadata?.(task.uid, { waitingFor: null }),
         danger: true,
       });
     } else {
       list.push({
         key: "meta-waiting-add",
-        label: "Set waiting-for",
+        label: tm.setWaiting || "Set waiting-for",
         handler: () => handleEditText("waitingFor", meta.waitingFor),
       });
     }
     list.push({
       key: "meta-priority",
-      label: `Priority: ${meta.priority ? formatPriorityEnergyDisplay(meta.priority) : "none"} (click to cycle)`,
+      label: `${tm.priorityCycle || "Priority (click to cycle)"}${
+        meta.priority ? `: ${valueLabel("priority", meta.priority)}` : ""
+      }`,
       handler: () => cycleValue("priority"),
     });
     list.push({
       key: "meta-energy",
-      label: `Energy: ${meta.energy ? formatPriorityEnergyDisplay(meta.energy) : "none"} (click to cycle)`,
+      label: `${tm.energyCycle || "Energy (click to cycle)"}${
+        meta.energy ? `: ${valueLabel("energy", meta.energy)}` : ""
+      }`,
       handler: () => cycleValue("energy"),
     });
 
     return list;
-  }, [controller, task, handleEditText]);
+  }, [controller, task, handleEditText, strings]);
 
   const safeActions = Array.isArray(actions) ? actions : [];
 
@@ -684,7 +683,7 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
         onClick={() => setOpenState((value) => !value)}
         aria-haspopup="true"
         aria-expanded={open}
-        title="Task options"
+        title={strings?.taskOptions || "Task options"}
         ref={buttonRef}
       >
         ⋯
@@ -694,8 +693,11 @@ function TaskActionsMenu({ task, controller, onOpenChange }) {
   );
 }
 
-function TaskRow({ task, controller }) {
-  const checkboxLabel = task.isCompleted ? "Mark as open" : "Mark as done";
+function TaskRow({ task, controller, strings }) {
+  const checkboxLabel = task.isCompleted
+    ? strings?.markOpen || "Mark as open"
+    : strings?.markDone || "Mark as done";
+  const completedLabel = strings?.completedLabel || "Completed";
   const [menuOpen, setMenuOpen] = useState(false);
   const handleMenuOpenChange = useCallback((value) => {
     setMenuOpen(value);
@@ -710,7 +712,7 @@ function TaskRow({ task, controller }) {
       pageUid: task.pageUid,
     });
   }
-  if (task.isCompleted) contextBits.push({ key: "completed", type: "text", text: "Completed" });
+  if (task.isCompleted) contextBits.push({ key: "completed", type: "text", text: completedLabel });
   else if (task.availabilityLabel) contextBits.push({ key: "availability", type: "text", text: task.availabilityLabel });
   const showSnooze = !task.isCompleted;
   const handlePillClick = (event, pill, taskRow, ctrl) => {
@@ -750,22 +752,22 @@ function TaskRow({ task, controller }) {
         {task.isCompleted ? "☑" : "☐"}
       </button>
       <div className="bt-task-row__body">
-        <div className="bt-task-row__title">{task.title || "(Untitled task)"}</div>
-        <div className="bt-task-row__meta">
-          <div className="bt-task-row__meta-pills">
-            {(task.metaPills || []).map((pill) => (
-              <div key={`${task.uid}-${pill.type}`} className="bt-pill-wrap">
-                <Pill
-                  icon={pill.icon}
-                  label={pill.label}
-                  value={pill.value}
-                  muted={!pill.value}
-                  onClick={(e) => handlePillClick(e, pill, task, controller)}
-                />
-              </div>
-            ))}
-          </div>
-          <TaskActionsMenu task={task} controller={controller} onOpenChange={handleMenuOpenChange} />
+        <div className="bt-task-row__title">{task.title || strings?.untitled || "(Untitled task)"}</div>
+          <div className="bt-task-row__meta">
+            <div className="bt-task-row__meta-pills">
+              {(task.metaPills || []).map((pill) => (
+                <div key={`${task.uid}-${pill.type}`} className="bt-pill-wrap">
+                  <Pill
+                    icon={pill.icon}
+                    label={pill.label}
+                    value={pill.value}
+                    muted={!pill.value}
+                    onClick={(e) => handlePillClick(e, pill, task, controller)}
+                  />
+                </div>
+              ))}
+            </div>
+          <TaskActionsMenu task={task} controller={controller} onOpenChange={handleMenuOpenChange} strings={strings} />
         </div>
         <div className="bt-task-row__context">
           {contextBits.map((bit, idx) => {
@@ -807,7 +809,7 @@ function TaskRow({ task, controller }) {
             controller.openBlock(task.uid, { skipCompletionToast: task.isCompleted })
           }
         >
-          View
+          {strings?.view || "View"}
         </button>
         {showSnooze ? (
           <div className="bt-task-row__snooze">
@@ -816,21 +818,21 @@ function TaskRow({ task, controller }) {
               className="bp3-button bp3-small"
               onClick={() => controller.snoozeTask(task.uid, 1)}
             >
-              +1d
+              {strings?.snoozePlus1 || "+1d"}
             </button>
             <button
               type="button"
               className="bp3-button bp3-small"
               onClick={() => controller.snoozeTask(task.uid, 7)}
             >
-              +7d
+              {strings?.snoozePlus7 || "+7d"}
             </button>
             <button
               type="button"
               className="bp3-button bp3-small"
               onClick={() => controller.snoozeTask(task.uid, "pick")}
             >
-              Pick
+              {strings?.snoozePick || "Pick"}
             </button>
           </div>
         ) : null}
@@ -839,37 +841,182 @@ function TaskRow({ task, controller }) {
   );
 }
 
-function EmptyState({ status, onRefresh }) {
+function EmptyState({ status, onRefresh, strings }) {
+  const copy = strings || {};
   if (status === "loading") {
-    return <div className="bt-empty">Loading tasks…</div>;
+    return <div className="bt-empty">{copy.loading || "Loading tasks…"}</div>;
   }
   if (status === "error") {
     return (
       <div className="bt-empty">
-        <p>Couldn’t load tasks.</p>
+        <p>{copy.error || "Couldn’t load tasks."}</p>
         <button type="button" onClick={onRefresh}>
-          Try again
+          {copy.retry || "Try again"}
         </button>
       </div>
     );
   }
-  return <div className="bt-empty">No tasks match the selected filters.</div>;
+  return <div className="bt-empty">{copy.noMatch || "No tasks match the selected filters."}</div>;
 }
 
-export default function DashboardApp({ controller, onRequestClose, onHeaderReady }) {
+export default function DashboardApp({ controller, onRequestClose, onHeaderReady, language = "en" }) {
   const snapshot = useControllerSnapshot(controller);
   const [filters, dispatchFilters] = useReducer(filtersReducer, DEFAULT_FILTERS, loadSavedFilters);
   const [grouping, setGrouping] = useState("time");
   const [query, setQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState({});
+  const lang = I18N_MAP[language] ? language : "en";
+  const tt = useCallback(
+    (path, fallback) => {
+      const val = tPath(path, lang);
+      if (typeof val === "string") return val;
+      if (typeof val === "function") return val;
+      return fallback;
+    },
+    [lang]
+  );
+  const fallbackCapitalize = useCallback(
+    (value) => (value ? String(value).charAt(0).toUpperCase() + String(value).slice(1) : ""),
+    []
+  );
+  const filterDefs = useMemo(() => {
+    const fv = (key) => tt(["dashboard", "filterValues", key], fallbackCapitalize(key));
+    return {
+      Recurrence: [
+        { value: "recurring", label: fv("recurring") },
+        { value: "one-off", label: fv("one-off") },
+      ],
+      Start: [
+        { value: "not-started", label: fv("not-started") },
+        { value: "started", label: fv("started") },
+      ],
+      Defer: [
+        { value: "deferred", label: fv("deferred") },
+        { value: "available", label: fv("available") },
+      ],
+      Due: [
+        { value: "overdue", label: fv("overdue") },
+        { value: "today", label: fv("today") },
+        { value: "upcoming", label: fv("upcoming") },
+        { value: "none", label: fv("none") },
+      ],
+      Completion: [
+        { value: "open", label: fv("open") },
+        { value: "completed", label: fv("completed") },
+      ],
+      Priority: [
+        { value: "high", label: fv("high") },
+        { value: "medium", label: fv("medium") },
+        { value: "low", label: fv("low") },
+      ],
+      Energy: [
+        { value: "high", label: fv("high") },
+        { value: "medium", label: fv("medium") },
+        { value: "low", label: fv("low") },
+      ],
+      GTD: [
+        { value: "next action", label: fv("next action") },
+        { value: "delegated", label: fv("delegated") },
+        { value: "deferred", label: fv("deferred") },
+        { value: "someday", label: fv("someday") },
+      ],
+    };
+  }, [tt, fallbackCapitalize]);
+  const filterSectionLabels = useMemo(
+    () => ({
+      Recurrence: tt(["dashboard", "filterSections", "Recurrence"], "Recurrence"),
+      Start: tt(["dashboard", "filterSections", "Start"], "Start"),
+      Defer: tt(["dashboard", "filterSections", "Defer"], "Defer"),
+      Due: tt(["dashboard", "filterSections", "Due"], "Due"),
+      Completion: tt(["dashboard", "filterSections", "Completion"], "Completion"),
+      Priority: tt(["dashboard", "filterSections", "Priority"], "Priority"),
+      Energy: tt(["dashboard", "filterSections", "Energy"], "Energy"),
+      GTD: tt(["dashboard", "filterSections", "GTD"], "GTD"),
+    }),
+    [tt]
+  );
+  const groupingOptions = useMemo(
+    () => [
+      { value: "time", label: tt(["dashboard", "groupingLabels", "time"], "By Time") },
+      { value: "recurrence", label: tt(["dashboard", "groupingLabels", "recurrence"], "By Recurrence") },
+    ],
+    [tt]
+  );
+  const groupLabels = useMemo(
+    () => ({
+      overdue: tt(["dashboard", "groupLabels", "overdue"], "Overdue"),
+      today: tt(["dashboard", "groupLabels", "today"], "Today"),
+      upcoming: tt(["dashboard", "groupLabels", "upcoming"], "Upcoming"),
+      none: tt(["dashboard", "groupLabels", "none"], "No Due Date"),
+      recurring: tt(["dashboard", "groupLabels", "recurring"], "Recurring"),
+      "one-off": tt(["dashboard", "groupLabels", "one-off"], "One-off"),
+      completed: tt(["dashboard", "groupLabels", "completed"], "Completed"),
+    }),
+    [tt]
+  );
+  const metaLabels = useMemo(
+    () => ({
+      priority: tt(["dashboard", "metaPills", "priority"], "Priority"),
+      energy: tt(["dashboard", "metaPills", "energy"], "Energy"),
+      gtd: tt(["dashboard", "metaPills", "gtd"], "GTD"),
+      project: tt(["dashboard", "metaPills", "project"], "Project"),
+      waitingFor: tt(["dashboard", "metaPills", "waitingFor"], "Waiting for"),
+      context: tt(["dashboard", "metaPills", "context"], "Context"),
+    }),
+    [tt]
+  );
+  const taskMenuStrings = useMemo(() => tPath(["taskMenu"], lang) || {}, [lang]);
+  const ui = useMemo(
+    () => ({
+      taskMenu: taskMenuStrings,
+      filterDefs,
+      metaLabels,
+      headerTitle: tt(["dashboard", "title"], "Better Tasks"),
+      headerSubtitle:
+        tt(["dashboard", "subtitle"], "Manage start, defer, due, and recurring tasks without leaving Roam."),
+      refresh: tt(["dashboard", "refresh"], "Refresh"),
+      close: tt(["dashboard", "close"], "Close"),
+      quickAddPlaceholder: tt(["dashboard", "quickAddPlaceholder"], "Add a Better Task"),
+      quickAddButton: tt(["dashboard", "quickAddButton"], "OK"),
+      searchPlaceholder: tt(["dashboard", "searchPlaceholder"], "Search Better Tasks"),
+      filtersLabel: tt(["dashboard", "filtersLabel"], "Filters"),
+      projectFilterLabel: tt(["dashboard", "projectFilterLabel"], "Project"),
+      projectFilterPlaceholder: tt(["dashboard", "projectFilterPlaceholder"], "Project name"),
+      waitingFilterLabel: tt(["dashboard", "waitingFilterLabel"], "Waiting for"),
+      waitingFilterPlaceholder: tt(["dashboard", "waitingFilterPlaceholder"], "Waiting for"),
+      groupingOptions,
+      groupLabels,
+      metaLabels,
+      taskOptions: tt(["dashboard", "taskOptions"], "Task options"),
+      markDone: tt(["dashboard", "markDone"], "Mark as done"),
+      markOpen: tt(["dashboard", "markOpen"], "Mark as open"),
+      view: tt(["dashboard", "view"], "View"),
+      snoozePick: tt(["dashboard", "snoozePick"], "Pick"),
+      snoozePlus1: tt(["dashboard", "snoozePlus1"], "+1d"),
+      snoozePlus7: tt(["dashboard", "snoozePlus7"], "+7d"),
+      untitled: tt(["dashboard", "untitled"], "(Untitled task)"),
+      completedLabel: tt(["dashboard", "filterValues", "completed"], "Completed"),
+      empty: {
+        loading: tt(["dashboard", "empty", "loading"], "Loading tasks…"),
+        error: tt(["dashboard", "empty", "error"], "Couldn’t load tasks."),
+        retry: tt(["dashboard", "empty", "retry"], "Try again"),
+        noMatch: tt(["dashboard", "empty", "noMatch"], "No tasks match the selected filters."),
+      },
+    }),
+    [tt, groupingOptions, groupLabels, metaLabels, taskMenuStrings]
+  );
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filteredTasks = useMemo(
     () => applyFilters(snapshot.tasks, filters, query),
     [snapshot.tasks, filters, query]
   );
   const groups = useMemo(
-    () => groupTasks(filteredTasks, grouping, { completion: filters.Completion || filters.completion }),
-    [filteredTasks, grouping, filters.Completion, filters.completion]
+    () =>
+      groupTasks(filteredTasks, grouping, {
+        completion: filters.Completion || filters.completion,
+        groupLabels,
+      }),
+    [filteredTasks, grouping, filters.Completion, filters.completion, groupLabels]
   );
   useEffect(() => {
     setExpandedGroups((prev) => {
@@ -951,18 +1098,18 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     <div className="bt-dashboard">
       <header className="bt-dashboard__header" ref={headerRef}>
         <div>
-          <h2>Better Tasks</h2>
-          <p>Manage start, defer, due, and recurring tasks without leaving Roam.</p>
+          <h2>{ui.headerTitle}</h2>
+          <p>{ui.headerSubtitle}</p>
         </div>
         <div className="bt-dashboard__header-actions">
           <button type="button" className="bp3-button bp3-small" onClick={handleRefresh}>
-            Refresh
+            {ui.refresh}
           </button>
           <button
             type="button"
             className="bp3-button bp3-small"
             onClick={onRequestClose}
-            aria-label="Close dashboard"
+            aria-label={ui.close}
           >
             ✕
           </button>
@@ -974,13 +1121,13 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           <input
             type="text"
             className="bt-quick-add__input"
-            placeholder="Add a Better Task"
+            placeholder={ui.quickAddPlaceholder}
             value={quickText}
             onChange={(e) => setQuickText(e.target.value)}
             onKeyDown={handleQuickAddKeyDown}
           />
           <button type="button" className="bp3-button bp3-small" onClick={handleQuickAddSubmit}>
-            OK
+            {ui.quickAddButton}
           </button>
         </div>
       </div>
@@ -990,12 +1137,12 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           <input
             type="text"
             className="bt-search"
-            placeholder="Search Better Tasks"
+            placeholder={ui.searchPlaceholder}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
           <div className="bt-grouping">
-            {GROUPING_OPTIONS.map((option) => (
+            {ui.groupingOptions.map((option) => (
               <button
                 key={option.value}
                 type="button"
@@ -1010,7 +1157,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
               className={`bt-chip${filtersOpen ? " bt-chip--active" : ""}`}
               onClick={() => setFiltersOpen((v) => !v)}
               aria-expanded={filtersOpen}
-              aria-label="Filters"
+              aria-label={ui.filtersLabel}
             >
               <span className="bp3-icon bp3-icon-filter" aria-hidden="true" />
             </button>
@@ -1022,23 +1169,25 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
         <div className="bt-dashboard__filters">
           <div className="bt-filters-grid-cols">
             <div className="bt-filters-col">
-              {FILTER_SECTIONS_LEFT.map((section) => (
+              {FILTER_SECTIONS_LEFT.map((sectionKey) => (
                 <FilterChips
-                  key={section}
-                  section={section}
-                  chips={FILTER_DEFS[section]}
-                  activeValues={filters[section]}
+                  key={sectionKey}
+                  sectionKey={sectionKey}
+                  label={filterSectionLabels[sectionKey] || sectionKey}
+                  chips={filterDefs[sectionKey]}
+                  activeValues={filters[sectionKey]}
                   onToggle={handleFilterToggle}
                 />
               ))}
             </div>
             <div className="bt-filters-col">
-              {FILTER_SECTIONS_RIGHT.map((section) => (
+              {FILTER_SECTIONS_RIGHT.map((sectionKey) => (
                 <FilterChips
-                  key={section}
-                  section={section}
-                  chips={FILTER_DEFS[section]}
-                  activeValues={filters[section]}
+                  key={sectionKey}
+                  sectionKey={sectionKey}
+                  label={filterSectionLabels[sectionKey] || sectionKey}
+                  chips={filterDefs[sectionKey]}
+                  activeValues={filters[sectionKey]}
                   onToggle={handleFilterToggle}
                 />
               ))}
@@ -1046,34 +1195,36 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             <div className="bt-filters-col bt-filters-col--full">
               <FilterChips
                 key="Due"
-                section="Due"
-                chips={FILTER_DEFS["Due"]}
+                sectionKey="Due"
+                label={filterSectionLabels["Due"] || "Due"}
+                chips={filterDefs["Due"]}
                 activeValues={filters["Due"]}
                 onToggle={handleFilterToggle}
               />
               <FilterChips
                 key="GTD"
-                section="GTD"
-                chips={FILTER_DEFS["GTD"]}
+                sectionKey="GTD"
+                label={filterSectionLabels["GTD"] || "GTD"}
+                chips={filterDefs["GTD"]}
                 activeValues={filters["GTD"]}
                 onToggle={handleFilterToggle}
               />
               <div className="bt-filter-text-row">
                 <label className="bt-filter-text">
-                  <span>Project</span>
+                  <span>{ui.projectFilterLabel}</span>
                   <input
                     type="text"
                     value={filters.projectText}
-                    placeholder="Project name"
+                    placeholder={ui.projectFilterPlaceholder}
                     onChange={handleProjectFilterChange}
                   />
                 </label>
                 <label className="bt-filter-text">
-                  <span>Waiting for</span>
+                  <span>{ui.waitingFilterLabel}</span>
                   <input
                     type="text"
                     value={filters.waitingText}
-                    placeholder="Waiting for"
+                    placeholder={ui.waitingFilterPlaceholder}
                     onChange={handleWaitingFilterChange}
                   />
                 </label>
@@ -1127,14 +1278,14 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                 data-index={virtualRow.index}
                 ref={rowVirtualizer.measureElement}
               >
-                <TaskRow task={row.task} controller={controller} />
+                <TaskRow task={row.task} controller={controller} strings={ui} />
               </div>
             );
           })}
         </div>
         {!rows.length ? (
           <div className="bt-content-empty">
-            <EmptyState status={snapshot.status} onRefresh={handleRefresh} />
+            <EmptyState status={snapshot.status} onRefresh={handleRefresh} strings={ui.empty} />
           </div>
         ) : null}
       </div>
