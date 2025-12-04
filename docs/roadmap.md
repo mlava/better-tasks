@@ -8,7 +8,7 @@
    - Snooze parity (panel quick +1d/+7d; defer/due move together when aligned).
 
 2. **Phase 9 — Sidebar Badge**
-   - Unread-style badge for today/overdue (or today-only via setting).
+   - Today badge/link in left sidebar (today-only by default, optional overdue).
    - Badge count driven by the same selection logic as the Today widget.
 
 3. **Phase 7 — GTD Layer**

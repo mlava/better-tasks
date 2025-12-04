@@ -49,6 +49,11 @@ const TODAY_WIDGET_PLACEMENT_SETTING = "bt-today-widget-placement";
 const TODAY_WIDGET_HEADING_SETTING = "bt-today-widget-heading";
 const TODAY_WIDGET_TITLE_SETTING = "bt-today-widget-title";
 const TODAY_WIDGET_ENABLE_SETTING = "bt-today-widget-enabled";
+const TODAY_BADGE_ENABLE_SETTING = "bt-today-badge-enabled";
+const TODAY_BADGE_LABEL_SETTING = "bt-today-badge-label";
+const TODAY_BADGE_OVERDUE_SETTING = "bt-today-badge-include-overdue";
+const TODAY_BADGE_BG_SETTING = "bt-today-badge-bg";
+const TODAY_BADGE_FG_SETTING = "bt-today-badge-fg";
 const LANGUAGE_SETTING = "bt-language";
 const TODAY_WIDGET_ANCHOR_TEXT_DEFAULT = "Better Tasks - Today";
 const TODAY_WIDGET_ANCHOR_TEXT_LEGACY = ["BetterTasks Today Widget", "Better Tasks - Today"];
@@ -59,6 +64,29 @@ const DEFAULT_PILL_THRESHOLD = 100; // skip pill rendering when too many checkbo
 const SUPPORTED_LANGUAGES = Object.keys(I18N_MAP || { en: {} });
 const EN_STRING_PATH_MAP = new Map();
 let currentLanguage = "en";
+let todayBadgeNode = null;
+let todayBadgeLabelNode = null;
+let todayBadgeCountNode = null;
+let todayBadgeRefreshTimer = null;
+let lastTodayBadgeSignature = null;
+const todayBadgeOverrides = { bg: null, fg: null, label: null };
+
+function blurNode(node = null) {
+  try {
+    if (node) {
+      const editable =
+        node.querySelector?.("textarea, input, [contenteditable='true']") ||
+        node.querySelector?.("textarea") ||
+        node.querySelector?.("[contenteditable='true']");
+      if (editable && typeof editable.blur === "function") editable.blur();
+    }
+    if (document?.activeElement && typeof document.activeElement.blur === "function") {
+      document.activeElement.blur();
+    }
+    const sel = window?.getSelection?.();
+    if (sel?.removeAllRanges) sel.removeAllRanges();
+  } catch (_) { }
+}
 
 function buildEnStringLookup(obj, prefix = []) {
   if (!obj || typeof obj !== "object") return;
@@ -172,9 +200,10 @@ const MONTH_KEYWORD_INTERVAL_LOOKUP = {
 
 export default {
   onload: ({ extensionAPI }) => {
-    const buildSettingsConfig = ({ todayEnabled, lang } = {}) => {
+    const buildSettingsConfig = ({ todayEnabled, badgeEnabled, lang } = {}) => {
       const langSetting = getLanguageSetting(lang);
       const todayEnabledValue = todayEnabled ?? getTodayWidgetEnabled();
+      const badgeEnabledValue = badgeEnabled ?? getTodayBadgeEnabled();
       const settings = [
         {
           id: LANGUAGE_SETTING,
@@ -293,6 +322,48 @@ export default {
           action: { type: "input", placeholder: DEFAULT_PILL_THRESHOLD.toString() },
         },
         {
+          id: TODAY_BADGE_ENABLE_SETTING,
+          name: t("settings.todayBadgeEnable", getLanguageSetting()) || "Enable Today badge",
+          description: t("settings.todayBadgeEnableDescription", getLanguageSetting()) || "Show a Today link and badge in the left sidebar (default off)",
+          action: { type: "switch", onChange: (v) => handleTodayBadgeSettingChange(TODAY_BADGE_ENABLE_SETTING, v) },
+        },
+        ...(badgeEnabledValue
+          ? [
+            {
+              id: TODAY_BADGE_LABEL_SETTING,
+              name: t("settings.todayBadgeLabel", getLanguageSetting()) || "Today badge label",
+              description:
+                t("settings.todayBadgeLabelDescription", getLanguageSetting()) ||
+                "Text for the Today badge/link (markdown ignored for matching)",
+              action: {
+                type: "input",
+                placeholder: "Today",
+                onChange: (v) => handleTodayBadgeSettingChange(TODAY_BADGE_LABEL_SETTING, v),
+              },
+            },
+            {
+              id: TODAY_BADGE_OVERDUE_SETTING,
+              name: t("settings.todayBadgeIncludeOverdue", getLanguageSetting()) || "Include overdue in Today badge",
+              description:
+                t("settings.todayBadgeIncludeOverdueDescription", getLanguageSetting()) ||
+                "Counts overdue tasks in the badge (completed tasks are never counted)",
+              action: { type: "switch", onChange: (v) => handleTodayBadgeSettingChange(TODAY_BADGE_OVERDUE_SETTING, v) },
+            },
+            {
+              id: TODAY_BADGE_BG_SETTING,
+              name: t("settings.todayBadgeBg", getLanguageSetting()) || "Today badge background",
+              description: t("settings.todayBadgeBgDescription", getLanguageSetting()) || "CSS color for the badge background",
+              action: { type: "input", placeholder: "#1F6FEB", onChange: (v) => handleTodayBadgeSettingChange(TODAY_BADGE_BG_SETTING, v) },
+            },
+            {
+              id: TODAY_BADGE_FG_SETTING,
+              name: t("settings.todayBadgeFg", getLanguageSetting()) || "Today badge text",
+              description: t("settings.todayBadgeFgDescription", getLanguageSetting()) || "CSS color for the badge text",
+              action: { type: "input", placeholder: "#FFFFFF", onChange: (v) => handleTodayBadgeSettingChange(TODAY_BADGE_FG_SETTING, v) },
+            },
+          ]
+          : []),
+        {
           id: TODAY_WIDGET_ENABLE_SETTING,
           name: t("settings.enableTodayWidget", getLanguageSetting()) || "Enable Today widget",
           description:
@@ -366,13 +437,21 @@ export default {
         settings,
       };
     };
-    const rebuildSettingsPanel = (todayEnabledOverride = null, langOverride = null) => {
+    const rebuildSettingsPanel = (todayEnabledOverride = null, langOverride = null, badgeEnabledOverride = null) => {
       try {
         const effectiveTodayEnabled =
           todayEnabledOverride !== null && todayEnabledOverride !== undefined
             ? todayEnabledOverride
             : getTodayWidgetEnabled();
-        const config = buildSettingsConfig({ todayEnabled: effectiveTodayEnabled, lang: langOverride });
+        const effectiveBadgeEnabled =
+          badgeEnabledOverride !== null && badgeEnabledOverride !== undefined
+            ? badgeEnabledOverride
+            : getTodayBadgeEnabled();
+        const config = buildSettingsConfig({
+          todayEnabled: effectiveTodayEnabled,
+          badgeEnabled: effectiveBadgeEnabled,
+          lang: langOverride,
+        });
         extensionAPI.settings.panel.create(config);
       } catch (err) {
         console.warn("[BetterTasks] failed to rebuild settings panel", err);
@@ -385,6 +464,12 @@ export default {
     }
     if (extensionAPI.settings.get(TODAY_WIDGET_LAYOUT_SETTING) === undefined) {
       extensionAPI.settings.set(TODAY_WIDGET_LAYOUT_SETTING, "Roam-style inline");
+    }
+    if (extensionAPI.settings.get(TODAY_BADGE_ENABLE_SETTING) === undefined) {
+      extensionAPI.settings.set(TODAY_BADGE_ENABLE_SETTING, false);
+    }
+    if (extensionAPI.settings.get(TODAY_BADGE_OVERDUE_SETTING) === undefined) {
+      extensionAPI.settings.set(TODAY_BADGE_OVERDUE_SETTING, false);
     }
     lastAttrNames = resolveAttributeNames();
 
@@ -448,6 +533,10 @@ export default {
     });
     if (getTodayWidgetEnabled()) {
       scheduleTodayWidgetRender();
+      attachTodayNavigationListener();
+    }
+    if (getTodayBadgeEnabled()) {
+      scheduleTodayBadgeRefresh(100, true);
       attachTodayNavigationListener();
     }
     if (!dashboardRefreshTimer && typeof window !== "undefined") {
@@ -6195,8 +6284,10 @@ export default {
 
     function normalizeTodaySettingValue(raw) {
       if (raw && typeof raw === "object" && raw.target) {
-        if ("checked" in raw.target) return raw.target.checked;
-        if ("value" in raw.target) return raw.target.value;
+        const t = raw.target;
+        if (t.type === "checkbox" && "checked" in t) return t.checked;
+        if ("value" in t) return t.value;
+        if ("checked" in t) return t.checked;
       }
       return raw;
     }
@@ -6227,7 +6318,7 @@ export default {
       }
       if (settingId === TODAY_WIDGET_ENABLE_SETTING) {
         setTodayEnabledOverride(normalizedValue);
-        rebuildSettingsPanel(normalizeTodayWidgetEnabled(normalizedValue));
+        rebuildSettingsPanel(normalizeTodayWidgetEnabled(normalizedValue), currentLanguage, getTodayBadgeEnabled());
       }
       if (todayWidgetRenderTimer) {
         clearTimeout(todayWidgetRenderTimer);
@@ -6235,6 +6326,70 @@ export default {
       }
       // Single forced render using the override to avoid flicker from double renders.
       scheduleTodayWidgetRender(40, true);
+      scheduleTodayBadgeRefresh(80, true);
+    }
+
+    async function handleTodayBadgeSettingChange(settingId = null, value = undefined) {
+      const normalizedValue = normalizeTodaySettingValue(value);
+      if (settingId === TODAY_BADGE_ENABLE_SETTING) {
+        rebuildSettingsPanel(getTodayWidgetEnabled(), currentLanguage, !!normalizedValue);
+        if (!normalizedValue) {
+          removeTodayBadge();
+          return;
+        }
+      }
+      const isVisualChange =
+        settingId === TODAY_BADGE_BG_SETTING ||
+        settingId === TODAY_BADGE_FG_SETTING ||
+        settingId === TODAY_BADGE_LABEL_SETTING;
+      if (isVisualChange) {
+        lastTodayBadgeSignature = null; // force DOM update for visual changes
+        const currentCount = todayBadgeCountNode ? parseInt(todayBadgeCountNode.textContent || "0", 10) || 0 : 0;
+        const existingColors = getTodayBadgeColors();
+        const sanitizeColor = (val) => {
+          if (typeof val !== "string") return null;
+          const trimmed = val.trim();
+          if (!trimmed) return null; // empty means fall back to default
+          if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(trimmed)) return trimmed;
+          if (/^rgba?\(/i.test(trimmed)) return trimmed;
+          if (/^hsla?\(/i.test(trimmed)) return trimmed;
+          if (/^[a-zA-Z]+$/.test(trimmed)) return trimmed; // allow named colors
+          return null;
+        };
+        const nextBg =
+          settingId === TODAY_BADGE_BG_SETTING
+            ? sanitizeColor(normalizedValue)
+            : existingColors.bg;
+        const nextFg =
+          settingId === TODAY_BADGE_FG_SETTING
+            ? sanitizeColor(normalizedValue)
+            : existingColors.fg;
+        const nextLabel =
+          settingId === TODAY_BADGE_LABEL_SETTING && typeof normalizedValue === "string"
+            ? normalizedValue
+            : null;
+        if (settingId === TODAY_BADGE_BG_SETTING) {
+          todayBadgeOverrides.bg = nextBg;
+        }
+        if (settingId === TODAY_BADGE_FG_SETTING) {
+          todayBadgeOverrides.fg = nextFg;
+        }
+        if (settingId === TODAY_BADGE_LABEL_SETTING && typeof normalizedValue === "string") {
+          todayBadgeOverrides.label = normalizedValue;
+        }
+        ensureTodayBadgeDom(currentCount, {
+          colors: { bg: nextBg || null, fg: nextFg || null },
+          labelText: nextLabel || undefined,
+        });
+        if (todayBadgeCountNode) {
+          todayBadgeCountNode.style.backgroundColor = nextBg || "";
+          todayBadgeCountNode.style.color = nextFg || "";
+        }
+        if (todayBadgeLabelNode && nextLabel) {
+          todayBadgeLabelNode.textContent = nextLabel;
+        }
+      }
+      scheduleTodayBadgeRefresh(0, true);
     }
 
     function handleLanguageChange(nextValue = null) {
@@ -6243,7 +6398,7 @@ export default {
       } else {
         currentLanguage = getLanguageSetting();
       }
-      rebuildSettingsPanel(getTodayWidgetEnabled(), currentLanguage);
+      rebuildSettingsPanel(getTodayWidgetEnabled(), currentLanguage, getTodayBadgeEnabled());
       try {
         activeDashboardController?.refreshLanguage?.();
       } catch (err) {
@@ -6280,6 +6435,32 @@ export default {
     function getTodayWidgetPlacement() {
       const raw = getTodaySetting(TODAY_WIDGET_PLACEMENT_SETTING);
       return raw === "Bottom" ? "Bottom" : "Top";
+    }
+
+    function getTodayBadgeEnabled() {
+      return !!extensionAPI.settings.get(TODAY_BADGE_ENABLE_SETTING);
+    }
+
+    function getTodayBadgeLabel() {
+      if (todayBadgeOverrides.label) return todayBadgeOverrides.label;
+      const raw = extensionAPI.settings.get(TODAY_BADGE_LABEL_SETTING);
+      const configured = typeof raw === "string" && raw.trim() ? raw.trim() : null;
+      return configured || getTodayAnchorText();
+    }
+
+    function getTodayBadgeIncludeOverdue() {
+      const raw = extensionAPI.settings.get(TODAY_BADGE_OVERDUE_SETTING);
+      if (raw === false || raw === "false" || raw === 0 || raw === "0") return false;
+      return true;
+    }
+
+    function getTodayBadgeColors() {
+      const bg = todayBadgeOverrides.bg || extensionAPI.settings.get(TODAY_BADGE_BG_SETTING);
+      const fg = todayBadgeOverrides.fg || extensionAPI.settings.get(TODAY_BADGE_FG_SETTING);
+      return {
+        bg: (typeof bg === "string" && bg.trim()) || null,
+        fg: (typeof fg === "string" && fg.trim()) || null,
+      };
     }
 
     function getTodayWidgetHeadingLevel() {
@@ -6356,6 +6537,15 @@ export default {
       } catch (_) {
         // ignore
       }
+    }
+
+    function scheduleTodayBadgeRefresh(delayMs = 120, force = false) {
+      if (!getTodayBadgeEnabled()) return;
+      if (todayBadgeRefreshTimer) clearTimeout(todayBadgeRefreshTimer);
+      todayBadgeRefreshTimer = setTimeout(() => {
+        todayBadgeRefreshTimer = null;
+        void renderTodayBadge(force);
+      }, delayMs);
     }
 
     async function disableTodayWidgetUI() {
@@ -8697,6 +8887,7 @@ export default {
           state = { ...state, tasks: sortDashboardTasksList(tasks) };
           emit();
           ensureDashboardWatch(uid);
+          scheduleTodayBadgeRefresh(60, true);
         } catch (err) {
           console.warn("[BetterTasks] notifyBlockChange failed", err);
         }
@@ -9464,7 +9655,8 @@ export default {
       return null;
     }
 
-    async function ensureTodayWidgetAnchor(placement = "Top", heading = 0, cache = null) {
+    async function ensureTodayWidgetAnchor(placement = "Top", heading = 0, cache = null, opts = {}) {
+      const { allowMoves = true } = opts || {};
       const { dnpUid, parentUid, children, headingUid } = await getTodayParentInfo(cache);
       let anchorText = stripMarkdownDecorations(getTodayAnchorText());
       if (!anchorText) anchorText = TODAY_WIDGET_ANCHOR_TEXT_DEFAULT;
@@ -9497,24 +9689,26 @@ export default {
         try {
           await window.roamAlphaAPI.updateBlock({ block: { uid: existing.uid, heading } });
         } catch (_) { }
-        const currentOrder =
-          typeof existing.order === "number"
-            ? existing.order
-            : children.findIndex((c) => c?.uid === existing.uid);
-        if (existing.parents?.[0]?.uid && existing.parents[0].uid !== parentUid) {
-          try {
-            await window.roamAlphaAPI.moveBlock({
-              location: { "parent-uid": parentUid, order: desiredOrder },
-              block: { uid: existing.uid },
-            });
-          } catch (_) { }
-        } else if (typeof desiredOrder === "number" && desiredOrder >= 0 && currentOrder !== desiredOrder) {
-          try {
-            await window.roamAlphaAPI.moveBlock({
-              location: { "parent-uid": parentUid, order: desiredOrder },
-              block: { uid: existing.uid },
-            });
-          } catch (_) { }
+        if (allowMoves) {
+          const currentOrder =
+            typeof existing.order === "number"
+              ? existing.order
+              : children.findIndex((c) => c?.uid === existing.uid);
+          if (existing.parents?.[0]?.uid && existing.parents[0].uid !== parentUid) {
+            try {
+              await window.roamAlphaAPI.moveBlock({
+                location: { "parent-uid": parentUid, order: desiredOrder },
+                block: { uid: existing.uid },
+              });
+            } catch (_) { }
+          } else if (typeof desiredOrder === "number" && desiredOrder >= 0 && currentOrder !== desiredOrder) {
+            try {
+              await window.roamAlphaAPI.moveBlock({
+                location: { "parent-uid": parentUid, order: desiredOrder },
+                block: { uid: existing.uid },
+              });
+            } catch (_) { }
+          }
         }
         return existing.uid;
       }
@@ -9553,16 +9747,26 @@ export default {
       }
     }
 
-    async function findBlockHost(uid, attempts = 15, delayMs = 200) {
+    async function findBlockHost(uid, attempts = 120, delayMs = 120) {
       if (!uid || typeof document === "undefined") return null;
       for (let i = 0; i < attempts; i++) {
         let host =
-          document.querySelector(`.rm-block-main[data-uid="${uid}"]`) ||
-          document.querySelector(`.roam-block[data-uid="${uid}"]`) ||
-          document.querySelector(`.rm-block__self[data-uid="${uid}"]`) ||
-          document.querySelector(`div[block-uid="${uid}"]`) ||
-          document.querySelector(`[data-uid="${uid}"]`) ||
-          document.querySelector(`.roam-block-container[data-block-uid="${uid}"]`);
+          document.querySelector(`.rm-sidebar-window [data-uid="${uid}"]`) ||
+        document.querySelector(`.rm-sidebar-window [block-uid="${uid}"]`) ||
+        document.querySelector(`.rm-sidebar-window [data-block-uid="${uid}"]`) ||
+        document.querySelector(`.rm-sidebar-outline [data-uid="${uid}"]`) ||
+        document.querySelector(`.rm-sidebar-outline [block-uid="${uid}"]`) ||
+        document.querySelector(`.rm-sidebar-outline [data-block-uid="${uid}"]`) ||
+        document.querySelector(`.rm-block-main[data-uid="${uid}"]`) ||
+        document.querySelector(`.roam-block[data-uid="${uid}"]`) ||
+        document.querySelector(`.rm-block__self[data-uid="${uid}"]`) ||
+        document.querySelector(`div[block-uid="${uid}"]`) ||
+        document.querySelector(`[data-uid="${uid}"]`) ||
+        document.querySelector(`.roam-block-container[data-block-uid="${uid}"]`) ||
+        document.querySelector(`.block-outline[block-uid="${uid}"]`) ||
+        document.querySelector(`.block-outline[data-uid="${uid}"]`) ||
+        document.querySelector(`[data-block-uid="${uid}"]`) ||
+        document.querySelector(`.rm-reference-item[data-link-uid="${uid}"]`);
         if (!host) {
           const inputNode =
             document.querySelector(`div[id^="block-input-${uid}"]`) ||
@@ -9577,10 +9781,14 @@ export default {
       return null;
     }
 
-    async function getTodayPanelContainer(blockUid) {
+    async function getTodayPanelContainer(blockUid, opts = {}) {
       if (!blockUid || typeof document === "undefined") return null;
-      const host = await findBlockHost(blockUid);
-      if (!host) return null;
+      const attempts = typeof opts.attempts === "number" ? opts.attempts : 60;
+      const delayMs = typeof opts.delayMs === "number" ? opts.delayMs : 120;
+      const host = await findBlockHost(blockUid, attempts, delayMs);
+      if (!host) {
+        return null;
+      }
       host.classList.add("bt-today-panel-block");
 
       // Prefer to render inside the children area so the panel has full width and normal block spacing.
@@ -9597,7 +9805,9 @@ export default {
         container.className = "bt-today-panel-root";
         if (mountPoint.appendChild) mountPoint.appendChild(container);
         else if (mountPoint.insertBefore) mountPoint.insertBefore(container, mountPoint.firstChild || null);
-        else return null;
+        else {
+          return null;
+        }
       }
       return container;
     }
@@ -9690,6 +9900,94 @@ export default {
       perfLog(perfInline, `totalBlocks=${order}`);
       lastTodayRenderAt = Date.now();
       todayInlineRenderInFlight = false;
+    }
+
+    async function renderTodayBadge(force = false) {
+      if (!getTodayBadgeEnabled()) return;
+      try {
+        const { includeOverdue: widgetOverdue } = readTodayConfig();
+        const includeOverdue = getTodayBadgeIncludeOverdue();
+        const attachWatches = activeDashboardController?.isOpen?.() || false;
+        const cacheKey = `badge:${includeOverdue ? "withOverdue" : "todayOnly"}`;
+        const tasks = await collectDashboardTasks({ includeCompleted: false, attachWatches, cacheKey, bypassCache: force });
+        const sections = buildTodaySections(tasks, { includeOverdue, showCompleted: false });
+        const count =
+          sections.startingToday.length +
+          sections.deferredToToday.length +
+          sections.dueToday.length +
+          sections.overdue.length;
+        const labelText = translateString(getTodayBadgeLabel(), getLanguageSetting()) || getTodayAnchorText();
+        const colors = getTodayBadgeColors();
+        const signature = `${includeOverdue ? "o" : "t"}|${labelText}|${colors.bg || ""}|${colors.fg || ""}|${count}`;
+        const needsDom = !todayBadgeNode || !todayBadgeNode.parentNode;
+        if (!force && !needsDom && signature === lastTodayBadgeSignature) return;
+        ensureTodayBadgeDom(count, { labelText, colors });
+        lastTodayBadgeSignature = signature;
+      } catch (err) {
+        console.warn("[BetterTasks] renderTodayBadge failed", err);
+      }
+    }
+
+    function ensureTodayBadgeDom(count = 0, opts = {}) {
+      if (typeof document === "undefined") return;
+      const sidebar = document.querySelector(".roam-sidebar-content .roam-sidebar-container") ||
+        document.querySelector(".roam-sidebar-content");
+      const daily = document.querySelector(".rm-left-sidebar__daily-notes, .log-button.rm-left-sidebar__daily-notes");
+      if (!sidebar || !daily) return;
+      // Remove any stray copies we created earlier.
+      document.querySelectorAll(".bt-today-badge").forEach((node) => {
+        if (node !== todayBadgeNode && node.parentNode) node.parentNode.removeChild(node);
+      });
+      if (!todayBadgeNode) {
+        const container = document.createElement("div");
+        container.className = "log-button bt-today-badge";
+        const icon = document.createElement("span");
+        icon.className = "bp3-icon bp3-icon-small bp3-icon-time bt-today-badge__icon";
+        const label = document.createElement("span");
+        label.className = "bt-today-badge__label";
+        const badge = document.createElement("span");
+        badge.className = "bt-today-badge__count";
+        container.appendChild(icon);
+        container.appendChild(label);
+        container.appendChild(badge);
+        container.addEventListener("click", async (e) => {
+          e.preventDefault();
+          try {
+            const anchorUid =
+              lastTodayAnchorUid ||
+              (await ensureTodayWidgetAnchor(getTodayWidgetPlacement(), getTodayWidgetHeadingLevel(), null, {
+                allowMoves: true,
+              }));
+            const widgetEnabled = getTodayWidgetEnabled();
+            if (widgetEnabled && anchorUid) {
+              window.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: anchorUid } });
+              await renderTodayWidget(true);
+            } else {
+              const { dnpUid } = await getTodayParentInfo();
+              if (dnpUid) {
+                window.roamAlphaAPI?.ui?.mainWindow?.openPage?.({ page: { uid: dnpUid } });
+              }
+            }
+          } catch (err) {
+            console.warn("[BetterTasks] today badge open failed", err);
+          }
+        });
+        todayBadgeNode = container;
+        todayBadgeLabelNode = label;
+        todayBadgeCountNode = badge;
+      }
+      const labelText = opts.labelText || translateString(getTodayBadgeLabel(), getLanguageSetting()) || getTodayAnchorText();
+      todayBadgeLabelNode.textContent = labelText;
+      todayBadgeCountNode.textContent = String(count);
+      todayBadgeCountNode.style.display = count > 0 ? "inline-flex" : "none";
+
+      const colors = opts.colors || getTodayBadgeColors();
+      todayBadgeCountNode.style.backgroundColor = colors.bg || "";
+      todayBadgeCountNode.style.color = colors.fg || "";
+
+      if (!todayBadgeNode.parentNode) {
+        daily.parentNode?.insertBefore(todayBadgeNode, daily.nextSibling);
+      }
     }
 
     async function renderTodayPanelDom(container, sections, options = {}, layoutSignature = "") {
@@ -9842,7 +10140,8 @@ export default {
       perfLog(perfPanel);
     }
 
-    async function renderTodayWidget(force = false) {
+    async function renderTodayWidget(force = false, options = {}) {
+      const { bypassPageGuard = false, targetUid = null, source = "unknown", forceInline = false } = options || {};
       if (!TODAY_WIDGET_ENABLED || !getTodayWidgetEnabled()) return;
       try {
         const now = Date.now();
@@ -9861,7 +10160,7 @@ export default {
         const perfRenderToday = perfMark(`renderTodayWidget ${layout}`);
         const perfTasks = perfMark("renderTodayWidget:collectTasks");
         const renderCache = createTodayRenderCache();
-        const shouldRender = await shouldRenderTodayWidgetNow(renderCache);
+        const shouldRender = bypassPageGuard ? true : await shouldRenderTodayWidgetNow(renderCache);
         if (!shouldRender && !force) {
           todayWidgetForceNext = true;
           scheduleTodayWidgetRender(320, true);
@@ -9886,7 +10185,12 @@ export default {
         if (!Array.isArray(tasks)) return;
         const sections = buildTodaySections(tasks, { includeOverdue, showCompleted });
         perfLog(perfMark("renderTodayWidget:sections"), "");
-        const anchorUid = await ensureTodayWidgetAnchor(placement, heading, renderCache);
+        scheduleTodayBadgeRefresh(10, true);
+        const anchorUid =
+          targetUid ||
+          (await ensureTodayWidgetAnchor(placement, heading, renderCache, {
+            allowMoves: !options?.bypassPageGuard,
+          }));
         lastTodayAnchorUid = anchorUid || null;
         if (!anchorUid) return;
         try {
@@ -9898,7 +10202,7 @@ export default {
           return TODAY_WIDGET_PANEL_CHILD_TEXT_LEGACY.some((legacy) => trimmed === legacy);
         };
 
-        if (layout === "roamInline") {
+        if (layout === "roamInline" || forceInline) {
           try {
             const anchorBlock = await getBlockCached(anchorUid, renderCache);
             const panelChild = (anchorBlock?.children || []).find((c) => isLegacyPanelLabel(c?.string || ""));
@@ -9916,9 +10220,21 @@ export default {
         const panelHost = await findBlockHost(anchorUid);
         panelHost?.classList.add("bt-today-panel-block");
         panelHost?.classList.remove("bt-today-panel-inline-hidden");
-        const container = await getTodayPanelContainer(anchorUid);
+        const container = await getTodayPanelContainer(anchorUid, {
+          attempts: options?.bypassPageGuard ? 60 : 60,
+          delayMs: options?.bypassPageGuard ? 120 : 120,
+        });
         if (!container) {
-          scheduleTodayWidgetRender(300);
+          if (options?.forceInline || options?.bypassPageGuard) {
+            // Fallback to inline render inside the anchor when panel mount is unavailable (e.g., sidebar focus quirks).
+            const perfInline = perfMark("renderTodayWidget:inline-fallback");
+            await renderTodayInline(anchorUid, sections, { includeOverdue }, layoutSignature, renderCache);
+            perfLog(perfInline);
+            perfLog(perfRenderToday);
+            lastTodayRenderAt = Date.now();
+            return;
+          }
+          scheduleTodayWidgetRender(400, true);
           return;
         }
         todayWidgetPanelContainer = container;
@@ -9979,6 +10295,7 @@ export default {
     clearDashboardWatches();
     if (todayWidgetRenderTimer) clearTimeout(todayWidgetRenderTimer);
     todayWidgetRenderTimer = null;
+    removeTodayBadge();
     if (typeof teardownTodayPanelGlobal === "function") {
       await teardownTodayPanelGlobal();
     }
@@ -10211,6 +10528,18 @@ function removeDashboardTopbarButton() {
   if (existing) existing.remove();
   const spacer = document.getElementById(DASHBOARD_TOPBAR_SPACER_ID);
   if (spacer) spacer.remove();
+}
+
+function removeTodayBadge() {
+  if (todayBadgeRefreshTimer) {
+    clearTimeout(todayBadgeRefreshTimer);
+    todayBadgeRefreshTimer = null;
+  }
+  if (todayBadgeNode?.parentNode) {
+    todayBadgeNode.parentNode.removeChild(todayBadgeNode);
+  }
+  todayBadgeNode = todayBadgeLabelNode = todayBadgeCountNode = null;
+  lastTodayBadgeSignature = null;
 }
 
 function observeTopbarButton() {

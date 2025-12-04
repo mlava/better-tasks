@@ -161,6 +161,12 @@ The settings pane for the extension allows you to use whatever name for the repe
 - Panel mode actions: Complete, Snooze +1d, Snooze +7d. Snoozing moves defer and, when defer and due match, due moves by the same amount.
 - Shift+click a task title opens it in the right sidebar (panel mode).
 
+### Today Badge (optional, default off)
+- Adds a “Today” link with a badge count just under the Daily Notes button in the left sidebar.
+- Settings: enable/disable, label (i18n-aware), include overdue (default off; completed never counted), badge background/text colors (updates immediately when changed).
+- Click → if the Today widget is enabled, opens the widget anchor in the main window; if the widget is disabled, opens today’s DNP instead.
+- Uses the same today/overdue logic as the widget and hides the badge when count = 0.
+
 ---
 
 ## 🧩 Pills and Menus
