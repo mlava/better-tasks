@@ -166,7 +166,7 @@ function applyFilters(tasks, filters, query) {
   const priorityFilter = new Set(filters.Priority || filters.priority || []);
   const energyFilter = new Set(filters.Energy || filters.energy || []);
   const gtdFilter = new Set(filters.GTD || filters.gtd || []);
-  const projectText = (filters.projectText || "").trim().toLowerCase();
+  const projectText = (filters.projectText || "").trim();
   const waitingText = (filters.waitingText || "").trim().toLowerCase();
   return tasks.filter((task) => {
     if (completionFilter.size) {
@@ -183,8 +183,8 @@ function applyFilters(tasks, filters, query) {
     const gtdValue = (meta.gtd || "").toLowerCase();
     if (gtdFilter.size && !gtdFilter.has(gtdValue)) return false;
     if (projectText) {
-      const hay = (meta.project || "").toLowerCase();
-      if (!hay.includes(projectText)) return false;
+      const hay = (meta.project || "").trim();
+      if (hay.toLowerCase() !== projectText.toLowerCase()) return false;
     }
     if (waitingText) {
       const hay = (meta.waitingFor || "").toLowerCase();
@@ -315,10 +315,19 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
   const menuSizeRef = useRef({ width: 240, height: 200 });
   const metadata = task.metadata || {};
   const handleEditText = async (key, currentValue) => {
+    if (key === "project") {
+      if (controller?.refreshProjectOptions) {
+        await controller.refreshProjectOptions();
+      }
+      const selection = controller?.promptProject
+        ? await controller.promptProject({ initialValue: currentValue || "" })
+        : currentValue || "";
+      if (selection == null) return;
+      controller.updateMetadata?.(task.uid, { project: selection || null });
+      return;
+    }
     const label =
-      key === "project"
-        ? "Project"
-        : key === "waitingFor"
+      key === "waitingFor"
           ? "Waiting for"
           : key === "context"
             ? "Context"
@@ -342,7 +351,14 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
         : [];
       controller.updateMetadata?.(task.uid, { context: contexts });
     } else if (key === "project") {
-      controller.updateMetadata?.(task.uid, { project: trimmed || null });
+      if (controller.refreshProjectOptions) {
+        await controller.refreshProjectOptions();
+      }
+      const selection = controller.promptProject
+        ? await controller.promptProject({ initialValue: currentValue || "" })
+        : trimmed;
+      if (selection == null) return;
+      controller.updateMetadata?.(task.uid, { project: selection || null });
     } else if (key === "waitingFor") {
           controller.updateMetadata?.(task.uid, { waitingFor: trimmed || null });
     }
@@ -865,6 +881,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const [grouping, setGrouping] = useState("time");
   const [query, setQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [projectOptions, setProjectOptions] = useState(() =>
+    controller?.getProjectOptions?.() || []
+  );
   const lang = I18N_MAP[language] ? language : "en";
   const tt = useCallback(
     (path, fallback) => {
@@ -982,6 +1001,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       filtersLabel: tt(["dashboard", "filtersLabel"], "Filters"),
       projectFilterLabel: tt(["dashboard", "projectFilterLabel"], "Project"),
       projectFilterPlaceholder: tt(["dashboard", "projectFilterPlaceholder"], "Project name"),
+      projectFilterAny: tt(["dashboard", "projectFilterAny"], "All projects"),
       waitingFilterLabel: tt(["dashboard", "waitingFilterLabel"], "Waiting for"),
       waitingFilterPlaceholder: tt(["dashboard", "waitingFilterPlaceholder"], "Waiting for"),
       groupingOptions,
@@ -1057,6 +1077,15 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   useEffect(() => {
     saveFilters(filters);
   }, [filters]);
+
+  useEffect(() => {
+    if (!controller) return undefined;
+    controller.refreshProjectOptions?.(true);
+    const unsub = controller.subscribeProjectOptions?.((opts) =>
+      setProjectOptions(Array.isArray(opts) ? opts : [])
+    );
+    return unsub;
+  }, [controller]);
 
   const [quickText, setQuickText] = useState("");
 
@@ -1212,12 +1241,20 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
               <div className="bt-filter-text-row">
                 <label className="bt-filter-text">
                   <span>{ui.projectFilterLabel}</span>
-                  <input
-                    type="text"
-                    value={filters.projectText}
-                    placeholder={ui.projectFilterPlaceholder}
-                    onChange={handleProjectFilterChange}
-                  />
+                  <select value={filters.projectText || ""} onChange={handleProjectFilterChange}>
+                    <option value="">
+                      {ui.projectFilterAny || ui.projectFilterPlaceholder || "All projects"}
+                    </option>
+                    {projectOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                    {filters.projectText &&
+                    !projectOptions.includes(filters.projectText) ? (
+                        <option value={filters.projectText}>{filters.projectText}</option>
+                      ) : null}
+                  </select>
                 </label>
                 <label className="bt-filter-text">
                   <span>{ui.waitingFilterLabel}</span>

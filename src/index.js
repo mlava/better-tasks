@@ -1,6 +1,15 @@
 import iziToast from "izitoast";
 import DashboardApp from "./dashboard/App";
 import { i18n as I18N_MAP } from "./i18n";
+import {
+  initProjectStore,
+  refreshProjectOptions,
+  getProjectOptions,
+  addProjectOption,
+  removeProjectOption,
+  subscribeToProjectOptions,
+  normalizeProjectValue,
+} from "./project-store";
 
 const DEFAULT_REPEAT_ATTR = "BT_attrRepeat";
 const DEFAULT_START_ATTR = "BT_attrStart";
@@ -200,6 +209,7 @@ const MONTH_KEYWORD_INTERVAL_LOOKUP = {
 
 export default {
   onload: ({ extensionAPI }) => {
+    initProjectStore(extensionAPI);
     const buildSettingsConfig = ({ todayEnabled, badgeEnabled, lang } = {}) => {
       const langSetting = getLanguageSetting(lang);
       const todayEnabledValue = todayEnabled ?? getTodayWidgetEnabled();
@@ -3442,6 +3452,11 @@ export default {
         value != null;
       if (!hasValue) {
         await removeChildAttrsForType(uid, type, attrNames);
+        if (type === "project") {
+          if (value) removeProjectOption(value);
+          // Refresh the project index so stale entries drop quickly
+          void refreshProjectOptions(true);
+        }
         return;
       }
       let writeValue = value;
@@ -3449,6 +3464,9 @@ export default {
         writeValue = value.join(", ");
       } else if (typeof value === "string") {
         writeValue = value.trim();
+        if (type === "project") {
+          writeValue = normalizeProjectValue(writeValue);
+        }
         if (type === "priority" || type === "energy") {
           writeValue = formatPriorityEnergyDisplay(writeValue);
         } else if (type === "gtd") {
@@ -3462,11 +3480,20 @@ export default {
       } else if (value && typeof value === "object" && value.label) {
         writeValue = String(value.label).trim();
       }
-      if (writeValue == null) {
+      if (
+        writeValue == null ||
+        (typeof writeValue === "string" && !writeValue.trim())
+      ) {
         await removeChildAttrsForType(uid, type, attrNames);
+        if (type === "project") {
+          void refreshProjectOptions(true);
+        }
         return;
       }
       await ensureChildAttrForType(uid, type, writeValue, attrNames);
+      if (type === "project" && writeValue) {
+        addProjectOption(writeValue);
+      }
     }
 
     async function ensurePageAndOpen(title, options = {}) {
@@ -5379,6 +5406,167 @@ export default {
       });
     }
 
+    let projectPickerStylesInjected = false;
+    function ensureProjectPickerStyles() {
+      if (projectPickerStylesInjected || typeof document === "undefined") return;
+      projectPickerStylesInjected = true;
+      const style = document.createElement("style");
+      style.id = "rt-project-picker-style";
+      style.textContent = `
+        .rt-project-picker {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          max-width: 360px;
+        }
+        .rt-project-picker__list {
+          max-height: 220px;
+          overflow-y: auto;
+          border: 1px solid rgba(0,0,0,0.1);
+          border-radius: 6px;
+          padding: 4px;
+          background: #fff;
+        }
+        .rt-project-picker__option {
+          all: unset;
+          display: block;
+          width: 100%;
+          padding: 6px 8px;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        .rt-project-picker__option:hover {
+          background: rgba(0,0,0,0.06);
+        }
+        .rt-project-picker__empty {
+          color: rgba(0,0,0,0.6);
+          padding: 6px 8px;
+        }
+        .rt-project-picker__input {
+          width: 100%;
+          padding: 6px 8px;
+          border-radius: 4px;
+          border: 1px solid rgba(0,0,0,0.2);
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    async function promptForProject({ initialValue = "" } = {}) {
+      await refreshProjectOptions(true);
+      const lang = getLanguageSetting();
+      const pickerStrings = t("projectPicker", lang) || {};
+      const titleText = translateString(pickerStrings.title || "Select project", lang);
+      const placeholderText = translateString(pickerStrings.placeholder || "Search or create a project", lang);
+      const noProjectsText = translateString(pickerStrings.noProjects || "No projects yet — type to create one", lang);
+      const saveLabel = t("buttons.save", lang) || "Save";
+      const cancelLabel = t("buttons.cancel", lang) || "Cancel";
+      const inputClass = `rt-project-input-${Date.now()}`;
+      const listId = `rt-project-list-${Date.now()}`;
+      ensureProjectPickerStyles();
+      return new Promise((resolve) => {
+        let settled = false;
+        let current = initialValue || "";
+        let toastElement = null;
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          const normalized = normalizeProjectValue(value);
+          resolve(normalized || null);
+        };
+        const renderOptions = (container, filterText, onSelect) => {
+          if (!container) return;
+          container.textContent = "";
+          const filter = (filterText || "").trim().toLowerCase();
+          const options = getProjectOptions();
+          const matches = options.filter((opt) => (filter ? opt.toLowerCase().includes(filter) : true));
+          if (!matches.length) {
+            const empty = document.createElement("div");
+            empty.className = "rt-project-picker__empty";
+            empty.textContent = noProjectsText;
+            container.appendChild(empty);
+            return;
+          }
+          matches.forEach((opt) => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "rt-project-picker__option";
+            btn.textContent = opt;
+            btn.addEventListener("click", () => onSelect(opt));
+            container.appendChild(btn);
+          });
+        };
+        iziToast.question({
+          theme: "light",
+          color: "black",
+          layout: 2,
+          class: "betterTasks bt-toast-strong-icon",
+          position: "center",
+          drag: false,
+          timeout: false,
+          close: true,
+          overlay: true,
+          icon: "icon-check",
+          iconText: "✓",
+          title: titleText,
+          message: `
+            <div class="rt-project-picker">
+              <input type="text" class="rt-project-picker__input ${inputClass}" placeholder="${escapeHtml(
+          placeholderText
+        )}" value="${escapeHtml(current)}" />
+              <div class="rt-project-picker__list" id="${listId}"></div>
+            </div>
+          `,
+          buttons: [
+            [
+              `<button>${escapeHtml(saveLabel)}</button>`,
+              (instance, toastEl) => {
+                const input = toastEl?.querySelector(`.${inputClass}`);
+                const val = typeof input?.value === "string" ? input.value : current;
+                instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
+                finish(val);
+              },
+              true,
+            ],
+            [
+              `<button>${escapeHtml(cancelLabel)}</button>`,
+              (instance, toastEl) => {
+                instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
+                finish(null);
+              },
+            ],
+          ],
+          onOpening: (instance, toastEl) => {
+            toastElement = toastEl;
+            const input = toastEl.querySelector(`.${inputClass}`);
+            const list = toastEl.querySelector(`#${listId}`);
+            const selectAndClose = (val) => {
+              if (toastElement) {
+                iziToast.hide({}, toastElement);
+              }
+              finish(val);
+            };
+            renderOptions(list, current, selectAndClose);
+            if (input) {
+              input.addEventListener("input", () => {
+                current = input.value;
+                renderOptions(list, current, selectAndClose);
+              });
+              input.addEventListener("keydown", (event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  selectAndClose(input.value);
+                }
+              });
+              input.focus();
+              input.setSelectionRange(input.value.length, input.value.length);
+            }
+          },
+          onClosed: () => finish(null),
+        });
+      });
+    }
+
     function promptForDate({ title, message, initial }) {
       return new Promise((resolve) => {
         let settled = false;
@@ -5480,7 +5668,7 @@ export default {
       });
     }
 
-    function promptForRepeatAndDue(initial = {}) {
+    async function promptForRepeatAndDue(initial = {}) {
       const includeTaskText = true;
       const setSnapshot = S();
       const snapshot = {
@@ -5534,6 +5722,13 @@ export default {
             ? snapshot.defer
             : "";
       snapshot.deferIso = initialDeferIso;
+      await refreshProjectOptions();
+      const projectOptions = getProjectOptions();
+      const projectDatalistId = `rt-project-options-${Date.now()}`;
+      const projectDatalistOptions = projectOptions
+        .map((opt) => `<option value="${escapeHtml(opt)}"></option>`)
+        .join("");
+      const projectPickerLabel = t(["projectPicker", "button"], getLanguageSetting()) || "Select";
       return new Promise((resolve) => {
         let settled = false;
         const finish = (value) => {
@@ -5585,9 +5780,15 @@ export default {
           <div class="rt-meta-section">
             <div class="rt-meta-grid">
               <label class="rt-input-wrap">${escapeHtml(projectLabel)}<br/>
-                <input data-rt-field="project" type="text" placeholder="${escapeHtml(
+                <div class="rt-project-inline-row">
+                  <input data-rt-field="project" type="text" list="${projectDatalistId}" placeholder="${escapeHtml(
           placeholderOr("projectPlaceholder", "Project")
         )}" value="${escapeHtml(snapshot.project || "")}" />
+                  <button type="button" class="rt-project-inline-btn" data-rt-action="project-picker">${escapeHtml(
+          projectPickerLabel
+        )}</button>
+                </div>
+                <datalist id="${projectDatalistId}">${projectDatalistOptions}</datalist>
               </label>
               <label class="rt-input-wrap">${escapeHtml(gtdLabel)}<br/>
                 <select data-rt-field="gtd">
@@ -5778,7 +5979,7 @@ export default {
                 const dueIso = getFieldValue("due");
                 const startIso = getFieldValue("start");
                 const deferIso = getFieldValue("defer");
-                const projectVal = getFieldValue("project");
+                const projectVal = normalizeProjectValue(getFieldValue("project"));
                 const waitingVal = getFieldValue("waitingFor");
                 const contextVal = getFieldValue("context");
                 const priorityVal = getFieldValue("priority");
@@ -5821,6 +6022,7 @@ export default {
                 }
                 await delay(TOAST_HIDE_DELAY_MS);
                 instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
+                if (projectVal) addProjectOption(projectVal);
                 finish({
                   repeat: normalizedRepeat || "",
                   repeatRaw: repeatValue,
@@ -5871,6 +6073,24 @@ export default {
             assignIfPresent(fieldSelectors.context, snapshot.context || "");
             assignIfPresent(fieldSelectors.priority, snapshot.priority || "");
             assignIfPresent(fieldSelectors.energy, snapshot.energy || "");
+
+            const projectButton = toastEl.querySelector('[data-rt-action="project-picker"]');
+            if (projectButton) {
+              projectButton.addEventListener("click", async (event) => {
+                event.preventDefault();
+                await refreshProjectOptions();
+                const currentVal =
+                  toastEl.querySelector(fieldSelectors.project)?.value || snapshot.project || "";
+                const selection = await promptForProject({ initialValue: currentVal });
+                if (selection != null) {
+                  const normalized = normalizeProjectValue(selection);
+                  snapshot.project = normalized;
+                  const projectInput = toastEl.querySelector(fieldSelectors.project);
+                  if (projectInput) projectInput.value = normalized;
+                  addProjectOption(normalized);
+                }
+              });
+            }
 
             const focusPrimaryInput = () => {
               const selectors = includeTaskText
@@ -6053,6 +6273,7 @@ export default {
     function handleAttributeNameChange() {
       repeatOverrides.clear();
       scheduleSurfaceSync(lastAttrSurface);
+      void refreshProjectOptions(true);
     }
 
     function scheduleSurfaceSync(surface) {
@@ -7710,6 +7931,7 @@ export default {
         }
         if ("project" in patch) {
           await setRichAttribute(uid, "project", patch.project ?? null, attrNamesForMenu);
+          if (patch.project) addProjectOption(patch.project);
         }
         if ("waitingFor" in patch) {
           await setRichAttribute(uid, "waitingFor", patch.waitingFor ?? null, attrNamesForMenu);
@@ -7815,11 +8037,9 @@ export default {
             await applyMetadataPatch({ gtd: next });
           });
           attach('[data-action="meta-project-add"]', async () => {
-            const val = await promptForValue({
-              title: "Add Project",
-              message: "Enter a project",
-              placeholder: "Project name",
-              initial: "",
+            await refreshProjectOptions();
+            const val = await promptForProject({
+              initialValue: metadataInfo?.project || "",
             });
             if (!val || !val.trim()) return;
             await applyMetadataPatch({ project: val.trim() });
@@ -8502,6 +8722,10 @@ export default {
         updateMetadata,
         handleMetadataClick,
         promptValue: promptForValue,
+        promptProject: promptForProject,
+        refreshProjectOptions,
+        getProjectOptions,
+        subscribeProjectOptions: subscribeToProjectOptions,
         getTaskMetadata,
         isOpen: () => !!root,
         editRepeat,
@@ -8748,6 +8972,7 @@ export default {
         try {
           if ("project" in patch) {
             await setRichAttribute(uid, "project", patch.project, attrNames);
+            if (patch.project) addProjectOption(patch.project);
           }
           if ("waitingFor" in patch) {
             await setRichAttribute(uid, "waitingFor", patch.waitingFor, attrNames);
@@ -9112,7 +9337,8 @@ export default {
 
     function parseMetadataFromPrompt(promptResult) {
       if (!promptResult) return {};
-      const project = typeof promptResult.project === "string" ? promptResult.project.trim() : "";
+      const projectRaw = typeof promptResult.project === "string" ? promptResult.project.trim() : "";
+      const project = normalizeProjectValue(projectRaw);
       const waitingFor = typeof promptResult.waitingFor === "string" ? promptResult.waitingFor.trim() : "";
       const contextRaw = typeof promptResult.context === "string" ? promptResult.context : "";
       const priority = typeof promptResult.priority === "string" ? promptResult.priority.trim().toLowerCase() : "";
@@ -9128,6 +9354,7 @@ export default {
       const { project, waitingFor, contexts, priority, energy, gtd } = parseMetadataFromPrompt(promptResult);
       if (project || initial.project) {
         await setRichAttribute(uid, "project", project || null, attrNames);
+        if (project) addProjectOption(project);
       }
       if (waitingFor || initial.waitingFor) {
         await setRichAttribute(uid, "waitingFor", waitingFor || null, attrNames);

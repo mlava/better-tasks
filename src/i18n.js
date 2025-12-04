@@ -124,6 +124,12 @@ export const i18n = {
         messageWithoutTask: "Enter an optional repeat rule, dates, and metadata.",
       },
     },
+    projectPicker: {
+      title: "Select project",
+      placeholder: "Search or create a project",
+      noProjects: "No projects yet — type to create one",
+      button: "Browse",
+    },
     toasts: {
       createdRecurring: "Created recurring TODO",
       createdScheduled: "Created scheduled TODO",
@@ -238,6 +244,7 @@ export const i18n = {
       },
       projectFilterLabel: "Project",
       projectFilterPlaceholder: "Project name",
+      projectFilterAny: "All projects",
       waitingFilterLabel: "Waiting for",
       waitingFilterPlaceholder: "Waiting for",
       groupingLabels: {
@@ -454,6 +461,12 @@ export const i18n = {
         messageWithoutTask: "请输入可选的重复规则、日期和元数据。",
       },
     },
+    projectPicker: {
+      title: "选择项目",
+      placeholder: "搜索或创建项目",
+      noProjects: "尚无项目，请输入以创建",
+      button: "浏览",
+    },
       toasts: {
         createdRecurring: "已创建重复 TODO",
         createdScheduled: "已创建计划 TODO",
@@ -568,6 +581,7 @@ export const i18n = {
       },
       projectFilterLabel: "项目",
       projectFilterPlaceholder: "项目名称",
+      projectFilterAny: "全部项目",
       waitingFilterLabel: "等待对象",
       waitingFilterPlaceholder: "等待对象",
       groupingLabels: {
@@ -784,6 +798,12 @@ export const i18n = {
         messageWithoutTask: "請輸入可選的重複規則、日期與中繼資料。",
       },
     },
+    projectPicker: {
+      title: "選擇專案",
+      placeholder: "搜尋或建立專案",
+      noProjects: "尚無專案，輸入即可建立",
+      button: "瀏覽",
+    },
       toasts: {
         createdRecurring: "已建立重複 TODO",
         createdScheduled: "已建立排程 TODO",
@@ -898,6 +918,7 @@ export const i18n = {
       },
       projectFilterLabel: "專案",
       projectFilterPlaceholder: "專案名稱",
+      projectFilterAny: "全部專案",
       waitingFilterLabel: "等待對象",
       waitingFilterPlaceholder: "等待對象",
       groupingLabels: {
