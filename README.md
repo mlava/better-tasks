@@ -17,6 +17,10 @@ https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
 
 ## 📜 Changelog (recent highlights)
 
+- Added a 'Today Widget' - automatically place a block and children or block and React panel in today's DNP
+  - option to set your own heading text, and the extension will find and use that for the widget placement
+  - alternatively, create the widget at top or bottom of the DNP
+  - the Settings section below explains the configuration options
 - Added i18n support (en, zh, zhHant) across settings, prompts, dashboard, pills and toasts.
 - Optimised performance (caching, throttled renders, diffed updates, pill debounce).
 - Localised pill tooltips and metadata labels.
@@ -146,6 +150,16 @@ Caps how many checkboxes can be on the page before inline pill rendering is skip
 
 **Note:** 
 The settings pane for the extension allows you to use whatever name for the repeat and start/defer/due date atttributes you choose. The extension defaults to using 'BT_attrRepeat', 'BT_attrStart', 'BT_attrDefer' and 'BT_attrDue' for the recurrence pattern and start/defer/due dates respectively. If you happen to already use these attributes for other purposes, the extension will recognise and attempt to use them if you don't set alternatives in the settings. Using 'frequency' and 'when' for example, would prevent the extension from acting on anything for which you already use 'BT_attrRepeat' and 'BT_attrDue'.
+
+### Today Widget
+- **Enable Today widget** — Show the widget on the Daily Notes Page.
+- **Today widget title** — Text used for the anchor. If a matching block exists anywhere on the DNP (markdown wrappers are ignored), the widget renders under it; otherwise it creates one at the chosen placement (Top/Bottom).
+- **Placement** — Top/Bottom when no existing anchor is found.
+- **Heading level** — Optional heading styling applied to the anchor the widget uses/creates.
+- **Include overdue** — Adds overdue tasks (completed items are excluded from overdue).
+- **Show completed** — Shows completed tasks for today buckets (start/defer/due = today); overdue always hides completed.
+- Panel mode actions: Complete, Snooze +1d, Snooze +7d. Snoozing moves defer and, when defer and due match, due moves by the same amount.
+- Shift+click a task title opens it in the right sidebar (panel mode).
 
 ---
 
