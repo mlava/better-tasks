@@ -10,6 +10,24 @@ import {
   subscribeToProjectOptions,
   normalizeProjectValue,
 } from "./project-store";
+import {
+  initWaitingStore,
+  refreshWaitingOptions,
+  getWaitingOptions,
+  addWaitingOption,
+  removeWaitingOption,
+  subscribeToWaitingOptions,
+  normalizeWaitingValue,
+} from "./waiting-store";
+import {
+  initContextStore,
+  refreshContextOptions,
+  getContextOptions,
+  addContextOption,
+  removeContextOption,
+  subscribeToContextOptions,
+  normalizeContextValue,
+} from "./context-store";
 
 const DEFAULT_REPEAT_ATTR = "BT_attrRepeat";
 const DEFAULT_START_ATTR = "BT_attrStart";
@@ -210,6 +228,8 @@ const MONTH_KEYWORD_INTERVAL_LOOKUP = {
 export default {
   onload: ({ extensionAPI }) => {
     initProjectStore(extensionAPI);
+    initWaitingStore(extensionAPI);
+    initContextStore(extensionAPI);
     const buildSettingsConfig = ({ todayEnabled, badgeEnabled, lang } = {}) => {
       const langSetting = getLanguageSetting(lang);
       const todayEnabledValue = todayEnabled ?? getTodayWidgetEnabled();
@@ -3456,6 +3476,16 @@ export default {
           if (value) removeProjectOption(value);
           // Refresh the project index so stale entries drop quickly
           void refreshProjectOptions(true);
+        } else if (type === "waitingFor") {
+          if (value) removeWaitingOption(value);
+          void refreshWaitingOptions(true);
+        } else if (type === "context") {
+          if (Array.isArray(value)) {
+            value.forEach((ctx) => removeContextOption(ctx));
+          } else if (value) {
+            removeContextOption(value);
+          }
+          void refreshContextOptions(true);
         }
         return;
       }
@@ -5452,38 +5482,87 @@ export default {
       document.head.appendChild(style);
     }
 
-    async function promptForProject({ initialValue = "" } = {}) {
-      await refreshProjectOptions(true);
+    const ATTR_PICKER_CONFIG = {
+      project: {
+        refresh: refreshProjectOptions,
+        getOptions: getProjectOptions,
+        addOption: addProjectOption,
+        normalize: normalizeProjectValue,
+        stringsKey: "projectPicker",
+        emptyKey: "projectPicker",
+      },
+      waitingFor: {
+        refresh: refreshWaitingOptions,
+        getOptions: getWaitingOptions,
+        addOption: addWaitingOption,
+        normalize: normalizeWaitingValue,
+        stringsKey: "waitingPicker",
+        emptyKey: "waitingPicker",
+      },
+      context: {
+        refresh: refreshContextOptions,
+        getOptions: getContextOptions,
+        addOption: addContextOption,
+        normalize: normalizeContextValue,
+        stringsKey: "contextPicker",
+        emptyKey: "contextPicker",
+      },
+    };
+
+    async function promptForAttribute(type = "project", { initialValue = "", allowMulti = false } = {}) {
+      const cfg = ATTR_PICKER_CONFIG[type] || ATTR_PICKER_CONFIG.project;
+      await cfg.refresh?.(true);
       const lang = getLanguageSetting();
-      const pickerStrings = t("projectPicker", lang) || {};
-      const titleText = translateString(pickerStrings.title || "Select project", lang);
-      const placeholderText = translateString(pickerStrings.placeholder || "Search or create a project", lang);
-      const noProjectsText = translateString(pickerStrings.noProjects || "No projects yet — type to create one", lang);
+      const pickerStrings = t(cfg.stringsKey, lang) || {};
+      const titleText = translateString(pickerStrings.title || "Select", lang);
+      const placeholderText = translateString(pickerStrings.placeholder || "Search or create", lang);
+      const noItemsText = translateString(pickerStrings.noItems || "No options yet — type to create one", lang);
       const saveLabel = t("buttons.save", lang) || "Save";
       const cancelLabel = t("buttons.cancel", lang) || "Cancel";
-      const inputClass = `rt-project-input-${Date.now()}`;
-      const listId = `rt-project-list-${Date.now()}`;
+      const inputClass = `rt-attr-input-${Date.now()}`;
+      const listId = `rt-attr-list-${Date.now()}`;
       ensureProjectPickerStyles();
+      const normalize = cfg.normalize || ((v) => (typeof v === "string" ? v.trim() : ""));
+      const initialList = allowMulti
+        ? Array.isArray(initialValue)
+          ? initialValue.map(normalize).filter(Boolean)
+          : typeof initialValue === "string" && initialValue.includes(",")
+            ? initialValue.split(",").map(normalize).filter(Boolean)
+            : initialValue
+              ? [normalize(initialValue)]
+              : []
+        : [initialValue].filter(Boolean).map(normalize);
       return new Promise((resolve) => {
         let settled = false;
-        let current = initialValue || "";
+        let current = allowMulti ? initialList : initialList[0] || "";
         let toastElement = null;
+        const hideToast = () => {
+          if (toastElement) {
+            iziToast.hide({}, toastElement);
+          }
+        };
         const finish = (value) => {
           if (settled) return;
           settled = true;
-          const normalized = normalizeProjectValue(value);
-          resolve(normalized || null);
+          if (allowMulti) {
+            const list = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+            const normalizedList = list.map(normalize).filter(Boolean);
+            resolve(normalizedList.length ? normalizedList : null);
+          } else {
+            const normalized = normalize(value);
+            resolve(normalized || null);
+          }
         };
-        const renderOptions = (container, filterText, onSelect) => {
+        const renderOptions = (container, filterText, onSelect, selectedSet) => {
           if (!container) return;
           container.textContent = "";
           const filter = (filterText || "").trim().toLowerCase();
-          const options = getProjectOptions();
+          const options = cfg.getOptions ? cfg.getOptions() : [];
           const matches = options.filter((opt) => (filter ? opt.toLowerCase().includes(filter) : true));
           if (!matches.length) {
             const empty = document.createElement("div");
             empty.className = "rt-project-picker__empty";
-            empty.textContent = noProjectsText;
+            empty.textContent = noItemsText;
             container.appendChild(empty);
             return;
           }
@@ -5492,6 +5571,10 @@ export default {
             btn.type = "button";
             btn.className = "rt-project-picker__option";
             btn.textContent = opt;
+            if (allowMulti && selectedSet?.has(opt)) {
+              btn.style.background = "rgba(0,0,0,0.08)";
+              btn.style.fontWeight = "600";
+            }
             btn.addEventListener("click", () => onSelect(opt));
             container.appendChild(btn);
           });
@@ -5513,44 +5596,62 @@ export default {
             <div class="rt-project-picker">
               <input type="text" class="rt-project-picker__input ${inputClass}" placeholder="${escapeHtml(
           placeholderText
-        )}" value="${escapeHtml(current)}" />
+        )}" value="${allowMulti ? "" : escapeHtml(current || "")}" />
               <div class="rt-project-picker__list" id="${listId}"></div>
             </div>
           `,
           buttons: [
             [
               `<button>${escapeHtml(saveLabel)}</button>`,
-              (instance, toastEl) => {
+              (_instance, toastEl) => {
+                toastElement = toastEl || toastElement;
                 const input = toastEl?.querySelector(`.${inputClass}`);
-                const val = typeof input?.value === "string" ? input.value : current;
-                instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
-                finish(val);
+                const domVal = typeof input?.value === "string" ? input.value : "";
+                if (allowMulti) {
+                  const selected = new Set(Array.isArray(current) ? current : []);
+                  if (domVal && domVal.trim()) selected.add(normalize(domVal));
+                  finish(Array.from(selected));
+                } else {
+                  finish(domVal || current || "");
+                }
+                hideToast();
               },
               true,
             ],
             [
               `<button>${escapeHtml(cancelLabel)}</button>`,
-              (instance, toastEl) => {
-                instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
+              (_instance, toastEl) => {
+                toastElement = toastEl || toastElement;
+                hideToast();
                 finish(null);
               },
             ],
           ],
-          onOpening: (instance, toastEl) => {
+          onOpening: (_instance, toastEl) => {
             toastElement = toastEl;
             const input = toastEl.querySelector(`.${inputClass}`);
             const list = toastEl.querySelector(`#${listId}`);
             const selectAndClose = (val) => {
-              if (toastElement) {
-                iziToast.hide({}, toastElement);
+              if (allowMulti) {
+                const selected = new Set(Array.isArray(current) ? current : []);
+                selected.add(normalize(val));
+                const next = Array.from(selected);
+                current = next;
+                finish(next);
+                hideToast();
+              } else {
+                if (toastElement) {
+                  iziToast.hide({}, toastElement);
+                }
+                finish(val);
               }
-              finish(val);
             };
-            renderOptions(list, current, selectAndClose);
+            const selectedSet = new Set(Array.isArray(current) ? current : []);
+            renderOptions(list, "", selectAndClose, selectedSet);
             if (input) {
               input.addEventListener("input", () => {
-                current = input.value;
-                renderOptions(list, current, selectAndClose);
+                const filterVal = input.value;
+                renderOptions(list, filterVal, selectAndClose, selectedSet);
               });
               input.addEventListener("keydown", (event) => {
                 if (event.key === "Enter") {
@@ -5566,6 +5667,10 @@ export default {
         });
       });
     }
+
+    const promptForProject = (opts = {}) => promptForAttribute("project", { ...opts, allowMulti: false });
+    const promptForWaiting = (opts = {}) => promptForAttribute("waitingFor", { ...opts, allowMulti: false });
+    const promptForContext = (opts = {}) => promptForAttribute("context", { ...opts, allowMulti: true });
 
     function promptForDate({ title, message, initial }) {
       return new Promise((resolve) => {
@@ -8046,27 +8151,18 @@ export default {
           });
           attach('[data-action="meta-project-remove"]', () => applyMetadataPatch({ project: null }));
           attach('[data-action="meta-context-add"]', async () => {
-            const val = await promptForValue({
-              title: "Add Context",
-              message: "Enter contexts (comma separated)",
-              placeholder: "Context",
-              initial: "",
+            await refreshContextOptions();
+            const selection = await promptForContext({
+              initialValue: metadataInfo?.context || [],
             });
-            if (val == null) return;
-            const contexts = val
-              .split(",")
-              .map((token) => stripLinkOrTag(token))
-              .map((token) => token.replace(/^@/, "").trim())
-              .filter(Boolean);
-            await applyMetadataPatch({ context: contexts });
+            if (!selection || !selection.length) return;
+            await applyMetadataPatch({ context: selection });
           });
           attach('[data-action="meta-context-remove"]', () => applyMetadataPatch({ context: [] }));
           attach('[data-action="meta-waiting-add"]', async () => {
-            const val = await promptForValue({
-              title: "Add Waiting-for",
-              message: "Who or what are you waiting for?",
-              placeholder: "Waiting for",
-              initial: "",
+            await refreshWaitingOptions();
+            const val = await promptForWaiting({
+              initialValue: metadataInfo?.waitingFor || "",
             });
             if (!val || !val.trim()) return;
             await applyMetadataPatch({ waitingFor: val.trim() });
@@ -8723,6 +8819,14 @@ export default {
         handleMetadataClick,
         promptValue: promptForValue,
         promptProject: promptForProject,
+        promptWaiting: promptForWaiting,
+        promptContext: promptForContext,
+        refreshWaitingOptions,
+        refreshContextOptions,
+        getWaitingOptions,
+        getContextOptions,
+        subscribeWaitingOptions: subscribeToWaitingOptions,
+        subscribeContextOptions: subscribeToContextOptions,
         refreshProjectOptions,
         getProjectOptions,
         subscribeProjectOptions: subscribeToProjectOptions,
@@ -8735,6 +8839,10 @@ export default {
         refreshLanguage,
         dispose,
       };
+      // Ensure prompt helpers are always present for dashboard consumers.
+      if (!controller.promptProject) controller.promptProject = (opts = {}) => promptForAttribute("project", { ...opts, allowMulti: false });
+      if (!controller.promptWaiting) controller.promptWaiting = (opts = {}) => promptForAttribute("waitingFor", { ...opts, allowMulti: false });
+      if (!controller.promptContext) controller.promptContext = (opts = {}) => promptForAttribute("context", { ...opts, allowMulti: true });
 
       function emit() {
         const snapshot = {
@@ -8976,12 +9084,20 @@ export default {
           }
           if ("waitingFor" in patch) {
             await setRichAttribute(uid, "waitingFor", patch.waitingFor, attrNames);
+            if (patch.waitingFor) {
+              addWaitingOption(patch.waitingFor);
+            } else {
+              void refreshWaitingOptions(true);
+            }
           }
           if ("context" in patch) {
             const ctxArr = Array.isArray(patch.context) ? patch.context : [];
             await setRichAttribute(uid, "context", ctxArr, attrNames);
-            if (!ctxArr.length) {
+            if (ctxArr.length) {
+              ctxArr.forEach((ctx) => addContextOption(ctx));
+            } else {
               await removeChildAttrsForType(uid, "context", attrNames);
+              void refreshContextOptions(true);
             }
           }
           if ("priority" in patch) {

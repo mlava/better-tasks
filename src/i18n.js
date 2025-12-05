@@ -130,6 +130,16 @@ export const i18n = {
       noProjects: "No projects yet — type to create one",
       button: "Browse",
     },
+    waitingPicker: {
+      title: "Select waiting-for",
+      placeholder: "Search or create",
+      noItems: "No waiting-for entries yet — type to create one",
+    },
+    contextPicker: {
+      title: "Select context(s)",
+      placeholder: "Search or create",
+      noItems: "No contexts yet — type to create one",
+    },
     toasts: {
       createdRecurring: "Created recurring TODO",
       createdScheduled: "Created scheduled TODO",
@@ -247,6 +257,9 @@ export const i18n = {
       projectFilterAny: "All projects",
       waitingFilterLabel: "Waiting for",
       waitingFilterPlaceholder: "Waiting for",
+      waitingFilterAny: "All waiting-for",
+      contextFilterLabel: "Context",
+      contextFilterAny: "All contexts",
       groupingLabels: {
         time: "By Time",
         recurrence: "By Recurrence",
@@ -467,6 +480,16 @@ export const i18n = {
       noProjects: "尚无项目，请输入以创建",
       button: "浏览",
     },
+    waitingPicker: {
+      title: "选择等待对象",
+      placeholder: "搜索或创建",
+      noItems: "暂无等待对象，可输入创建",
+    },
+    contextPicker: {
+      title: "选择情境",
+      placeholder: "搜索或创建",
+      noItems: "暂无情境，可输入创建",
+    },
       toasts: {
         createdRecurring: "已创建重复 TODO",
         createdScheduled: "已创建计划 TODO",
@@ -584,6 +607,9 @@ export const i18n = {
       projectFilterAny: "全部项目",
       waitingFilterLabel: "等待对象",
       waitingFilterPlaceholder: "等待对象",
+      waitingFilterAny: "全部等待对象",
+      contextFilterLabel: "情境",
+      contextFilterAny: "全部情境",
       groupingLabels: {
         time: "按时间",
         recurrence: "按重复规则",
@@ -804,6 +830,16 @@ export const i18n = {
       noProjects: "尚無專案，輸入即可建立",
       button: "瀏覽",
     },
+    waitingPicker: {
+      title: "選擇等待對象",
+      placeholder: "搜尋或建立",
+      noItems: "尚無等待對象，輸入即可建立",
+    },
+    contextPicker: {
+      title: "選擇情境",
+      placeholder: "搜尋或建立",
+      noItems: "尚無情境，輸入即可建立",
+    },
       toasts: {
         createdRecurring: "已建立重複 TODO",
         createdScheduled: "已建立排程 TODO",
@@ -921,6 +957,9 @@ export const i18n = {
       projectFilterAny: "全部專案",
       waitingFilterLabel: "等待對象",
       waitingFilterPlaceholder: "等待對象",
+      waitingFilterAny: "全部等待對象",
+      contextFilterLabel: "情境",
+      contextFilterAny: "全部情境",
       groupingLabels: {
         time: "依時間",
         recurrence: "依重複規則",

@@ -68,6 +68,7 @@ const DEFAULT_FILTERS = {
   GTD: [],
   projectText: "",
   waitingText: "",
+  contextText: "",
 };
 
 const FILTER_STORAGE_KEY = "betterTasks.dashboard.filters";
@@ -168,6 +169,7 @@ function applyFilters(tasks, filters, query) {
   const gtdFilter = new Set(filters.GTD || filters.gtd || []);
   const projectText = (filters.projectText || "").trim();
   const waitingText = (filters.waitingText || "").trim().toLowerCase();
+  const contextText = (filters.contextText || "").trim().toLowerCase();
   return tasks.filter((task) => {
     if (completionFilter.size) {
       const value = task.isCompleted ? "completed" : "open";
@@ -189,6 +191,11 @@ function applyFilters(tasks, filters, query) {
     if (waitingText) {
       const hay = (meta.waitingFor || "").toLowerCase();
       if (!hay.includes(waitingText)) return false;
+    }
+    if (contextText) {
+      const ctxs = Array.isArray(meta.context) ? meta.context : [];
+      const matches = ctxs.some((c) => typeof c === "string" && c.toLowerCase().includes(contextText));
+      if (!matches) return false;
     }
     if (queryText) {
       const haystack = `${task.title} ${task.pageTitle || ""} ${task.text}`.toLowerCase();
@@ -316,9 +323,7 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
   const metadata = task.metadata || {};
   const handleEditText = async (key, currentValue) => {
     if (key === "project") {
-      if (controller?.refreshProjectOptions) {
-        await controller.refreshProjectOptions();
-      }
+      await controller?.refreshProjectOptions?.();
       const selection = controller?.promptProject
         ? await controller.promptProject({ initialValue: currentValue || "" })
         : currentValue || "";
@@ -326,12 +331,26 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
       controller.updateMetadata?.(task.uid, { project: selection || null });
       return;
     }
-    const label =
-      key === "waitingFor"
-          ? "Waiting for"
-          : key === "context"
-            ? "Context"
-            : key;
+    if (key === "waitingFor") {
+      await controller?.refreshWaitingOptions?.();
+      const selection = controller?.promptWaiting
+        ? await controller.promptWaiting({ initialValue: currentValue || "" })
+        : currentValue || "";
+      if (selection == null) return;
+      controller.updateMetadata?.(task.uid, { waitingFor: selection || null });
+      return;
+    }
+    if (key === "context") {
+      await controller?.refreshContextOptions?.();
+      const selection = controller?.promptContext
+        ? await controller.promptContext({ initialValue: currentValue || [] })
+        : [];
+      if (selection == null) return;
+      const contexts = Array.isArray(selection) ? selection : [];
+      controller.updateMetadata?.(task.uid, { context: contexts });
+      return;
+    }
+    const label = key;
     const next = controller.promptValue
       ? await controller.promptValue({
         title: "Better Tasks",
@@ -342,26 +361,7 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
       : null;
     if (next == null) return;
     const trimmed = String(next).trim();
-    if (key === "context") {
-      const contexts = trimmed
-        ? trimmed
-          .split(",")
-          .map((t) => t.replace(/^#/, "").replace(/^@/, "").replace(/^\[\[(.*)\]\]$/, "$1").trim())
-          .filter(Boolean)
-        : [];
-      controller.updateMetadata?.(task.uid, { context: contexts });
-    } else if (key === "project") {
-      if (controller.refreshProjectOptions) {
-        await controller.refreshProjectOptions();
-      }
-      const selection = controller.promptProject
-        ? await controller.promptProject({ initialValue: currentValue || "" })
-        : trimmed;
-      if (selection == null) return;
-      controller.updateMetadata?.(task.uid, { project: selection || null });
-    } else if (key === "waitingFor") {
-          controller.updateMetadata?.(task.uid, { waitingFor: trimmed || null });
-    }
+    controller.updateMetadata?.(task.uid, { [key]: trimmed || null });
   };
   const cycleValue = (key) => {
     const order = [null, "low", "medium", "high"];
@@ -673,13 +673,11 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
               key={action.key}
               type="button"
               className={`bt-task-menu__item${action.danger ? " bt-task-menu__item--danger" : ""}`}
-              onClick={() => {
-                setTimeout(() => {
-                  if (typeof action.handler === "function") {
-                    action.handler();
-                  }
-                  setOpenState(false);
-                }, 0);
+              onClick={async () => {
+                if (typeof action.handler === "function") {
+                  await action.handler();
+                }
+                setOpenState(false);
               }}
             >
               {action.label}
@@ -884,6 +882,12 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const [projectOptions, setProjectOptions] = useState(() =>
     controller?.getProjectOptions?.() || []
   );
+  const [waitingOptions, setWaitingOptions] = useState(() =>
+    controller?.getWaitingOptions?.() || []
+  );
+  const [contextOptions, setContextOptions] = useState(() =>
+    controller?.getContextOptions?.() || []
+  );
   const lang = I18N_MAP[language] ? language : "en";
   const tt = useCallback(
     (path, fallback) => {
@@ -1002,6 +1006,8 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       projectFilterLabel: tt(["dashboard", "projectFilterLabel"], "Project"),
       projectFilterPlaceholder: tt(["dashboard", "projectFilterPlaceholder"], "Project name"),
       projectFilterAny: tt(["dashboard", "projectFilterAny"], "All projects"),
+      contextFilterLabel: tt(["dashboard", "contextFilterLabel"], "Context"),
+      contextFilterAny: tt(["dashboard", "contextFilterAny"], "All contexts"),
       waitingFilterLabel: tt(["dashboard", "waitingFilterLabel"], "Waiting for"),
       waitingFilterPlaceholder: tt(["dashboard", "waitingFilterPlaceholder"], "Waiting for"),
       groupingOptions,
@@ -1081,10 +1087,22 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   useEffect(() => {
     if (!controller) return undefined;
     controller.refreshProjectOptions?.(true);
+    controller.refreshWaitingOptions?.(true);
+    controller.refreshContextOptions?.(true);
     const unsub = controller.subscribeProjectOptions?.((opts) =>
       setProjectOptions(Array.isArray(opts) ? opts : [])
     );
-    return unsub;
+    const unsubWaiting = controller.subscribeWaitingOptions?.((opts) =>
+      setWaitingOptions(Array.isArray(opts) ? opts : [])
+    );
+    const unsubContext = controller.subscribeContextOptions?.((opts) =>
+      setContextOptions(Array.isArray(opts) ? opts : [])
+    );
+    return () => {
+      unsub?.();
+      unsubWaiting?.();
+      unsubContext?.();
+    };
   }, [controller]);
 
   const [quickText, setQuickText] = useState("");
@@ -1109,6 +1127,8 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
 
   const handleProjectFilterChange = (e) =>
     dispatchFilters({ type: "setText", section: "projectText", value: e.target.value });
+  const handleContextFilterChange = (e) =>
+    dispatchFilters({ type: "setText", section: "contextText", value: e.target.value });
   const handleWaitingFilterChange = (e) =>
     dispatchFilters({ type: "setText", section: "waitingText", value: e.target.value });
 
@@ -1252,18 +1272,43 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                     ))}
                     {filters.projectText &&
                     !projectOptions.includes(filters.projectText) ? (
-                        <option value={filters.projectText}>{filters.projectText}</option>
-                      ) : null}
+                      <option value={filters.projectText}>{filters.projectText}</option>
+                    ) : null}
                   </select>
                 </label>
                 <label className="bt-filter-text">
                   <span>{ui.waitingFilterLabel}</span>
-                  <input
-                    type="text"
-                    value={filters.waitingText}
-                    placeholder={ui.waitingFilterPlaceholder}
-                    onChange={handleWaitingFilterChange}
-                  />
+                  <select value={filters.waitingText || ""} onChange={handleWaitingFilterChange}>
+                    <option value="">
+                      {ui.waitingFilterAny || ui.waitingFilterPlaceholder || "All waiting"}
+                    </option>
+                    {waitingOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                    {filters.waitingText &&
+                    !waitingOptions.includes(filters.waitingText) ? (
+                        <option value={filters.waitingText}>{filters.waitingText}</option>
+                      ) : null}
+                  </select>
+                </label>
+                <label className="bt-filter-text">
+                  <span>{ui.contextFilterLabel}</span>
+                  <select value={filters.contextText || ""} onChange={handleContextFilterChange}>
+                    <option value="">
+                      {ui.contextFilterAny || "All contexts"}
+                    </option>
+                    {contextOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                    {filters.contextText &&
+                    !contextOptions.includes(filters.contextText) ? (
+                        <option value={filters.contextText}>{filters.contextText}</option>
+                      ) : null}
+                  </select>
                 </label>
               </div>
             </div>

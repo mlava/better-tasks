@@ -17,6 +17,7 @@ https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
 
 ## 📜 Changelog (recent highlights)
 
+- Added unified pickers and in-memory indexes for Projects, Waiting-for, and Context across inline pills, dashboard menus, and the create/convert prompt; options refresh from your configured attributes and clean up when removed.
 - Added a 'Today Widget' - automatically place a block and children or block and React panel in today's DNP
   - option to set your own heading text, and the extension will find and use that for the widget placement
   - alternatively, create the widget at top or bottom of the DNP

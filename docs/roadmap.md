@@ -6,7 +6,7 @@
    - GTD dashboard modes / presets
 
 2. **Phase 4.5 — Dashboard UX**
-   - Project search list (pull from Roam pages)
+   - Project/Waiting/Context pickers (Completed)
    - Saved views / named perspectives
    - Quick switching between perspectives
 
