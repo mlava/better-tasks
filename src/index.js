@@ -98,23 +98,6 @@ let todayBadgeRefreshTimer = null;
 let lastTodayBadgeSignature = null;
 const todayBadgeOverrides = { bg: null, fg: null, label: null };
 
-function blurNode(node = null) {
-  try {
-    if (node) {
-      const editable =
-        node.querySelector?.("textarea, input, [contenteditable='true']") ||
-        node.querySelector?.("textarea") ||
-        node.querySelector?.("[contenteditable='true']");
-      if (editable && typeof editable.blur === "function") editable.blur();
-    }
-    if (document?.activeElement && typeof document.activeElement.blur === "function") {
-      document.activeElement.blur();
-    }
-    const sel = window?.getSelection?.();
-    if (sel?.removeAllRanges) sel.removeAllRanges();
-  } catch (_) { }
-}
-
 function buildEnStringLookup(obj, prefix = []) {
   if (!obj || typeof obj !== "object") return;
   Object.entries(obj).forEach(([key, value]) => {
@@ -151,6 +134,9 @@ let lastPillDecorateRun = 0;
 let dashboardRefreshTimer = null;
 let dashboardWatchClearTimer = null;
 let pillScrollHandlerAttached = false;
+let pillScrollHandler = null;
+let todayNavListener = null;
+let detachTodayNavigationListenerGlobal = null;
 const MAX_BLOCKS_FOR_PILLS = 1500;
 const pillSkipDecorate = new Set();
 const TODAY_WIDGET_ENABLED = true; // temporary kill switch 
@@ -510,7 +496,8 @@ export default {
           "This extension automatically recognises {{[[TODO]]}} tasks in your graph and uses attributes to determine a recurrence pattern and other attributes. By default, it uses attributes like 'BT_attrRepeat' and 'BT_attrDue'. These can be changed in the extension settings.<BR><BR>If you already happen to use attributes like 'BT_attrRepeat' or 'BT_attrDue' for other functions in your graph, please change the defaults in the Roam Depot Settings for this extension BEFORE testing its functionality to avoid any unexpected behaviour.",
           getLanguageSetting()
         ),
-        10000
+        10000,
+        "betterTasks3 bt3-toast-info"
       );
       extensionAPI.settings.set(INSTALL_TOAST_KEY, "1");
     }
@@ -5249,7 +5236,7 @@ export default {
       });
     }
 
-    function toast(msg, timer = 3000) {
+    function toast(msg, timer = 3000, className = "betterTasks bt-toast-info") {
       const lang = getLanguageSetting();
       const message =
         typeof msg === "string"
@@ -5259,7 +5246,7 @@ export default {
         theme: 'light',
         color: 'black',
         message: message,
-        class: 'betterTasks bt-toast-info',
+        class: className,
         position: 'center',
         close: false,
         timeout: timer,
@@ -5828,12 +5815,16 @@ export default {
             : "";
       snapshot.deferIso = initialDeferIso;
       await refreshProjectOptions();
+      await refreshWaitingOptions();
+      await refreshContextOptions();
       const projectOptions = getProjectOptions();
       const projectDatalistId = `rt-project-options-${Date.now()}`;
       const projectDatalistOptions = projectOptions
         .map((opt) => `<option value="${escapeHtml(opt)}"></option>`)
         .join("");
       const projectPickerLabel = t(["projectPicker", "button"], getLanguageSetting()) || "Select";
+      const waitingPickerLabel = t(["waitingPicker", "button"], getLanguageSetting()) || projectPickerLabel;
+      const contextPickerLabel = t(["contextPicker", "button"], getLanguageSetting()) || projectPickerLabel;
       return new Promise((resolve) => {
         let settled = false;
         const finish = (value) => {
@@ -5909,9 +5900,14 @@ export default {
                 </select>
               </label>
               <label class="rt-input-wrap">${escapeHtml(waitingLabel)}<br/>
-                <input data-rt-field="waitingFor" type="text" placeholder="${escapeHtml(
+                <div class="rt-project-inline-row">
+                  <input data-rt-field="waitingFor" type="text" placeholder="${escapeHtml(
             placeholderOr("waitingPlaceholder", "Waiting-for")
           )}" value="${escapeHtml(snapshot.waitingFor || "")}" />
+                  <button type="button" class="rt-project-inline-btn" data-rt-action="waiting-picker">${escapeHtml(
+            waitingPickerLabel
+          )}</button>
+                </div>
               </label>
               <label class="rt-input-wrap">${escapeHtml(priorityLabel)}<br/>
                 <select data-rt-field="priority">
@@ -5925,9 +5921,14 @@ export default {
                 </select>
               </label>
               <label class="rt-input-wrap">${escapeHtml(contextLabel)}<br/>
-                <input data-rt-field="context" type="text" placeholder="${escapeHtml(
+                <div class="rt-project-inline-row">
+                  <input data-rt-field="context" type="text" placeholder="${escapeHtml(
             placeholderOr("contextPlaceholder", "@home, @work")
           )}" value="${escapeHtml(snapshot.context || "")}" />
+                  <button type="button" class="rt-project-inline-btn" data-rt-action="context-picker">${escapeHtml(
+            contextPickerLabel
+          )}</button>
+                </div>
               </label>
               <label class="rt-input-wrap">${escapeHtml(energyLabel)}<br/>
                 <select data-rt-field="energy">
@@ -6193,6 +6194,43 @@ export default {
                   const projectInput = toastEl.querySelector(fieldSelectors.project);
                   if (projectInput) projectInput.value = normalized;
                   addProjectOption(normalized);
+                }
+              });
+            }
+            const waitingButton = toastEl.querySelector('[data-rt-action="waiting-picker"]');
+            if (waitingButton) {
+              waitingButton.addEventListener("click", async (event) => {
+                event.preventDefault();
+                await refreshWaitingOptions();
+                const currentVal =
+                  toastEl.querySelector(fieldSelectors.waitingFor)?.value || snapshot.waitingFor || "";
+                const selection = await promptForWaiting({ initialValue: currentVal });
+                if (selection != null) {
+                  snapshot.waitingFor = selection;
+                  const input = toastEl.querySelector(fieldSelectors.waitingFor);
+                  if (input) input.value = selection;
+                  addWaitingOption(selection);
+                }
+              });
+            }
+
+            const contextButton = toastEl.querySelector('[data-rt-action="context-picker"]');
+            if (contextButton) {
+              contextButton.addEventListener("click", async (event) => {
+                event.preventDefault();
+                await refreshContextOptions();
+                const currentVal =
+                  toastEl.querySelector(fieldSelectors.context)?.value || snapshot.context || "";
+                const initialContexts = currentVal
+                  ? currentVal.split(",").map((v) => v.trim()).filter(Boolean)
+                  : [];
+                const selection = await promptForContext({ initialValue: initialContexts });
+                if (selection != null) {
+                  const val = Array.isArray(selection) ? selection.join(", ") : selection || "";
+                  snapshot.context = val;
+                  const input = toastEl.querySelector(fieldSelectors.context);
+                  if (input) input.value = val;
+                  (Array.isArray(selection) ? selection : [val]).forEach((ctx) => addContextOption(ctx));
                 }
               });
             }
@@ -6855,15 +6893,30 @@ export default {
     function attachTodayNavigationListener() {
       if (todayNavListenerAttached) return;
       if (typeof window === "undefined") return;
-      const trigger = () => scheduleTodayWidgetRender(80, true);
+      todayNavListener = () => scheduleTodayWidgetRender(80, true);
       try {
-        window.addEventListener("hashchange", trigger, { passive: true });
-        window.addEventListener("popstate", trigger, { passive: true });
+        window.addEventListener("hashchange", todayNavListener, { passive: true });
+        window.addEventListener("popstate", todayNavListener, { passive: true });
         todayNavListenerAttached = true;
       } catch (_) {
         // ignore
       }
     }
+
+    function detachTodayNavigationListener() {
+      if (!todayNavListenerAttached || typeof window === "undefined") return;
+      const trigger = todayNavListener;
+      try {
+        window.removeEventListener("hashchange", trigger, { passive: true });
+        window.removeEventListener("popstate", trigger, { passive: true });
+      } catch (_) {
+        // ignore
+      } finally {
+        todayNavListenerAttached = false;
+        todayNavListener = null;
+      }
+    }
+    detachTodayNavigationListenerGlobal = detachTodayNavigationListener;
 
     function scheduleTodayBadgeRefresh(delayMs = 120, force = false) {
       if (!getTodayBadgeEnabled()) return;
@@ -6955,13 +7008,14 @@ export default {
       return matches;
     }
 
-    async function removeAllTodayAnchorsByQuery() {
+    async function removeAllTodayAnchorsByQuery({ includeHeading = false } = {}) {
       try {
         const cache = createTodayRenderCache();
         const dnpUid = await getOrCreatePageUidCached(toDnpTitle(todayLocal()), cache);
         const { headingUid } = await getTodayParentInfo(cache);
         const texts = new Set([getTodayAnchorText(), ...TODAY_WIDGET_ANCHOR_TEXT_LEGACY].map((s) => stripMarkdownDecorations(s || "").toLowerCase()));
-        const uids = await collectAnchorsUnder(dnpUid, texts, headingUid || null, cache, 0, 4);
+        const ignoreUid = includeHeading ? null : headingUid || null;
+        const uids = await collectAnchorsUnder(dnpUid, texts, ignoreUid, cache, 0, 4);
         for (const u of uids) {
           await deleteBlockAndDescendants(u);
         }
@@ -7118,7 +7172,7 @@ export default {
         ? window.__btPillSignatureCache || (window.__btPillSignatureCache = new Map())
         : new Map();
       if (!pillScrollHandlerAttached && typeof window !== "undefined") {
-        const handler = (() => {
+        pillScrollHandler = (() => {
           let t = null;
           return () => {
             if (t) return;
@@ -7129,7 +7183,7 @@ export default {
           };
         })();
         try {
-          window.addEventListener("scroll", handler, { passive: true });
+          window.addEventListener("scroll", pillScrollHandler, { passive: true });
           pillScrollHandlerAttached = true;
         } catch (_) {
           // ignore attach errors
@@ -10633,12 +10687,33 @@ export default {
     slashCommandAPI?.removeCommand({
       label: "Convert TODO to Better Task",
     });
+    
     removeDashboardTopbarButton();
     disconnectTopbarObserver();
     clearDashboardWatches();
     if (todayWidgetRenderTimer) clearTimeout(todayWidgetRenderTimer);
     todayWidgetRenderTimer = null;
+    try {
+      detachTodayNavigationListenerGlobal?.();
+    } catch (_) {
+      // ignore
+    } finally {
+      detachTodayNavigationListenerGlobal = null;
+    }
+    try {
+      await disableTodayWidgetUI();
+    } catch (_) {
+      // ignore widget teardown errors
+    }
     removeTodayBadge();
+    try {
+      todayInlineChildUids.clear();
+      lastTodayAnchorUid = null;
+      lastTodayAnchorIsHeading = false;
+      await removeAllTodayAnchorsByQuery({ includeHeading: true });
+    } catch (_) {
+      // ignore cleanup errors
+    }
     if (typeof teardownTodayPanelGlobal === "function") {
       await teardownTodayPanelGlobal();
     }
@@ -10655,6 +10730,16 @@ export default {
     window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: "Create a Better Task" });
     // window.roamAlphaAPI.ui.blockContextMenu.removeCommand({label: "Convert Better Task to plain TODO",});
     disconnectThemeObserver();
+    if (pillScrollHandlerAttached && pillScrollHandler && typeof window !== "undefined") {
+      try {
+        window.removeEventListener("scroll", pillScrollHandler, { passive: true });
+      } catch (_) {
+        // ignore detach errors
+      } finally {
+        pillScrollHandlerAttached = false;
+        pillScrollHandler = null;
+      }
+    }
   },
 };
 

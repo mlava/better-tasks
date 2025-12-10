@@ -1,6 +1,7 @@
-# Better Tasks — Roadmap (Updated Dec 2025)
+# 🌀 Better Tasks — Roadmap (Updated Dec 2025)
 
 ## Near-Term Focus (Ranked)
+
 1. **Phase 7 — GTD Layer (Remaining Work)**
    - Weekly Review flow (guided dashboard mode + command)
    - GTD dashboard modes / presets
@@ -70,10 +71,10 @@
 - Priority styling across themes
 - Theme refinement
 
-## 4.5 Dashboard UX (Planned)
-- Project search list (existing Roam pages)
-- Saved views
-- Quick switching
+## 4.5 Dashboard UX
+- Project search list (from BT_attrProject values) — In Progress
+- Saved views — Planned
+- Quick switching — Planned
 
 ---
 
@@ -96,8 +97,14 @@
 ---
 
 # Phase 7 — GTD Layer (Mostly Completed)
-- Completed: Next / Delegated / Deferred / Someday attributes & filters
-- Remaining: Weekly Review flow, GTD dashboard modes
+- Completed:
+  - Next Action
+  - Delegated
+  - Deferred
+  - Someday
+- Remaining:
+  - Weekly Review flow
+  - GTD dashboard modes
 
 ---
 
@@ -106,13 +113,13 @@
 - Unified "today" logic
 - Snooze parity
 - Cached, throttled, synced
-- In beta
+- In beta testing
 
 ---
 
 # Phase 9 — Sidebar Badge (Completed)
 - Theme-aware badge
-- Today-only or today+overdue modes
+- Today-only or Today+Overdue modes
 - Shares logic with Today widget
 
 ---
@@ -120,7 +127,7 @@
 # Phase 10 — Internationalisation
 
 ## 10.1 Core Framework (Completed)
-- All strings abstracted
+- All strings abstracted for translation
 
 ## 10.2 Initial Languages (Completed)
 - English

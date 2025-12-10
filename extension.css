@@ -119,6 +119,75 @@
     transform: translateY(-50%);
 }
 
+/* Dedicated welcome toast style (betterTasks3) */
+.betterTasks3 {
+    max-width: 80%;
+    padding: 0 !important;
+    display: inline-block;
+    position: relative;
+    font-family: 'Lato', Tahoma, Arial;
+    font-size: 14px;
+    background: white !important;
+    border-color: white !important;
+    min-width: 550px !important;
+    border-radius: 15px !important;
+    padding-right: 15px !important;
+    pointer-events: all;
+    cursor: default;
+    user-select: none;
+}
+
+.betterTasks3>.iziToast-body {
+    padding: 14px 16px;
+    height: auto;
+    min-height: auto;
+    margin: 0 10px;
+    text-align: left;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px;
+}
+
+.betterTasks3>.iziToast-body .iziToast-texts {
+    margin: 0;
+    padding-right: 2px;
+    display: block;
+}
+
+.betterTasks3>.iziToast-body .iziToast-title {
+    padding: 0;
+    margin: 0;
+    line-height: 22px !important;
+    font-size: 18px !important;
+    text-align: left;
+    color: #000;
+    white-space: normal;
+}
+
+.betterTasks3>.iziToast-body .iziToast-message {
+    padding: 0;
+    margin: 0;
+    font-size: 14px;
+    line-height: 18px;
+    text-align: left;
+    color: rgba(0, 0, 0, 0.75) !important;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.betterTasks3 .iziToast-buttons {
+    display: flex !important;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-left: auto;
+    position: static;
+    transform: none;
+}
+
+.bt3-toast-info>.iziToast-body .iziToast-texts {
+    margin: 0;
+}
+
 .bt-toast-undo>.iziToast-body .iziToast-texts {
     margin: 10px 0 0 0;
     padding-right: 2px;
