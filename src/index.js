@@ -97,6 +97,12 @@ let todayBadgeCountNode = null;
 let todayBadgeRefreshTimer = null;
 let lastTodayBadgeSignature = null;
 const todayBadgeOverrides = { bg: null, fg: null, label: null };
+let todayWidgetCbWindowStart = 0;
+let todayWidgetCbCount = 0;
+let todayWidgetCbTrippedUntil = 0;
+const TODAY_WIDGET_CB_WINDOW_MS = 2000;
+const TODAY_WIDGET_CB_MAX = 10;
+const TODAY_WIDGET_CB_COOLDOWN_MS = 15000;
 
 function buildEnStringLookup(obj, prefix = []) {
   if (!obj || typeof obj !== "object") return;
@@ -154,7 +160,7 @@ let btPendingRoamStudioTheme = false;
 const ReactDOMGlobal = typeof window !== "undefined" ? window.ReactDOM || null : null;
 const ReactGlobal = typeof window !== "undefined" ? window.React || null : null;
 
-class DashboardErrorBoundary extends (ReactGlobal?.Component || class {}) {
+class DashboardErrorBoundary extends (ReactGlobal?.Component || class { }) {
   constructor(props) {
     super(props);
     this.state = { error: null, info: null };
@@ -5632,8 +5638,8 @@ export default {
           message: `
             <div class="rt-project-picker">
               <input type="text" class="rt-project-picker__input ${inputClass}" placeholder="${escapeHtml(
-          placeholderText
-        )}" value="${allowMulti ? "" : escapeHtml(current || "")}" />
+            placeholderText
+          )}" value="${allowMulti ? "" : escapeHtml(current || "")}" />
               <div class="rt-project-picker__list" id="${listId}"></div>
             </div>
           `,
@@ -6719,7 +6725,9 @@ export default {
     }
 
     async function handleTodaySettingChange(settingId = null, value = undefined) {
+      console.info(settingId, value);
       const normalizedValue = normalizeTodaySettingValue(value);
+      console.info(`[BetterTasks] Today setting changed: ${settingId} =`, normalizedValue);
       // Force next render to bypass caches/snapshots when settings change.
       dashboardTaskCache?.clear?.();
       lastTodayWidgetSignature = null;
@@ -6836,6 +6844,7 @@ export default {
 
     function getTodayWidgetIncludeOverdue() {
       const raw = getTodaySetting(TODAY_WIDGET_OVERDUE_SETTING);
+      console.info(raw);
       if (raw === false) return false;
       const norm = typeof raw === "string" ? raw.trim().toLowerCase() : String(raw || "").toLowerCase();
       if (["false", "0", "off", "no"].includes(norm)) return false;
@@ -6923,6 +6932,60 @@ export default {
 
     function scheduleTodayWidgetRender(delayMs = 200, force = false) {
       if (!TODAY_WIDGET_ENABLED || !getTodayWidgetEnabled()) return;
+
+      const now = Date.now();
+
+      // If circuit breaker is tripped, ignore schedules until cooldown ends.
+      if (todayWidgetCbTrippedUntil && now < todayWidgetCbTrippedUntil) {
+        // Optional: once per cooldown, log a warning (avoid spamming console)
+        if (!scheduleTodayWidgetRender._cbWarnedAt || now - scheduleTodayWidgetRender._cbWarnedAt > 1000) {
+          scheduleTodayWidgetRender._cbWarnedAt = now;
+          console.warn(
+            `[BetterTasks] Today widget circuit breaker active; skipping render scheduling for ${Math.ceil(
+              (todayWidgetCbTrippedUntil - now) / 1000
+            )}s`
+          );
+        }
+        return;
+      }
+
+      // Reset breaker window if needed
+      if (!todayWidgetCbWindowStart || now - todayWidgetCbWindowStart > TODAY_WIDGET_CB_WINDOW_MS) {
+        todayWidgetCbWindowStart = now;
+        todayWidgetCbCount = 0;
+      }
+
+      todayWidgetCbCount++;
+
+      // Trip breaker if too many schedules in the window
+      if (todayWidgetCbCount > TODAY_WIDGET_CB_MAX) {
+        todayWidgetCbTrippedUntil = now + TODAY_WIDGET_CB_COOLDOWN_MS;
+
+        // Stop any pending timer; we’re bailing out.
+        if (todayWidgetRenderTimer) {
+          clearTimeout(todayWidgetRenderTimer);
+          todayWidgetRenderTimer = null;
+        }
+
+        console.error(
+          `[BetterTasks] Today widget circuit breaker TRIPPED (>${TODAY_WIDGET_CB_MAX} schedules in ${TODAY_WIDGET_CB_WINDOW_MS}ms). ` +
+          `Pausing renders for ${Math.ceil(TODAY_WIDGET_CB_COOLDOWN_MS / 1000)}s.`
+        );
+
+        /*
+        try {
+          window.roamAlphaAPI?.ui?.showToast?.({
+            message:
+              "Better Tasks paused Today widget renders temporarily (safety circuit breaker). " +
+              "If this persists, please disable/re-enable the Today widget in settings.",
+            intent: "warning",
+            timeout: 8000,
+          });
+        } catch (_) { }
+        */
+        return;
+      }
+
       if (todayWidgetRenderTimer) clearTimeout(todayWidgetRenderTimer);
       todayWidgetRenderTimer = setTimeout(() => {
         todayWidgetRenderTimer = null;
@@ -6938,6 +7001,13 @@ export default {
           void renderTodayWidget(force);
         }
       }, delayMs);
+    }
+
+    function resetTodayWidgetCircuitBreaker() {
+      todayWidgetCbWindowStart = 0;
+      todayWidgetCbCount = 0;
+      todayWidgetCbTrippedUntil = 0;
+      scheduleTodayWidgetRender._cbWarnedAt = 0;
     }
 
     function attachTodayNavigationListener() {
@@ -10199,21 +10269,21 @@ export default {
       for (let i = 0; i < attempts; i++) {
         let host =
           document.querySelector(`.rm-sidebar-window [data-uid="${uid}"]`) ||
-        document.querySelector(`.rm-sidebar-window [block-uid="${uid}"]`) ||
-        document.querySelector(`.rm-sidebar-window [data-block-uid="${uid}"]`) ||
-        document.querySelector(`.rm-sidebar-outline [data-uid="${uid}"]`) ||
-        document.querySelector(`.rm-sidebar-outline [block-uid="${uid}"]`) ||
-        document.querySelector(`.rm-sidebar-outline [data-block-uid="${uid}"]`) ||
-        document.querySelector(`.rm-block-main[data-uid="${uid}"]`) ||
-        document.querySelector(`.roam-block[data-uid="${uid}"]`) ||
-        document.querySelector(`.rm-block__self[data-uid="${uid}"]`) ||
-        document.querySelector(`div[block-uid="${uid}"]`) ||
-        document.querySelector(`[data-uid="${uid}"]`) ||
-        document.querySelector(`.roam-block-container[data-block-uid="${uid}"]`) ||
-        document.querySelector(`.block-outline[block-uid="${uid}"]`) ||
-        document.querySelector(`.block-outline[data-uid="${uid}"]`) ||
-        document.querySelector(`[data-block-uid="${uid}"]`) ||
-        document.querySelector(`.rm-reference-item[data-link-uid="${uid}"]`);
+          document.querySelector(`.rm-sidebar-window [block-uid="${uid}"]`) ||
+          document.querySelector(`.rm-sidebar-window [data-block-uid="${uid}"]`) ||
+          document.querySelector(`.rm-sidebar-outline [data-uid="${uid}"]`) ||
+          document.querySelector(`.rm-sidebar-outline [block-uid="${uid}"]`) ||
+          document.querySelector(`.rm-sidebar-outline [data-block-uid="${uid}"]`) ||
+          document.querySelector(`.rm-block-main[data-uid="${uid}"]`) ||
+          document.querySelector(`.roam-block[data-uid="${uid}"]`) ||
+          document.querySelector(`.rm-block__self[data-uid="${uid}"]`) ||
+          document.querySelector(`div[block-uid="${uid}"]`) ||
+          document.querySelector(`[data-uid="${uid}"]`) ||
+          document.querySelector(`.roam-block-container[data-block-uid="${uid}"]`) ||
+          document.querySelector(`.block-outline[block-uid="${uid}"]`) ||
+          document.querySelector(`.block-outline[data-uid="${uid}"]`) ||
+          document.querySelector(`[data-block-uid="${uid}"]`) ||
+          document.querySelector(`.rm-reference-item[data-link-uid="${uid}"]`);
         if (!host) {
           const inputNode =
             document.querySelector(`div[id^="block-input-${uid}"]`) ||
@@ -10273,80 +10343,99 @@ export default {
     }
     teardownTodayPanelGlobal = teardownTodayPanel;
 
-
     async function renderTodayInline(anchorUid, sections, options = {}, layoutSignature = "", cache = null) {
       if (todayInlineRenderInFlight) {
         scheduleTodayWidgetRender(120, true);
         return;
       }
+
       todayInlineRenderInFlight = true;
-      if (!anchorUid) return;
-      const perfInline = perfMark("renderTodayInline");
-      await teardownTodayPanel();
-      const signatureParts = [];
-      const pushSection = (arr) =>
-        signatureParts.push(...(arr || []).map((t) => `${t.uid}:${t.isCompleted ? "done" : "todo"}`));
-      pushSection(sections.startingToday);
-      pushSection(sections.deferredToToday);
-      pushSection(sections.dueToday);
-      if (options.includeOverdue) pushSection(sections.overdue);
-      const signature = `${layoutSignature}|${signatureParts.join("|")}`;
-      if (signature && signature === lastTodayInlineSignature) {
-        todayInlineRenderInFlight = false;
-        return;
-      }
-      if (
-        !sections.startingToday.length &&
-        !sections.deferredToToday.length &&
-        !sections.dueToday.length &&
-        !sections.overdue.length
-      ) {
-        const emptyText =
-          (t(["today", "empty"], getLanguageSetting()) || todayStrings.empty || "All clear for today. Enjoy your day!").trim();
-        await clearTodayInlineChildren(anchorUid, null, cache);
-        todayInlineChildUids.clear();
-        const emptyUid = window.roamAlphaAPI.util.generateUID();
-        await createBlock(anchorUid, 0, emptyText, emptyUid);
-        todayInlineChildUids.add(emptyUid);
-        lastTodayInlineSignature = `${layoutSignature}|empty`;
-        lastTodayRenderAt = Date.now();
-        todayInlineRenderInFlight = false;
-        return;
-      }
-      await clearTodayInlineChildren(anchorUid, null, cache);
-      lastTodayInlineSignature = signature;
-      todayInlineChildUids.clear();
-      let order = 0;
-      const trackUid = (uid) => {
-        if (uid) todayInlineChildUids.add(uid);
-      };
-      const writeSection = async (label, tasks) => {
-        if (!tasks?.length) return;
-        const sectionUid = window.roamAlphaAPI.util.generateUID();
-        await createBlock(anchorUid, order++, `**${label}**`, sectionUid);
-        trackUid(sectionUid);
-        let childOrder = 0;
-        for (const task of tasks) {
-          const childUid = window.roamAlphaAPI.util.generateUID();
-          await createBlock(sectionUid, childOrder++, `((${task.uid}))`, childUid);
-          trackUid(childUid);
+
+      try {
+        if (!anchorUid) return;
+
+        const perfInline = perfMark("renderTodayInline");
+        await teardownTodayPanel();
+        
+        const lang = getLanguageSetting();
+        const todayStrings = t(["today"], lang) || {};
+
+        const signatureParts = [];
+        const pushSection = (arr) =>
+          signatureParts.push(...(arr || []).map((t) => `${t.uid}:${t.isCompleted ? "done" : "todo"}`));
+        pushSection(sections.startingToday);
+        pushSection(sections.deferredToToday);
+        pushSection(sections.dueToday);
+        if (options.includeOverdue) pushSection(sections.overdue);
+
+        const signature = `${layoutSignature}|${signatureParts.join("|")}`;
+        if (signature && signature === lastTodayInlineSignature) return;
+
+        const isEmpty =
+          !sections.startingToday.length &&
+          !sections.deferredToToday.length &&
+          !sections.dueToday.length &&
+          !sections.overdue.length;
+
+        if (isEmpty) {
+          const emptyText = String(
+            t(["today", "empty"], lang) ||
+            todayStrings.empty ||
+            "All clear for today. Enjoy your day!"
+          ).trim();
+
+          await clearTodayInlineChildren(anchorUid, null, cache);
+          todayInlineChildUids.clear();
+
+          const emptyUid = window.roamAlphaAPI.util.generateUID();
+          await createBlock(anchorUid, 0, emptyText, emptyUid);
+          todayInlineChildUids.add(emptyUid);
+
+          lastTodayInlineSignature = `${layoutSignature}|empty`;
+          lastTodayRenderAt = Date.now();
+          return;
         }
-      };
-      const lang = getLanguageSetting();
-      const todayStrings = t(["today"], lang) || {};
-      await writeSection(todayStrings.starting || "Starting Today", sections.startingToday);
-      await writeSection(todayStrings.deferred || "Deferred Until Today", sections.deferredToToday);
-      await writeSection(todayStrings.due || "Due Today", sections.dueToday);
-      if (options.includeOverdue) {
-        const label =
-          typeof todayStrings.overdue === "function"
-            ? todayStrings.overdue(sections.overdue.length)
-            : `Overdue (${sections.overdue.length})`;
-        await writeSection(label, sections.overdue);
+
+        await clearTodayInlineChildren(anchorUid, null, cache);
+        lastTodayInlineSignature = signature;
+        todayInlineChildUids.clear();
+
+        let order = 0;
+        const trackUid = (uid) => {
+          if (uid) todayInlineChildUids.add(uid);
+        };
+
+        const writeSection = async (label, tasks) => {
+          if (!tasks?.length) return;
+          const sectionUid = window.roamAlphaAPI.util.generateUID();
+          await createBlock(anchorUid, order++, `**${label}**`, sectionUid);
+          trackUid(sectionUid);
+
+          let childOrder = 0;
+          for (const task of tasks) {
+            const childUid = window.roamAlphaAPI.util.generateUID();
+            await createBlock(sectionUid, childOrder++, `((${task.uid}))`, childUid);
+            trackUid(childUid);
+          }
+        };
+
+        await writeSection(todayStrings.starting || "Starting Today", sections.startingToday);
+        await writeSection(todayStrings.deferred || "Deferred Until Today", sections.deferredToToday);
+        await writeSection(todayStrings.due || "Due Today", sections.dueToday);
+
+        if (options.includeOverdue) {
+          const label =
+            typeof todayStrings.overdue === "function"
+              ? todayStrings.overdue(sections.overdue.length)
+              : `Overdue (${sections.overdue.length})`;
+          await writeSection(label, sections.overdue);
+        }
+
+        perfLog(perfInline, `totalBlocks=${order}`);
+        lastTodayRenderAt = Date.now();
+      } finally {
+        todayInlineRenderInFlight = false;
       }
-      perfLog(perfInline, `totalBlocks=${order}`);
-      lastTodayRenderAt = Date.now();
-      todayInlineRenderInFlight = false;
     }
 
     async function renderTodayBadge(force = false) {
@@ -10737,7 +10826,7 @@ export default {
     slashCommandAPI?.removeCommand({
       label: "Convert TODO to Better Task",
     });
-    
+
     removeDashboardTopbarButton();
     disconnectTopbarObserver();
     clearDashboardWatches();
