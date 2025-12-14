@@ -1068,14 +1068,24 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
 
   const rows = useVirtualRows(groups, expandedGroups);
   const parentRef = useRef(null);
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    estimateSize: (index) => (rows[index].type === "group" ? 40 : 100),
-    getItemKey: (index) => rows[index]?.key ?? index,
-    getScrollElement: () => parentRef.current,
-    overscan: 8,
-    measureElement,
-  });
+  const estimateRowSize = useCallback(
+    (index) => (rows[index]?.type === "group" ? 40 : 100),
+    [rows]
+  );
+  const getRowKey = useCallback((index) => rows[index]?.key ?? index, [rows]);
+  const getScrollElement = useCallback(() => parentRef.current, []);
+  const virtualizerOptions = useMemo(
+    () => ({
+      count: rows.length,
+      estimateSize: estimateRowSize,
+      getItemKey: getRowKey,
+      getScrollElement,
+      overscan: 8,
+      measureElement,
+    }),
+    [rows.length, estimateRowSize, getRowKey, getScrollElement]
+  );
+  const rowVirtualizer = useVirtualizer(virtualizerOptions);
 
   const handleFilterToggle = (section, value, singleChoice = false) => {
     dispatchFilters({ type: singleChoice ? "toggleSingle" : "toggle", section, value });
