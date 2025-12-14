@@ -531,16 +531,28 @@ export default {
     };
     const config = buildSettingsConfig();
     extensionAPI.settings.panel.create(config);
-    if (extensionAPI.settings.get(TODAY_WIDGET_ENABLE_SETTING) === undefined) {
-      extensionAPI.settings.set(TODAY_WIDGET_ENABLE_SETTING, true);
+    if (extensionAPI.settings.get(TODAY_WIDGET_ENABLE_SETTING) == null) {
+      extensionAPI.settings.set(TODAY_WIDGET_ENABLE_SETTING, false);
     }
-    if (extensionAPI.settings.get(TODAY_WIDGET_LAYOUT_SETTING) === undefined) {
+    if (extensionAPI.settings.get(TODAY_WIDGET_LAYOUT_SETTING) == null) {
       extensionAPI.settings.set(TODAY_WIDGET_LAYOUT_SETTING, "Roam-style inline");
     }
-    if (extensionAPI.settings.get(TODAY_BADGE_ENABLE_SETTING) === undefined) {
+    if (extensionAPI.settings.get(TODAY_WIDGET_OVERDUE_SETTING) == null) {
+      extensionAPI.settings.set(TODAY_WIDGET_OVERDUE_SETTING, false);
+    }
+    if (extensionAPI.settings.get(TODAY_WIDGET_COMPLETED_SETTING) == null) {
+      extensionAPI.settings.set(TODAY_WIDGET_COMPLETED_SETTING, false);
+    }
+    if (extensionAPI.settings.get(TODAY_WIDGET_PLACEMENT_SETTING) == null) {
+      extensionAPI.settings.set(TODAY_WIDGET_PLACEMENT_SETTING, "Top");
+    }
+    if (extensionAPI.settings.get(TODAY_WIDGET_HEADING_SETTING) == null) {
+      extensionAPI.settings.set(TODAY_WIDGET_HEADING_SETTING, "None");
+    }
+    if (extensionAPI.settings.get(TODAY_BADGE_ENABLE_SETTING) == null) {
       extensionAPI.settings.set(TODAY_BADGE_ENABLE_SETTING, false);
     }
-    if (extensionAPI.settings.get(TODAY_BADGE_OVERDUE_SETTING) === undefined) {
+    if (extensionAPI.settings.get(TODAY_BADGE_OVERDUE_SETTING) == null) {
       extensionAPI.settings.set(TODAY_BADGE_OVERDUE_SETTING, false);
     }
     lastAttrNames = resolveAttributeNames();
@@ -6686,7 +6698,7 @@ export default {
     }
 
     function normalizeTodayWidgetEnabled(raw) {
-      if (raw === undefined || raw === null) return true; // default on
+      if (raw === undefined || raw === null) return false; // default off (first install)
       if (raw === true || raw === "true" || raw === 1 || raw === "1") return true;
       if (raw === false || raw === "false" || raw === 0 || raw === "0") return false;
       const norm = typeof raw === "string" ? raw.trim().toLowerCase() : raw;
@@ -6728,6 +6740,13 @@ export default {
       console.info(settingId, value);
       const normalizedValue = normalizeTodaySettingValue(value);
       console.info(`[BetterTasks] Today setting changed: ${settingId} =`, normalizedValue);
+      if (settingId) {
+        try {
+          extensionAPI.settings.set(settingId, normalizedValue);
+        } catch (err) {
+          console.warn("[BetterTasks] failed to persist Today setting", settingId, err);
+        }
+      }
       // Force next render to bypass caches/snapshots when settings change.
       dashboardTaskCache?.clear?.();
       lastTodayWidgetSignature = null;
@@ -6753,6 +6772,13 @@ export default {
 
     async function handleTodayBadgeSettingChange(settingId = null, value = undefined) {
       const normalizedValue = normalizeTodaySettingValue(value);
+      if (settingId) {
+        try {
+          extensionAPI.settings.set(settingId, normalizedValue);
+        } catch (err) {
+          console.warn("[BetterTasks] failed to persist Today badge setting", settingId, err);
+        }
+      }
       if (settingId === TODAY_BADGE_ENABLE_SETTING) {
         rebuildSettingsPanel(getTodayWidgetEnabled(), currentLanguage, !!normalizedValue);
         if (!normalizedValue) {
@@ -6845,10 +6871,11 @@ export default {
     function getTodayWidgetIncludeOverdue() {
       const raw = getTodaySetting(TODAY_WIDGET_OVERDUE_SETTING);
       console.info(raw);
+      if (raw === undefined || raw === null) return false; // default off (first install)
       if (raw === false) return false;
-      const norm = typeof raw === "string" ? raw.trim().toLowerCase() : String(raw || "").toLowerCase();
+      const norm = typeof raw === "string" ? raw.trim().toLowerCase() : String(raw ?? "").toLowerCase();
       if (["false", "0", "off", "no"].includes(norm)) return false;
-      return true; // default on
+      return true;
     }
 
     function getTodayWidgetShowCompleted() {
