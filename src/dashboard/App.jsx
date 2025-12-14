@@ -584,6 +584,26 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
 
   const safeActions = Array.isArray(actions) ? actions : [];
 
+  const menuRoot = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const root = document.createElement("div");
+    root.className = "bt-task-menu-portal";
+    root.setAttribute("data-bt-portal", "task-menu");
+    root.style.position = "relative";
+    root.style.zIndex = "1000";
+    return root;
+  }, []);
+
+  useEffect(() => {
+    if (!menuRoot || typeof document === "undefined") return undefined;
+    if (!safeActions.length) return undefined;
+    const host = document.querySelector(".bt-dashboard-host") || document.body;
+    host.appendChild(menuRoot);
+    return () => {
+      menuRoot.remove();
+    };
+  }, [menuRoot, safeActions.length]);
+
   useLayoutEffect(() => {
     if (!open) return undefined;
     const menuEl = menuRef.current;
@@ -631,25 +651,6 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
   }, [open]);
 
   if (!safeActions.length) return null;
-
-  const menuRoot = useMemo(() => {
-    if (typeof document === "undefined") return null;
-    const root = document.createElement("div");
-    root.className = "bt-task-menu-portal";
-    root.setAttribute("data-bt-portal", "task-menu");
-    root.style.position = "relative";
-    root.style.zIndex = "1000";
-    return root;
-  }, []);
-
-  useEffect(() => {
-    if (!menuRoot || typeof document === "undefined") return undefined;
-    const host = document.querySelector(".bt-dashboard-host") || document.body;
-    host.appendChild(menuRoot);
-    return () => {
-      menuRoot.remove();
-    };
-  }, [menuRoot]);
 
   const menu = open && menuRoot
     ? createPortal(
