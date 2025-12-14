@@ -152,6 +152,56 @@ let lastThemeSample = null;
 let roamStudioToggleObserver = null;
 let btPendingRoamStudioTheme = false;
 const ReactDOMGlobal = typeof window !== "undefined" ? window.ReactDOM || null : null;
+const ReactGlobal = typeof window !== "undefined" ? window.React || null : null;
+
+class DashboardErrorBoundary extends (ReactGlobal?.Component || class {}) {
+  constructor(props) {
+    super(props);
+    this.state = { error: null, info: null };
+  }
+  componentDidCatch(error, info) {
+    try {
+      // info.componentStack is the most useful thing to identify which component is looping/crashing.
+      console.error("[BetterTasks] Dashboard render crashed", error);
+      if (info?.componentStack) console.error("[BetterTasks] Dashboard component stack:", info.componentStack);
+    } finally {
+      this.setState({ error, info });
+    }
+  }
+  render() {
+    if (this.state?.error) {
+      return (
+        <div className="bt-dashboard bt-dashboard--error">
+          <header className="bt-dashboard__header">
+            <div>
+              <h2>Better Tasks</h2>
+              <p>Dashboard failed to render. Check console for details.</p>
+            </div>
+            <div className="bt-dashboard__header-actions">
+              <button type="button" className="bp3-button bp3-small" onClick={this.props?.onRequestClose}>
+                ✕
+              </button>
+            </div>
+          </header>
+        </div>
+      );
+    }
+    return this.props?.children || null;
+  }
+}
+
+function DashboardRoot({ controller, onRequestClose, onHeaderReady, language }) {
+  return (
+    <DashboardErrorBoundary onRequestClose={onRequestClose}>
+      <DashboardApp
+        controller={controller}
+        onRequestClose={onRequestClose}
+        onHeaderReady={onHeaderReady}
+        language={language}
+      />
+    </DashboardErrorBoundary>
+  );
+}
 
 const DOW_MAP = {
   sunday: "SU",
@@ -9050,7 +9100,7 @@ export default {
         }
         ensureContainer();
         root.render(
-          <DashboardApp
+          <DashboardRoot
             controller={controller}
             onRequestClose={close}
             onHeaderReady={registerDragHandle}
@@ -9070,7 +9120,7 @@ export default {
         if (!root) return;
         ensureContainer();
         root.render(
-          <DashboardApp
+          <DashboardRoot
             controller={controller}
             onRequestClose={close}
             onHeaderReady={registerDragHandle}
