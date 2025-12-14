@@ -6737,9 +6737,7 @@ export default {
     }
 
     async function handleTodaySettingChange(settingId = null, value = undefined) {
-      console.info(settingId, value);
       const normalizedValue = normalizeTodaySettingValue(value);
-      console.info(`[BetterTasks] Today setting changed: ${settingId} =`, normalizedValue);
       if (settingId) {
         try {
           extensionAPI.settings.set(settingId, normalizedValue);
@@ -6870,7 +6868,6 @@ export default {
 
     function getTodayWidgetIncludeOverdue() {
       const raw = getTodaySetting(TODAY_WIDGET_OVERDUE_SETTING);
-      console.info(raw);
       if (raw === undefined || raw === null) return false; // default off (first install)
       if (raw === false) return false;
       const norm = typeof raw === "string" ? raw.trim().toLowerCase() : String(raw ?? "").toLowerCase();
