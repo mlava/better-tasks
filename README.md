@@ -2,7 +2,7 @@
 
 Bring true task management to Roam Research!
 
-This extension automatically recognises and manages TODO items that match defined repeat patterns and/or date attributes, optionally generating the next instance when a repeating Better Task is completed. 
+Better Tasks automatically recognises and manages TODO items that match defined repeat patterns and/or date attributes, optionally generating the next instance when a repeating Better Task is completed. 
 
 **Note:** 
 Better Tasks is in active development. Please let me know of any bugs or unexpected behaviours in Slack  - https://app.slack.com/client/TNEAEL9QW/
