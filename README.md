@@ -35,9 +35,9 @@ https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
   - Step through a fixed sequence of saved review presets with Back/Next navigation.
   - Exit returns you to the exact dashboard state you were in before starting.
 - Completed within date range filter
-  - shows if filtered to Completed tasks only
+  - Available when filtering to Completed tasks only.
 - Project grouping in dashboard
-  - group tasks by project (with a “No Project” bucket)
+  - group tasks by project (with a “No Project” bucket).
 
 - Added unified pickers and in-memory indexes for Projects, Waiting-for, and Context across inline pills, dashboard menus, and the create/convert prompt; options refresh from your configured attributes and clean up when removed.
 - Added a 'Today Widget' - automatically place a block and children or block and React panel in today's DNP
