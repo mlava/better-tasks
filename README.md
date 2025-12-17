@@ -5,7 +5,7 @@ Bring true task management to Roam Research!
 This extension automatically recognises and manages TODO items that match defined repeat patterns and/or date attributes, optionally generating the next instance when a repeating Better Task is completed. 
 
 **Note:** 
-This extension is in active development and should be considered a beta release. Please let me know of any bugs or unexpected behaviours in Slack  - https://app.slack.com/client/TNEAEL9QW/
+This extension is in active development. Please let me know of any bugs or unexpected behaviours in Slack  - https://app.slack.com/client/TNEAEL9QW/
 
 This video provides a basic overview of some of the functionality of this extension.
 
@@ -32,7 +32,8 @@ https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
   - Preset Views (Seeded)
     - First install seeds a small set of GTD review presets when no views exist; a command can reinstall missing presets later (without overwriting user views).
 - Weekly Review (guided presets)
-  - Step through a fixed sequence of saved review presets with Back/Next navigation; Exit returns you to the exact dashboard state you were in before starting.
+  - Step through a fixed sequence of saved review presets with Back/Next navigation.
+  - Exit returns you to the exact dashboard state you were in before starting.
 - Completed within date range filter
   - shows if filtered to Completed tasks only
 - Project grouping in dashboard
