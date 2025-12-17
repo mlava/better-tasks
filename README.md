@@ -17,16 +17,16 @@ https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
 
 ## 📜 Changelog (recent highlights)
 
-Saved Dashboard Views
-- Save, switch, update, rename, and delete named dashboard views capturing filters, grouping, and search state.
-- Cross-Graph & Cross-Device Persistence
-  - Views are stored via Roam Depot extension settings and sync automatically across graphs and devices.
-- Dirty State Awareness
-  - The Update action is only enabled when the current dashboard state differs from the saved view.
-- Improved Dashboard Toolbar Layout
-  -Clean separation between header actions (Refresh / Close) and view controls for a more stable, predictable layout.
-- Command Palette Support
-  - Quickly save or switch dashboard views directly from the command palette.
+- Saved Dashboard Views
+  - Save, switch, update, rename, and delete named dashboard views capturing filters, grouping, and search state.
+  - Cross-Graph & Cross-Device Persistence
+    - Views are stored via Roam Depot extension settings and sync automatically across graphs and devices.
+  - Dirty State Awareness
+    - The Update action is only enabled when the current dashboard state differs from the saved view.
+  - Improved Dashboard Toolbar Layout
+    - Clean separation between header actions (Refresh / Close) and view controls for a more stable, predictable layout.
+  - Command Palette Support
+    - Quickly save or switch dashboard views directly from the command palette.
 
 - Added unified pickers and in-memory indexes for Projects, Waiting-for, and Context across inline pills, dashboard menus, and the create/convert prompt; options refresh from your configured attributes and clean up when removed.
 - Added a 'Today Widget' - automatically place a block and children or block and React panel in today's DNP
