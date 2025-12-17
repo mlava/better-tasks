@@ -83,6 +83,7 @@ export const i18n = {
     },
     commands: {
       reinstallPresetDashViews: "Better Tasks: Reinstall preset dashboard views",
+      startReview: "Better Tasks: Weekly Review",
     },
     prompts: {
       addProject: { title: "Add Project", message: "Enter a project", placeholder: "Project name" },
@@ -196,6 +197,8 @@ export const i18n = {
       dashViewsPresetNothingToInstall: "All preset dashboard views are already present.",
       dashViewsPresetNameCollisions: "Skipped presets due to name conflicts:",
       dashViewsPresetInstallFailed: "Unable to reinstall preset dashboard views.",
+      dashReviewNoPresets: "No review presets found.",
+      dashReviewStartFailed: "Unable to start weekly review.",
     },
     dashboard: {
       topbarTitle: "Better Tasks Dashboard",
@@ -204,6 +207,14 @@ export const i18n = {
       refresh: "Refresh",
       close: "Close",
       groupByLabel: "Group by",
+      review: {
+        button: "Weekly Review",
+        label: "Weekly Review",
+        of: "of",
+        back: "← Back",
+        next: "Next →",
+        exit: "Exit",
+      },
       views: {
         label: "Saved Views",
         default: "Default",
@@ -481,6 +492,7 @@ export const i18n = {
     },
     commands: {
       reinstallPresetDashViews: "Better Tasks：重新安装仪表板预设视图",
+      startReview: "Better Tasks：每周复盘",
     },
     prompts: {
       addProject: { title: "添加项目", message: "输入项目名称", placeholder: "项目名称" },
@@ -594,6 +606,8 @@ export const i18n = {
       dashViewsPresetNothingToInstall: "所有仪表板预设视图均已存在。",
       dashViewsPresetNameCollisions: "由于名称冲突而跳过预设：",
       dashViewsPresetInstallFailed: "无法重新安装仪表板预设视图。",
+      dashReviewNoPresets: "未找到复盘预设。",
+      dashReviewStartFailed: "无法开始每周复盘。",
     },
     dashboard: {
       topbarTitle: "Better Tasks Dashboard",
@@ -602,6 +616,14 @@ export const i18n = {
       refresh: "刷新",
       close: "关闭",
       groupByLabel: "分组依据",
+      review: {
+        button: "每周复盘",
+        label: "每周复盘",
+        of: "共",
+        back: "← 上一步",
+        next: "下一步 →",
+        exit: "退出",
+      },
       views: {
         label: "已保存视图",
         default: "默认",
@@ -879,6 +901,7 @@ export const i18n = {
     },
     commands: {
       reinstallPresetDashViews: "Better Tasks：重新安裝儀表板預設檢視",
+      startReview: "Better Tasks：每週複盤",
     },
     prompts: {
       addProject: { title: "新增專案", message: "輸入專案名稱", placeholder: "專案名稱" },
@@ -992,6 +1015,8 @@ export const i18n = {
       dashViewsPresetNothingToInstall: "所有儀表板預設檢視均已存在。",
       dashViewsPresetNameCollisions: "因名稱衝突而略過預設：",
       dashViewsPresetInstallFailed: "無法重新安裝儀表板預設檢視。",
+      dashReviewNoPresets: "未找到複盤預設。",
+      dashReviewStartFailed: "無法開始每週複盤。",
     },
     dashboard: {
       topbarTitle: "Better Tasks Dashboard",
@@ -1000,6 +1025,14 @@ export const i18n = {
       refresh: "重新整理",
       close: "關閉",
       groupByLabel: "分組依據",
+      review: {
+        button: "每週複盤",
+        label: "每週複盤",
+        of: "共",
+        back: "← 上一步",
+        next: "下一步 →",
+        exit: "退出",
+      },
       views: {
         label: "已儲存檢視",
         default: "預設",

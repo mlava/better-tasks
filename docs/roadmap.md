@@ -1,4 +1,4 @@
-# 🌀 Better Tasks — Roadmap (Refreshed Post-Ship)
+# 🌀 Better Tasks — Roadmap (Updated)
 
 ## 🎯 Current Status
 
@@ -10,159 +10,34 @@ Recently shipped:
 - Dirty-state awareness with safe Update semantics
 - Clean dashboard toolbar layout
 - Command palette integration for views
-- Seeded dashboard presets (first install) + reinstall command (add-missing only)
+- Seeded dashboard review presets (first install + add-missing command)
+- Weekly Review (guided review flow over presets)
 - Project grouping mode in the dashboard
-- Completed-only “Completed within” range filter
+- Completed-only “Completed within” date range filter
+- Full locale support across dashboard, pills, tooltips, and settings UI
 
-Remaining work focuses on **intentional expansion**, not core stability.
-
----
-
-## ✅ Phases 1–3 — Core Engine & Foundations (Completed)
-
-- Canonical task storage
-- Recurring and scheduled tasks
-- Start vs Defer semantics
-- User-configurable attribute names
-- Inline pills with full parity
-- Slash commands & Better Tasks menu
-- Spawn confirmation
-- Theme-safe inline UI
+Remaining work focuses on **review workflows, advanced automation, and power-user features** — not core correctness.
 
 ---
 
-## ✅ Phase 4 — Dashboard & UI Enhancements (Completed)
+## 🌍 Phase 9 — Internationalisation (Completed for UI)
 
-### 4.1 Dashboard Core
-- React dashboard
-- Filters, grouping, snooze & complete
-- Draggable, position-persisted panel
-- Live sync with inline pills
+**Completed:**
+- Locale-aware Roam Depot settings UI
+- Dynamic settings panel refresh on language change
+- Locale-aware inline pills and tooltips
+- Locale-aware dashboard UI, filters, and presets
+- Locale-aware date formatting and first-day-of-week handling
 
-### 4.2 Performance & Watches
-- Cached dashboard + Today widget
-- Throttled renders
-- Watch cleanup on close
-- Stable pill rendering
+**Explicitly out of scope (for now):**
+- Natural-language recurrence parsing across locales
 
-### 4.3 Attribute Expansion
-- Waiting-for
-- Project
-- Context
-- Priority
-- Energy
-
-### 4.4 Theme & Polish
-- Adaptive theming
-- Priority visual distinction
-- Stable layout across filter states
-
-### 4.5 Dashboard UX (Completed)
-- Saved views (filters + grouping + search)
-- Save-as / Update / Rename / Delete
-- Dirty-state awareness
-- Clean toolbar layout
-- Command palette support
-- Cross-graph & cross-device persistence
-- Preset views seed + reinstall command
-- Project grouping
-- Completed-only “Completed within” filter
+> NLP-based recurrence input is treated as a future AI feature, not an i18n gap.
 
 ---
 
-## ✅ Phase 5 — Cleanup & Reliability (Completed)
+## 🔮 Future Enhancements (Selected)
 
-- Internal refactors
-- Reduced unnecessary pulls
-- Improved subscription hygiene
-- Console-clean operation
-
----
-
-## ✅ Phase 6 — GTD Attribute Model (Completed)
-
-- Next Action
-- Waiting-For
-- Delegated
-- Deferred
-- Someday / Maybe
-- Full dashboard + inline parity
-
----
-
-## 🔜 Phase 6.5 — GTD Review UX (Planned)
-
-- Guided Weekly Review flow
-- Review modes / guided presets (beyond the seeded dashboard presets):
-  - Projects Review
-  - Waiting-For Review
-  - Someday Refresh
-  - Full Weekly Review (unguided)
-- Contextual actions during review
-
----
-
-## ✅ Phase 7 — Today Widget (Completed)
-
-- Inline + panel Today widgets
-- Unified “today” logic
-- Optional overdue inclusion
-- Sidebar badge integration
-
----
-
-## ✅ Phase 8 — AI Enhancements
-
-### 8.1 Task Parsing (Completed)
-- User-supplied OpenAI API key
-- Strict JSON → attribute mapping
-- Safe, explicit writes
-
-### 8.2 Planning & Capture (Planned)
-- Help Me Plan
-- Clipboard task parsing
-- Bulk natural-language capture
-
----
-
-## 🌍 Phase 9 — Internationalisation (In Progress)
-
-- Core i18n framework complete
-- Languages:
-  - English
-  - Chinese (Simplified)
-  - Chinese (Traditional)
-- Remaining:
-  - Locale beta polish
-  - Faster language switching
-  - Locale-aware date & weekday formatting
-
----
-
-## 🔮 Phase 10 — Advanced & Power-User Features (Future)
-
-- Task dependencies (blocked-by / blocks)
-- Blocked/available visual treatment
-- Optional hide-blocked filter
-- Task & series history
-- AI-assisted weekly review
-- Kanban & Timeline views
-- Inbox capture
-- Week-ahead mode
-- Stats & lightweight analytics
-- Shared-graph-safe mode
-- Optional Roam Local Launcher integration
-
----
-
-## 🧭 Near-Term Focus
-
-**Now**
-- i18n polish & beta feedback
-
-**Next**
-- GTD Weekly Review UX
-
-**Later**
-- Dependencies (MVP)
-- AI planning & capture expansions
+- Task dependencies
+- AI-assisted planning and capture
+- Optional NLP-based recurrence input (AI-assisted, opt-in)

@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import iziToast from "izitoast";
 import { useVirtualizer, measureElement } from "@tanstack/react-virtual";
 import { i18n as I18N_MAP } from "../i18n";
 import {
@@ -1133,6 +1134,12 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const [query, setQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState({});
   const [viewsStore, setViewsStore] = useState(() => ({ schema: 1, activeViewId: null, views: [] }));
+  const [viewsLoaded, setViewsLoaded] = useState(false);
+  const [reviewStartRequested, setReviewStartRequested] = useState(false);
+  const [reviewState, setReviewState] = useState(() => ({ active: false, index: 0 }));
+  const preReviewActiveViewIdRef = useRef(null);
+  // NOTE: We only store activeViewId here.
+  // If null, exiting review relies on existing Default → lastDefaultState restore logic.
   const [projectOptions, setProjectOptions] = useState(() =>
     controller?.getProjectOptions?.() || []
   );
@@ -1170,6 +1177,17 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     if (!id) return null;
     return (viewsStore?.views || []).find((v) => v.id === id) || null;
   }, [viewsStore]);
+  const effectiveReviewIds = useMemo(() => {
+    const ids = Array.isArray(DASHBOARD_PRESET_IDS) ? DASHBOARD_PRESET_IDS : [];
+    const existing = new Set((viewsStore?.views || []).map((v) => v.id));
+    return ids.filter((id) => existing.has(id));
+  }, [viewsStore]);
+  const activeReviewView = useMemo(() => {
+    if (!reviewState.active) return null;
+    const id = effectiveReviewIds[reviewState.index] || null;
+    if (!id) return null;
+    return (viewsStore?.views || []).find((v) => v.id === id) || null;
+  }, [reviewState.active, reviewState.index, effectiveReviewIds, viewsStore]);
   const lang = I18N_MAP[language] ? language : "en";
   const tt = useCallback(
     (path, fallback) => {
@@ -1318,6 +1336,13 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       completedWithin7d: tt(["dashboard", "completedWithinOptions", "7d"], "Last 7 days"),
       completedWithin30d: tt(["dashboard", "completedWithinOptions", "30d"], "Last 30 days"),
       completedWithin90d: tt(["dashboard", "completedWithinOptions", "90d"], "Last 90 days"),
+      reviewButton: tt(["dashboard", "review", "button"], "Weekly Review"),
+      reviewLabel: tt(["dashboard", "review", "label"], "Weekly Review"),
+      reviewOf: tt(["dashboard", "review", "of"], "of"),
+      reviewBack: tt(["dashboard", "review", "back"], "← Back"),
+      reviewNext: tt(["dashboard", "review", "next"], "Next →"),
+      reviewExit: tt(["dashboard", "review", "exit"], "Exit"),
+      reviewNoPresetsToast: tt(["toasts", "dashReviewNoPresets"], "No review presets found."),
       groupingOptions,
       groupLabels,
       metaLabels,
@@ -1406,6 +1431,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     if (!controller?.loadViewsStore) return;
     const store = controller.loadViewsStore();
     setViewsStore(store);
+    setViewsLoaded(true);
   }, [controller]);
 
   useEffect(() => {
@@ -1413,10 +1439,12 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     const unsub = controller.subscribeDashViewsStore((nextStore) => {
       if (nextStore && typeof nextStore === "object") {
         setViewsStore(nextStore);
+        setViewsLoaded(true);
         return;
       }
       const store = controller.loadViewsStore();
       setViewsStore(store);
+      setViewsLoaded(true);
     });
     return unsub;
   }, [controller]);
@@ -1431,6 +1459,21 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     });
     return unsub;
   }, [controller]);
+
+  useEffect(() => {
+    if (!controller?.subscribeDashReviewRequests) return undefined;
+    const unsub = controller.subscribeDashReviewRequests((req) => {
+      if (req?.type === "start") setReviewStartRequested(true);
+    });
+    return unsub;
+  }, [controller]);
+
+  useEffect(() => {
+    if (!reviewStartRequested) return;
+    if (!viewsLoaded) return;
+    setReviewStartRequested(false);
+    startReview();
+  }, [reviewStartRequested, viewsLoaded, startReview]);
 
   useEffect(() => {
     controller?.reportDashViewState?.({ filters, grouping, query });
@@ -1559,16 +1602,24 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     [filters, grouping, query]
   );
 
-  const persistDefaultState = useCallback(
-    (dashState) => {
-      if (!controller?.saveViewsStore) return;
-      const latest = controller?.loadViewsStore ? controller.loadViewsStore() : viewsStore;
-      const next = setLastDefaultState(latest, dashState);
-      const saved = controller.saveViewsStore(next);
-      setViewsStore(saved);
-      controller?.notifyDashViewsStoreChanged?.(saved);
+  const notifyToast = useCallback(
+    (message) => {
+      if (!message) return;
+      try {
+        iziToast.show({
+          theme: "light",
+          color: "black",
+          class: "betterTasks bt-toast-strong-icon",
+          position: "center",
+          message: String(message),
+          timeout: 2400,
+          close: true,
+        });
+      } catch (_) {
+        // best effort
+      }
     },
-    [controller, viewsStore]
+    []
   );
 
   const persistViewsStore = useCallback(
@@ -1585,6 +1636,18 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     [controller]
   );
 
+  const persistDefaultState = useCallback(
+    (dashState) => {
+      if (!controller?.saveViewsStore) return;
+      const latest = controller?.loadViewsStore ? controller.loadViewsStore() : viewsStore;
+      const next = setLastDefaultState(latest, dashState);
+      const saved = controller.saveViewsStore(next);
+      setViewsStore(saved);
+      controller?.notifyDashViewsStoreChanged?.(saved);
+    },
+    [controller, viewsStore]
+  );
+
   const applyDashViewState = useCallback((state) => {
     if (!state || typeof state !== "object") return;
     dispatchFilters({ type: "hydrate", value: state.filters });
@@ -1592,25 +1655,87 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     setQuery(typeof state.query === "string" ? state.query : "");
   }, []);
 
-  const handleViewSelectChange = useCallback(
-    (e) => {
-      const id = e?.target?.value || null;
-      if (!id) {
-        const storeNow = controller?.loadViewsStore ? controller.loadViewsStore() : viewsStore;
-        const savedStore = persistViewsStore(setActiveView(storeNow, null));
-        const defaultState = savedStore?.lastDefaultState || storeNow?.lastDefaultState || null;
-        if (defaultState) applyDashViewState(defaultState);
-        return;
-      }
+  const applyDefaultView = useCallback(() => {
+    const storeNow = controller?.loadViewsStore ? controller.loadViewsStore() : viewsStore;
+    const savedStore = persistViewsStore(setActiveView(storeNow, null));
+    const defaultState = savedStore?.lastDefaultState || storeNow?.lastDefaultState || null;
+    if (defaultState) applyDashViewState(defaultState);
+  }, [controller, viewsStore, persistViewsStore, applyDashViewState]);
+
+  const applySavedViewById = useCallback(
+    (id) => {
+      const view = (viewsStore?.views || []).find((v) => v.id === id);
+      if (!view) return false;
       if (!viewsStore?.activeViewId) {
         persistDefaultState(getDashViewState());
       }
-      const view = (viewsStore?.views || []).find((v) => v.id === id);
-      if (!view) return;
       applyDashViewState(view.state);
       persistViewsStore(setActiveView(viewsStore, id));
+      return true;
     },
-    [viewsStore, persistViewsStore, applyDashViewState, controller, persistDefaultState, getDashViewState]
+    [viewsStore, persistDefaultState, getDashViewState, applyDashViewState, persistViewsStore]
+  );
+
+  const startReview = useCallback(() => {
+    if (!effectiveReviewIds.length) {
+      notifyToast(ui.reviewNoPresetsToast);
+      return;
+    }
+    preReviewActiveViewIdRef.current = viewsStore?.activeViewId || null;
+    setReviewState({ active: true, index: 0 });
+    applySavedViewById(effectiveReviewIds[0]);
+  }, [
+    effectiveReviewIds,
+    notifyToast,
+    ui.reviewNoPresetsToast,
+    viewsStore?.activeViewId,
+    applySavedViewById,
+  ]);
+
+  const exitReview = useCallback(() => {
+    const priorId = preReviewActiveViewIdRef.current;
+    preReviewActiveViewIdRef.current = null;
+    setReviewState({ active: false, index: 0 });
+    if (priorId) {
+      applySavedViewById(priorId);
+      return;
+    }
+    applyDefaultView();
+  }, [applyDefaultView, applySavedViewById]);
+
+  const goReviewNext = useCallback(() => {
+    if (!reviewState.active) return;
+    const max = effectiveReviewIds.length - 1;
+    if (reviewState.index >= max) return;
+    const nextIndex = reviewState.index + 1;
+    setReviewState((prev) => ({ ...prev, index: nextIndex }));
+    const id = effectiveReviewIds[nextIndex];
+    if (id) applySavedViewById(id);
+  }, [reviewState.active, reviewState.index, effectiveReviewIds, applySavedViewById]);
+
+  const goReviewBack = useCallback(() => {
+    if (!reviewState.active) return;
+    if (reviewState.index <= 0) return;
+    const nextIndex = reviewState.index - 1;
+    setReviewState((prev) => ({ ...prev, index: nextIndex }));
+    const id = effectiveReviewIds[nextIndex];
+    if (id) applySavedViewById(id);
+  }, [reviewState.active, reviewState.index, effectiveReviewIds, applySavedViewById]);
+
+  const handleViewSelectChange = useCallback(
+    (e) => {
+      if (reviewState.active) {
+        setReviewState({ active: false, index: 0 });
+        preReviewActiveViewIdRef.current = null;
+      }
+      const id = e?.target?.value || null;
+      if (!id) {
+        applyDefaultView();
+        return;
+      }
+      applySavedViewById(id);
+    },
+    [reviewState.active, applyDefaultView, applySavedViewById]
   );
 
   const handleSaveViewAs = useCallback(async () => {
@@ -1709,10 +1834,10 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
         </div>
       </header>
 
-      <div className="bt-dashboard__toolbar">
-        <div className="bt-toolbar__left">
-          <span className="bt-filter-row__label">{ui.savedViewsLabel}</span>
-          <div className="bp3-select bp3-small bt-views-select">
+	      <div className="bt-dashboard__toolbar">
+	        <div className="bt-toolbar__left">
+	          <span className="bt-filter-row__label">{ui.savedViewsLabel}</span>
+	          <div className="bp3-select bp3-small bt-views-select">
             <select
               value={viewsStore?.activeViewId || ""}
               onChange={handleViewSelectChange}
@@ -1737,13 +1862,25 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           >
             {ui.viewsUpdate}
           </button>
-          <SimpleActionsMenu
-            actions={viewMenuActions}
-            title={ui.viewsOptions}
-            disabled={!activeView}
-          />
-        </div>
-      </div>
+	          <SimpleActionsMenu
+	            actions={viewMenuActions}
+	            title={ui.viewsOptions}
+	            disabled={!activeView}
+	          />
+	        </div>
+	        <div className="bt-toolbar__right">
+	          <button
+	            type="button"
+	            className={`bp3-button bp3-small bt-weekly-review-button${
+	              reviewState.active ? " bt-weekly-review-button--inactive" : ""
+	            }`}
+	            onClick={startReview}
+	            disabled={reviewState.active || !effectiveReviewIds.length}
+	          >
+	            {ui.reviewButton}
+	          </button>
+	        </div>
+	      </div>
 
       <div className="bt-dashboard__quick-add">
         <div className="bt-quick-add">
@@ -1913,6 +2050,41 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                 ) : null}
               </div>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+	      {reviewState.active ? (
+	        <div className="bt-dashboard__reviewbar">
+	          <div className="bt-reviewbar__left">
+	            <span className="bt-reviewbar__title">
+	              {ui.reviewLabel} · {Math.min(reviewState.index + 1, effectiveReviewIds.length)} {ui.reviewOf}{" "}
+	              {effectiveReviewIds.length}
+	            </span>
+	            {activeReviewView?.name ? (
+	              <span className="bt-reviewbar__current">{activeReviewView.name}</span>
+	            ) : null}
+          </div>
+          <div className="bt-reviewbar__right">
+            <button
+              type="button"
+              className="bp3-button bp3-small"
+              onClick={goReviewBack}
+              disabled={reviewState.index <= 0}
+            >
+              {ui.reviewBack}
+            </button>
+            <button
+              type="button"
+              className="bp3-button bp3-small"
+              onClick={goReviewNext}
+              disabled={reviewState.index >= effectiveReviewIds.length - 1}
+            >
+              {ui.reviewNext}
+            </button>
+            <button type="button" className="bp3-button bp3-small" onClick={exitReview}>
+              {ui.reviewExit}
+            </button>
           </div>
         </div>
       ) : null}

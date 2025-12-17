@@ -31,6 +31,8 @@ https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
     - Quickly save or switch dashboard views directly from the command palette.
   - Preset Views (Seeded)
     - First install seeds a small set of GTD review presets when no views exist; a command can reinstall missing presets later (without overwriting user views).
+- Weekly Review (guided presets)
+  - Step through a fixed sequence of saved review presets with Back/Next navigation; Exit returns you to the exact dashboard state you were in before starting.
 - Completed within date range filter
   - shows if filtered to Completed tasks only
 - Project grouping in dashboard
@@ -394,6 +396,31 @@ https://www.loom.com/share/f8856114bfd14d40a228292e7bcff9ee
 1. Draft the task and then run **Convert TODO to Better Task** (or simply **Create a Better Task** if you’re starting fresh). The toast lets you enter the title, optional repeat rule, and optional start/defer/due dates; it stores the canonical data in child blocks and shows the inline pill.
 2. Mark it done — for repeating Better Tasks, the extension automatically creates the next task on its start date (or due date if no start is provided) so it appears on the right Daily Note or page.
 3. If you snooze or skip via the pill menu, the defer/due child blocks update and the pill reflects the new dates immediately.
+
+---
+
+## 🌍 Internationalisation (i18n)
+
+Better Tasks is fully locale-aware across the UI:
+
+- Roam Depot settings panel (all labels and options)
+- Dynamic settings refresh on language change
+- Inline pills and tooltips
+- Dashboard UI, filters, saved views, and review presets
+- Locale-aware date formatting and first-day-of-week handling
+
+### Note on Natural Language Parsing (NLP)
+
+Natural-language parsing for recurrence patterns (e.g. “every second Tuesday”, “fortnightly”, or non-English equivalents) is **explicitly out of scope** for the current i18n implementation.
+
+This is recognised as a **future AI/NLP enhancement**, rather than a missing localisation feature. The current recurrence system prioritises correctness, transparency, and explicit user intent over heuristic parsing.
+
+Currently supported languages are:
+- English (en)
+- Simplified Chinese (zh)
+- Traditional Chinese (zhHant)
+
+We welcome contributions from users who wish to add other languages.
 
 ---
 

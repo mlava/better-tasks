@@ -706,6 +706,20 @@ export default {
       },
     });
     extensionAPI.ui.commandPalette.addCommand({
+      label: t(["commands", "startReview"], getLanguageSetting()) || "Better Tasks: Weekly Review",
+      callback: async () => {
+        try {
+          if (!activeDashboardController?.isOpen?.()) {
+            activeDashboardController?.open?.();
+          }
+          activeDashboardController?.requestStartDashReview?.();
+        } catch (err) {
+          console.warn("[BetterTasks] start review command failed", err);
+          toast(t(["toasts", "dashReviewStartFailed"], getLanguageSetting()) || "Unable to start review.");
+        }
+      },
+    });
+    extensionAPI.ui.commandPalette.addCommand({
       label:
         t(["commands", "reinstallPresetDashViews"], getLanguageSetting()) ||
         "Better Tasks: Reinstall preset dashboard views",
@@ -9230,6 +9244,8 @@ export default {
       const subscribers = new Set();
       const dashViewRequestSubscribers = new Set();
       const dashViewsStoreSubscribers = new Set();
+      const dashReviewRequestSubscribers = new Set();
+      let dashReviewStartPending = false;
       let lastDashViewState = null;
       let container = null;
       let root = null;
@@ -9291,6 +9307,8 @@ export default {
         notifyDashViewsStoreChanged,
         reportDashViewState,
         getDashViewState,
+        subscribeDashReviewRequests,
+        requestStartDashReview,
         dispose,
       };
       // Ensure prompt helpers are always present for dashboard consumers.
@@ -9358,6 +9376,32 @@ export default {
 
       function getDashViewState() {
         return lastDashViewState ? clonePlain(lastDashViewState) : null;
+      }
+
+      function subscribeDashReviewRequests(listener) {
+        if (typeof listener === "function") {
+          dashReviewRequestSubscribers.add(listener);
+          if (dashReviewStartPending) {
+            dashReviewStartPending = false;
+            try {
+              listener({ type: "start" });
+            } catch (err) {
+              console.warn("[BetterTasks] dashboard review request subscriber failed", err);
+            }
+          }
+        }
+        return () => dashReviewRequestSubscribers.delete(listener);
+      }
+
+      function requestStartDashReview() {
+        dashReviewStartPending = true;
+        dashReviewRequestSubscribers.forEach((listener) => {
+          try {
+            listener({ type: "start" });
+          } catch (err) {
+            console.warn("[BetterTasks] dashboard review request subscriber failed", err);
+          }
+        });
       }
 
       function getTaskMetadata(uid) {
