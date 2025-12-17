@@ -5,9 +5,9 @@ Bring true task management to Roam Research!
 This extension automatically recognises and manages TODO items that match defined repeat patterns and/or date attributes, optionally generating the next instance when a repeating Better Task is completed. 
 
 **Note:** 
-This extension is in active development. Please let me know of any bugs or unexpected behaviours in Slack  - https://app.slack.com/client/TNEAEL9QW/
+Better Tasks is in active development. Please let me know of any bugs or unexpected behaviours in Slack  - https://app.slack.com/client/TNEAEL9QW/
 
-This video provides a basic overview of some of the functionality of this extension.
+This video provides an overview of some of the extension's functionality, although many features have been added since it was recorded (see the Changelog below)!
 
 <p align="center">
 https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
@@ -18,7 +18,7 @@ https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
 ## 📜 Changelog (recent highlights)
 
 - Saved Dashboard Views
-  - Save, switch, update, rename, and delete named dashboard views capturing filters, grouping, and search state.
+  - Save, switch, update, rename, and delete named dashboard views, capturing filters, grouping, and search state.
   - Cross-Graph & Cross-Device Persistence
     - Views are stored via Roam Depot extension settings and sync automatically across graphs and devices.
   - Default (Unsaved) State
