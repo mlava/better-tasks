@@ -1,155 +1,187 @@
-# 🌀 Better Tasks — Roadmap (Updated Dec 2025)
+# 🌀 Better Tasks — Canonical Roadmap (Dec 2025)
 
-## Near-Term Focus (Ranked)
+## 🎯 Executive Summary
 
-1. **Phase 7 — GTD Layer (Remaining Work)**
-   - Weekly Review flow (guided dashboard mode + command)
-   - GTD dashboard modes / presets
+Better Tasks is now **feature-complete for a v1+ product**.
 
-2. **Phase 4.5 — Dashboard UX**
-   - Project/Waiting/Context pickers (Completed)
-   - Saved views / named perspectives
-   - Quick switching between perspectives
+Completed highlights:
+- GTD attribute model
+- Today widget
+- AI task parsing (Phase 8.1)
+- Project support enhancements
+- Sidebar badge
 
-3. **Phase 10 — i18n Launch**
-   - Stabilise en/zh/zh-Hant
-   - Settings-language hot-switch polish
-   - Locale-aware date & weekday formatting
-
-4. **Phase 11 — Dependencies (MVP)**
-   - Blocked-by attribute
-   - Blocked/available visual treatment
-   - Optional hide-blocked filter
+Remaining work focuses on **UX polish, performance hardening, and advanced/power-user features**.
 
 ---
 
-# Phase 1 — Core Engine (Completed)
-- TODO parsing (repeat/start/defer/due)
+## ✅ Phases 1–3 — Core Engine & Foundations (Completed)
+
+### Phase 1 — Core Engine
+- TODO parsing (repeat / start / defer / due)
 - Recurrence engine
 - Next-task spawning
 - Inline pills, hovercards, date pickers
-- Configurable attribute names
+- User-configurable attribute names
 
-# Phase 2 — Stability, Correctness, Performance (Completed)
-- Canonical storage
+### Phase 2 — Stability, Correctness & Performance
+- Canonical task storage
 - Recurrence refactor
 - Optimised observers & caches
-- Settings: FDOW, destination, DNP heading
+- Settings: first-day-of-week, destination, DNP heading
 
-# Phase 3 — UI/UX Foundations (Completed)
+### Phase 3 — UI/UX Foundations
 - Inline pill parity
-- Slash commands & BT menu
+- Slash commands & Better Tasks menu
 - Improved click behaviours
 - Spawn confirmation
 - GTD pill slots
 
 ---
 
-# Phase 4 — Dashboard & UI Enhancements
+## ✅ Phase 4 — Dashboard & UI Enhancements
 
-## 4.1 Dashboard Core (Completed)
+### 4.1 Dashboard Core — Completed
 - React dashboard
-- Filters, grouping, snooze, complete
-- Draggable/persisted position
+- Filters, grouping, snooze & complete
+- Draggable & position-persisted
 - Attribute quick-edit
-- Live sync
+- Live sync with inline pills
 
-## 4.2 Performance & Watches (Completed)
+### 4.2 Performance & Watches — Completed
 - Today widget + dashboard caching
-- 1.2s minimum rerender interval
+- Minimum re-render interval
 - Watch cleanup on dashboard close
 - Pill stability (signature cache, throttles)
 
-## 4.3 Attribute Expansion (Completed)
+### 4.3 Attribute Expansion — Completed
 - Waiting-for
 - Project
 - Context
 - Priority
 - Energy
 
-## 4.4 Theme & Polish (In Progress)
+### 4.4 Theme & Polish — In Progress
 - Priority styling across themes
-- Theme refinement
+- Adaptive theme refinement
 
-## 4.5 Dashboard UX
-- Project search list (from BT_attrProject values) — In Progress
-- Saved views — Planned
-- Quick switching — Planned
+### 4.5 Dashboard UX — Partially Complete
+- Project search list (from BT_attrProject values) — Completed
+- Saved views / named perspectives — Planned
+- Quick switching between perspectives — Planned
 
 ---
 
-# Phase 5 — Cleanup & Reliability (Completed)
+## ✅ Phase 5 — Cleanup & Reliability (Completed)
+
 - Remove unused code
-- Improve type discipline
+- Improve internal type discipline
+- Internal refactors and cleanup
 
 ---
 
-# Phase 6 — AI Enhancements
+## ✅ Phase 6 — GTD Attribute Model (Completed)
 
-## 6.1 Task Parsing (Completed)
-- OpenAI key support
-- Strict JSON parser
-
-## 6.2 Parsing Phase 2 (Planned)
-- Help Me Plan
-- Clipboard Events
-
----
-
-# Phase 7 — GTD Layer (Mostly Completed)
-- Completed:
-  - Next Action
-  - Delegated
-  - Deferred
-  - Someday
-- Remaining:
-  - Weekly Review flow
-  - GTD dashboard modes
+- Next Action
+- Waiting-For (person/external factor)
+- Delegated
+- Deferred
+- Someday / Maybe
+- Dashboard & inline parity
 
 ---
 
-# Phase 8 — Today Widget (Completed)
+## 🔜 Phase 6.5 — GTD Review UX (Planned)
+
+- Guided Weekly Review flow
+- GTD dashboard modes / presets:
+  - Projects Review
+  - Waiting-For Review
+  - Stalled Projects
+  - Someday Refresh
+  - Full Weekly Review (unguided)
+
+---
+
+## ✅ Phase 7 — Today Widget (Completed)
+
 - Panel + Roam-inline widgets
-- Unified "today" logic
+- Unified “today” logic
+- Tasks starting today / deferred to today / due today
+- Optional overdue inclusion
 - Snooze parity
 - Cached, throttled, synced
-- In beta testing
+- Integrated with sidebar badge
 
 ---
 
-# Phase 9 — Sidebar Badge (Completed)
+## ✅ Phase 8 — AI Enhancements
+
+### 8.1 Task Parsing — Completed
+- User-supplied OpenAI API key
+- Strict JSON → attribute mapping
+
+### 8.2 AI Planning & Capture — Planned
+- Help Me Plan
+- Clipboard event parsing
+- Bulk natural-language capture
+
+---
+
+## ✅ Phase 9 — Project & Sidebar Enhancements (Completed)
+
+### Project Support
+- Project attribute support
+- Dashboard & inline pills
+- Searchable project picker
+- Project names derived from BT_attrProject usage
+
+### Sidebar Badge
 - Theme-aware badge
-- Today-only or Today+Overdue modes
-- Shares logic with Today widget
+- Today-only or Today + Overdue modes
 
 ---
 
-# Phase 10 — Internationalisation
+## 🌍 Phase 10 — Internationalisation
 
-## 10.1 Core Framework (Completed)
-- All strings abstracted for translation
+### 10.1 Core Framework — Completed
+- All strings abstracted
 
-## 10.2 Initial Languages (Completed)
+### 10.2 Initial Languages — Completed
 - English
 - Chinese (Simplified)
 - Chinese (Traditional)
 
-## 10.3 Launch Strategy (In Progress)
-- Closed beta for zh locales
-- Settings toggle improvements
+### 10.3 Launch Polish — In Progress
+- Locale beta testing
+- Language-switch UX polish
 
-## 10.4 Future Enhancements (Planned)
+### 10.4 Future Enhancements — Planned
 - Faster hot-switching
-- Locale-aware dates
+- Locale-aware dates & weekdays
 
 ---
 
-# Phase 11 — Future Enhancements (Planned)
-- Dependencies (blocked-by)
-- Task history
-- AI weekly review
+## 🔮 Phase 11 — Advanced & Power-User Features (Planned)
+
+- Task dependencies (blocked-by / blocks)
+- Blocked/available visual treatment
+- Optional hide-blocked filter
+- Task history & series history
+- AI-assisted weekly review
 - Kanban view
 - Timeline view
 - Inbox capture
 - Week-ahead mode
+- Stats & analytics
 - Shared-graph-safe features
+- Optional Roam Local Launcher integration
+
+---
+
+## 🧭 Near-Term Focus
+
+1. Dashboard UX polish (saved views, fast switching)
+2. GTD Weekly Review UX
+3. i18n launch polish
+4. Dependencies (MVP)
