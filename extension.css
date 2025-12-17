@@ -557,6 +557,50 @@ body.bt-theme-dark .bt-task-menu__trigger {
     border-bottom: 1px solid var(--bt-border);
 }
 
+.bt-dashboard__toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--bt-border);
+}
+
+.bt-toolbar__left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.bt-dashboard__toolbar .bt-filter-row__label {
+    width: auto;
+}
+
+.bt-views-select {
+    min-width: 160px;
+}
+
+.bt-dashboard__toolbar .bp3-button {
+    min-height: 24px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--bt-panel-bg);
+    color: var(--bt-panel-text);
+    border: 1px solid var(--bt-border, var(--bt-border));
+    box-shadow: none;
+}
+
+.bt-dashboard__toolbar select {
+    min-height: 24px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--bt-border);
+    background: var(--bt-panel-bg);
+    color: var(--bt-panel-text);
+    font-size: 13px;
+}
+
 .bt-dashboard__controls {
     padding: 12px 20px 10px;
     display: flex;

@@ -28,6 +28,12 @@ import {
   subscribeToContextOptions,
   normalizeContextValue,
 } from "./context-store";
+import {
+  loadViewsStore,
+  saveViewsStore,
+  createView as createDashView,
+  setActiveView as setActiveDashView,
+} from "./dashboard/viewsStore";
 
 const DEFAULT_REPEAT_ATTR = "BT_attrRepeat";
 const DEFAULT_START_ATTR = "BT_attrStart";
@@ -615,6 +621,71 @@ export default {
     extensionAPI.ui.commandPalette.addCommand({
       label: translateString("Toggle Better Tasks Dashboard", getLanguageSetting()),
       callback: () => activeDashboardController.toggle(),
+    });
+    extensionAPI.ui.commandPalette.addCommand({
+      label: translateString("Better Tasks: Switch view…", getLanguageSetting()),
+      callback: async () => {
+        try {
+          if (!activeDashboardController?.isOpen?.()) {
+            toast("Open Better Tasks Dashboard to switch views.");
+            return;
+          }
+          const store = activeDashboardController.loadViewsStore?.();
+          const views = store?.views || [];
+          if (!views.length) {
+            toast("No saved views.");
+            return;
+          }
+          const pickedId = await promptForDashView({
+            title: "Better Tasks",
+            placeholder: "Filter views",
+            views,
+            initialId: store?.activeViewId || null,
+          });
+          if (!pickedId) return;
+          const view = views.find((v) => v.id === pickedId);
+          if (!view) return;
+          const nextStore = setActiveDashView(store, pickedId);
+          const saved = activeDashboardController.saveViewsStore?.(nextStore) || nextStore;
+          activeDashboardController.notifyDashViewsStoreChanged?.(saved);
+          activeDashboardController.requestApplyDashViewState?.(view.state);
+        } catch (err) {
+          console.warn("[BetterTasks] switch view command failed", err);
+          toast("Unable to switch view.");
+        }
+      },
+    });
+    extensionAPI.ui.commandPalette.addCommand({
+      label: translateString("Better Tasks: Save current view as…", getLanguageSetting()),
+      callback: async () => {
+        try {
+          if (!activeDashboardController?.isOpen?.()) {
+            toast("Open Better Tasks Dashboard to save views.");
+            return;
+          }
+          const dashState = activeDashboardController.getDashViewState?.();
+          if (!dashState) {
+            toast("Unable to read dashboard state. Try reopening the dashboard.");
+            return;
+          }
+          const name = activeDashboardController.promptValue
+            ? await activeDashboardController.promptValue({
+              title: "Better Tasks",
+              message: "Save current view as",
+              placeholder: "View name",
+              initial: "",
+            })
+            : null;
+          if (!name) return;
+          const store = activeDashboardController.loadViewsStore?.();
+          const nextStore = createDashView(store, name, dashState);
+          const saved = activeDashboardController.saveViewsStore?.(nextStore) || nextStore;
+          activeDashboardController.notifyDashViewsStoreChanged?.(saved);
+        } catch (err) {
+          console.warn("[BetterTasks] save view command failed", err);
+          toast("Unable to save view.");
+        }
+      },
     });
     if (getTodayWidgetEnabled()) {
       scheduleTodayWidgetRender();
@@ -5537,6 +5608,114 @@ export default {
       document.head.appendChild(style);
     }
 
+    function promptForDashView({ title = "Better Tasks", placeholder = "Filter views", views = [], initialId = null } = {}) {
+      const options = Array.isArray(views) ? views : [];
+      const lang = getLanguageSetting();
+      const titleText = translateString(title, lang);
+      const placeholderText = translateString(placeholder, lang);
+      const cancelLabel = t("buttons.cancel", lang) || "Cancel";
+      const inputClass = `bt-view-input-${Date.now()}`;
+      const listId = `bt-view-list-${Date.now()}`;
+      ensureProjectPickerStyles();
+      const sortByName = (a, b) =>
+        String(a?.name || "").localeCompare(String(b?.name || ""), undefined, { sensitivity: "base" });
+      const sorted = options.slice().sort(sortByName);
+      return new Promise((resolve) => {
+        let settled = false;
+        let toastElement = null;
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          resolve(typeof value === "string" ? value : null);
+        };
+        const hideToast = () => {
+          if (toastElement) {
+            iziToast.hide({}, toastElement);
+          }
+        };
+        const renderOptions = (container, filterText) => {
+          if (!container) return;
+          container.textContent = "";
+          const filter = (filterText || "").trim().toLowerCase();
+          const matches = sorted.filter((v) =>
+            filter ? String(v?.name || "").toLowerCase().includes(filter) : true
+          );
+          if (!matches.length) {
+            const empty = document.createElement("div");
+            empty.className = "rt-project-picker__empty";
+            empty.textContent = "No views";
+            container.appendChild(empty);
+            return;
+          }
+          matches.forEach((v) => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "rt-project-picker__option";
+            btn.textContent = v.name;
+            if (initialId && v.id === initialId) {
+              btn.style.background = "rgba(0,0,0,0.08)";
+              btn.style.fontWeight = "600";
+            }
+            btn.addEventListener("click", () => {
+              hideToast();
+              finish(v.id);
+            });
+            container.appendChild(btn);
+          });
+        };
+        iziToast.question({
+          theme: "light",
+          color: "black",
+          layout: 2,
+          class: "betterTasks bt-toast-strong-icon",
+          position: "center",
+          drag: false,
+          timeout: false,
+          close: true,
+          overlay: true,
+          icon: "icon-check",
+          iconText: "✓",
+          title: titleText,
+          message: `
+            <div class="rt-project-picker">
+              <input type="text" class="rt-project-picker__input ${inputClass}" placeholder="${escapeHtml(
+            placeholderText
+          )}" value="" />
+              <div class="rt-project-picker__list" id="${listId}"></div>
+            </div>
+          `,
+          buttons: [
+            [
+              `<button>${escapeHtml(cancelLabel)}</button>`,
+              (_instance, toastEl) => {
+                toastElement = toastEl || toastElement;
+                hideToast();
+                finish(null);
+              },
+            ],
+          ],
+          onOpening: (_instance, toastEl) => {
+            toastElement = toastEl;
+            const input = toastEl.querySelector?.(`.${inputClass}`);
+            const list = toastEl.querySelector?.(`#${listId}`);
+            renderOptions(list, "");
+            if (input) {
+              input.addEventListener("input", () => renderOptions(list, input.value));
+              input.addEventListener("keydown", (event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  hideToast();
+                  finish(null);
+                }
+              });
+              input.focus();
+            }
+          },
+          onClosed: () => finish(null),
+        });
+      });
+    }
+
     const ATTR_PICKER_CONFIG = {
       project: {
         refresh: refreshProjectOptions,
@@ -8983,6 +9162,9 @@ export default {
       const initialState = { tasks: [], status: "idle", error: null, lastUpdated: null };
       let state = { ...initialState };
       const subscribers = new Set();
+      const dashViewRequestSubscribers = new Set();
+      const dashViewsStoreSubscribers = new Set();
+      let lastDashViewState = null;
       let container = null;
       let root = null;
       let refreshPromise = null;
@@ -9035,6 +9217,14 @@ export default {
         openPillMenuForTask,
         removeTaskAttribute,
         refreshLanguage,
+        loadViewsStore: () => loadViewsStore(extensionAPI),
+        saveViewsStore: (store) => saveViewsStore(extensionAPI, store),
+        subscribeDashViewRequests,
+        requestApplyDashViewState,
+        subscribeDashViewsStore,
+        notifyDashViewsStoreChanged,
+        reportDashViewState,
+        getDashViewState,
         dispose,
       };
       // Ensure prompt helpers are always present for dashboard consumers.
@@ -9063,6 +9253,45 @@ export default {
           listener({ ...state, tasks: state.tasks.map((task) => ({ ...task })) });
         }
         return () => subscribers.delete(listener);
+      }
+
+      function subscribeDashViewRequests(listener) {
+        if (typeof listener === "function") dashViewRequestSubscribers.add(listener);
+        return () => dashViewRequestSubscribers.delete(listener);
+      }
+
+      function requestApplyDashViewState(nextState) {
+        dashViewRequestSubscribers.forEach((listener) => {
+          try {
+            listener(nextState || null);
+          } catch (err) {
+            console.warn("[BetterTasks] dashboard view request subscriber failed", err);
+          }
+        });
+      }
+
+      function subscribeDashViewsStore(listener) {
+        if (typeof listener === "function") dashViewsStoreSubscribers.add(listener);
+        return () => dashViewsStoreSubscribers.delete(listener);
+      }
+
+      function notifyDashViewsStoreChanged(nextStore = null) {
+        dashViewsStoreSubscribers.forEach((listener) => {
+          try {
+            listener(nextStore);
+          } catch (err) {
+            console.warn("[BetterTasks] dashboard views store subscriber failed", err);
+          }
+        });
+      }
+
+      function reportDashViewState(next) {
+        if (!next || typeof next !== "object") return;
+        lastDashViewState = clonePlain(next);
+      }
+
+      function getDashViewState() {
+        return lastDashViewState ? clonePlain(lastDashViewState) : null;
       }
 
       function getTaskMetadata(uid) {

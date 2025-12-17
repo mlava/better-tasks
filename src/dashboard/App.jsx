@@ -10,6 +10,7 @@ import React, {
 import { createPortal } from "react-dom";
 import { useVirtualizer, measureElement } from "@tanstack/react-virtual";
 import { i18n as I18N_MAP } from "../i18n";
+import { createView, updateView, renameView, deleteView, setActiveView } from "./viewsStore";
 
 function resolvePath(obj, parts = []) {
   return parts.reduce(
@@ -70,6 +71,42 @@ const DEFAULT_FILTERS = {
   waitingText: "",
   contextText: "",
 };
+
+function normalizeFiltersForCompare(filters) {
+  const base = { ...DEFAULT_FILTERS, ...(filters && typeof filters === "object" ? filters : {}) };
+  const keys = Object.keys(base);
+  keys.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  const out = {};
+  for (const key of keys) {
+    const value = base[key];
+    if (Array.isArray(value)) {
+      out[key] = value
+        .slice()
+        .filter((v) => v != null)
+        .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: "base" }));
+    } else if (typeof value === "string") {
+      out[key] = value;
+    } else if (value == null) {
+      out[key] = value;
+    } else if (typeof value === "number" || typeof value === "boolean") {
+      out[key] = value;
+    } else {
+      try {
+        out[key] = JSON.parse(JSON.stringify(value));
+      } catch (_) {
+        out[key] = value;
+      }
+    }
+  }
+  return out;
+}
+
+function normalizeDashViewStateForCompare(state) {
+  const filters = normalizeFiltersForCompare(state?.filters);
+  const grouping = typeof state?.grouping === "string" ? state.grouping : "time";
+  const query = typeof state?.query === "string" ? state.query.trim() : "";
+  return { filters, grouping, query };
+}
 
 const FILTER_STORAGE_KEY = "betterTasks.dashboard.filters";
 
@@ -139,6 +176,10 @@ function filtersReducer(state, action) {
       return { ...state, [action.section]: action.value || "" };
     case "reset":
       return { ...DEFAULT_FILTERS };
+    case "hydrate": {
+      const incoming = action.value && typeof action.value === "object" ? action.value : {};
+      return { ...DEFAULT_FILTERS, ...incoming };
+    }
     default:
       return state;
   }
@@ -708,6 +749,164 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
   );
 }
 
+function SimpleActionsMenu({ actions, title, disabled = false }) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef(null);
+  const buttonRef = useRef(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const menuSizeRef = useRef({ width: 240, height: 200 });
+  const safeActions = Array.isArray(actions) ? actions : [];
+
+  const setOpenState = useCallback((next) => {
+    setOpen((prev) => (typeof next === "function" ? next(prev) : next));
+  }, []);
+
+  const updatePosition = useCallback(() => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const spacing = 8;
+    const { width = 240, height = 200 } = menuSizeRef.current || {};
+    let openAbove = rect.top - spacing - height >= spacing;
+    if (!openAbove && rect.bottom + spacing + height <= viewportHeight - spacing) {
+      openAbove = false;
+    } else if (!openAbove) {
+      openAbove = rect.top > viewportHeight / 2;
+    }
+    let top = openAbove ? rect.top - height - spacing : rect.bottom + spacing;
+    if (top < spacing) top = spacing;
+    if (top + height + spacing > viewportHeight) {
+      top = Math.max(spacing, viewportHeight - height - spacing);
+    }
+    let left = rect.right - width;
+    if (left < spacing) left = spacing;
+    if (left + width + spacing > viewportWidth) {
+      left = Math.max(spacing, viewportWidth - width - spacing);
+    }
+    setCoords({ top, left });
+  }, []);
+
+  const menuRoot = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const root = document.createElement("div");
+    root.className = "bt-task-menu-portal";
+    root.setAttribute("data-bt-portal", "simple-menu");
+    root.style.position = "relative";
+    root.style.zIndex = "1000";
+    return root;
+  }, []);
+
+  useEffect(() => {
+    if (!menuRoot || typeof document === "undefined") return undefined;
+    if (!safeActions.length) return undefined;
+    const host = document.querySelector(".bt-dashboard-host") || document.body;
+    host.appendChild(menuRoot);
+    return () => {
+      menuRoot.remove();
+    };
+  }, [menuRoot, safeActions.length]);
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const menuEl = menuRef.current;
+    if (menuEl) {
+      const rect = menuEl.getBoundingClientRect();
+      menuSizeRef.current = { width: rect.width, height: rect.height };
+      updatePosition();
+    }
+  }, [open, updatePosition, safeActions.length]);
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    updatePosition();
+    const handler = () => updatePosition();
+    window.addEventListener("scroll", handler, true);
+    window.addEventListener("resize", handler);
+    return () => {
+      window.removeEventListener("scroll", handler, true);
+      window.removeEventListener("resize", handler);
+    };
+  }, [open, updatePosition]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleClick = (event) => {
+      if (menuRef.current?.contains(event.target) || buttonRef.current?.contains(event.target)) {
+        return;
+      }
+      setOpenState(false);
+    };
+    const handleKey = (event) => {
+      if (event.key === "Escape") setOpenState(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open, setOpenState]);
+
+  if (!safeActions.length) return null;
+
+  const menu =
+    open && menuRoot
+      ? createPortal(
+          <div
+            className="bt-task-menu__popover"
+            role="menu"
+            ref={menuRef}
+            style={{
+              position: "fixed",
+              top: coords.top,
+              left: coords.left,
+            }}
+          >
+            {safeActions.map((action) => (
+              <button
+                key={action.key}
+                type="button"
+                className={`bt-task-menu__item${
+                  action.danger ? " bt-task-menu__item--danger" : ""
+                }`}
+                onClick={async () => {
+                  if (typeof action.handler === "function") {
+                    await action.handler();
+                  }
+                  setOpenState(false);
+                }}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>,
+          menuRoot
+        )
+      : null;
+
+  return (
+    <div className={`bt-task-menu${open ? " bt-task-menu--open" : ""}`}>
+      <button
+        type="button"
+        className="bt-task-menu__trigger"
+        onClick={() => {
+          if (disabled) return;
+          setOpenState((value) => !value);
+        }}
+        aria-haspopup="true"
+        aria-expanded={open}
+        title={title || undefined}
+        ref={buttonRef}
+        disabled={disabled}
+      >
+        ⋯
+      </button>
+      {menu}
+    </div>
+  );
+}
+
 function TaskRow({ task, controller, strings }) {
   const checkboxLabel = task.isCompleted
     ? strings?.markOpen || "Mark as open"
@@ -880,6 +1079,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const [grouping, setGrouping] = useState("time");
   const [query, setQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [viewsStore, setViewsStore] = useState(() => ({ schema: 1, activeViewId: null, views: [] }));
   const [projectOptions, setProjectOptions] = useState(() =>
     controller?.getProjectOptions?.() || []
   );
@@ -889,6 +1089,23 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const [contextOptions, setContextOptions] = useState(() =>
     controller?.getContextOptions?.() || []
   );
+  const initialViewAppliedRef = useRef(false);
+  const sortedViews = useMemo(() => {
+    const views = Array.isArray(viewsStore?.views) ? viewsStore.views : [];
+    return views
+      .slice()
+      .sort(
+        (a, b) =>
+          String(a?.name || "").localeCompare(String(b?.name || ""), undefined, {
+            sensitivity: "base",
+          }) || (Number(b?.updatedAt || 0) - Number(a?.updatedAt || 0))
+      );
+  }, [viewsStore]);
+  const activeView = useMemo(() => {
+    const id = viewsStore?.activeViewId;
+    if (!id) return null;
+    return (viewsStore?.views || []).find((v) => v.id === id) || null;
+  }, [viewsStore]);
   const lang = I18N_MAP[language] ? language : "en";
   const tt = useCallback(
     (path, fallback) => {
@@ -1096,6 +1313,58 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   }, [filters]);
 
   useEffect(() => {
+    if (!controller?.loadViewsStore) return;
+    const store = controller.loadViewsStore();
+    setViewsStore(store);
+  }, [controller]);
+
+  useEffect(() => {
+    if (!controller?.subscribeDashViewsStore || !controller?.loadViewsStore) return undefined;
+    const unsub = controller.subscribeDashViewsStore((nextStore) => {
+      if (nextStore && typeof nextStore === "object") {
+        setViewsStore(nextStore);
+        return;
+      }
+      const store = controller.loadViewsStore();
+      setViewsStore(store);
+    });
+    return unsub;
+  }, [controller]);
+
+  useEffect(() => {
+    if (!controller?.subscribeDashViewRequests) return undefined;
+    const unsub = controller.subscribeDashViewRequests((nextState) => {
+      if (!nextState || typeof nextState !== "object") return;
+      dispatchFilters({ type: "hydrate", value: nextState.filters });
+      setGrouping(typeof nextState.grouping === "string" ? nextState.grouping : "time");
+      setQuery(typeof nextState.query === "string" ? nextState.query : "");
+    });
+    return unsub;
+  }, [controller]);
+
+  useEffect(() => {
+    controller?.reportDashViewState?.({ filters, grouping, query });
+  }, [controller, filters, grouping, query]);
+
+  useEffect(() => {
+    if (initialViewAppliedRef.current) return;
+    const id = viewsStore?.activeViewId;
+    if (!id) {
+      initialViewAppliedRef.current = true;
+      return;
+    }
+    const view = (viewsStore?.views || []).find((v) => v.id === id);
+    if (!view) {
+      initialViewAppliedRef.current = true;
+      return;
+    }
+    initialViewAppliedRef.current = true;
+    dispatchFilters({ type: "hydrate", value: view.state?.filters });
+    setGrouping(typeof view.state?.grouping === "string" ? view.state.grouping : "time");
+    setQuery(typeof view.state?.query === "string" ? view.state.query : "");
+  }, [viewsStore]);
+
+  useEffect(() => {
     if (!controller) return undefined;
     controller.refreshProjectOptions?.(true);
     controller.refreshWaitingOptions?.(true);
@@ -1145,6 +1414,104 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
 
   const handleRefresh = () => controller.refresh?.({ reason: "manual" });
 
+  const getDashViewState = useCallback(
+    () => ({ filters, grouping, query }),
+    [filters, grouping, query]
+  );
+
+  const persistViewsStore = useCallback(
+    (nextStore) => {
+      if (!controller?.saveViewsStore) {
+        setViewsStore(nextStore);
+        return nextStore;
+      }
+      const saved = controller.saveViewsStore(nextStore);
+      setViewsStore(saved);
+      controller?.notifyDashViewsStoreChanged?.(saved);
+      return saved;
+    },
+    [controller]
+  );
+
+  const applyDashViewState = useCallback((state) => {
+    if (!state || typeof state !== "object") return;
+    dispatchFilters({ type: "hydrate", value: state.filters });
+    setGrouping(typeof state.grouping === "string" ? state.grouping : "time");
+    setQuery(typeof state.query === "string" ? state.query : "");
+  }, []);
+
+  const handleViewSelectChange = useCallback(
+    (e) => {
+      const id = e?.target?.value || null;
+      if (!id) {
+        persistViewsStore(setActiveView(viewsStore, null));
+        return;
+      }
+      const view = (viewsStore?.views || []).find((v) => v.id === id);
+      if (!view) return;
+      applyDashViewState(view.state);
+      persistViewsStore(setActiveView(viewsStore, id));
+    },
+    [viewsStore, persistViewsStore, applyDashViewState]
+  );
+
+  const handleSaveViewAs = useCallback(async () => {
+    if (!controller?.promptValue) return;
+    const name = await controller.promptValue({
+      title: "Better Tasks",
+      message: "Save current view as",
+      placeholder: "View name",
+      initial: "",
+    });
+    if (!name) return;
+    persistViewsStore(createView(viewsStore, name, getDashViewState()));
+  }, [controller, viewsStore, getDashViewState, persistViewsStore]);
+
+  const handleUpdateActiveView = useCallback(() => {
+    if (!activeView?.id) return;
+    const ok = typeof window !== "undefined" ? window.confirm(`Overwrite view "${activeView.name}"?`) : true;
+    if (!ok) return;
+    persistViewsStore(updateView(viewsStore, activeView.id, getDashViewState()));
+  }, [activeView, viewsStore, getDashViewState, persistViewsStore]);
+
+  const handleRenameActiveView = useCallback(async () => {
+    if (!activeView?.id || !controller?.promptValue) return;
+    const name = await controller.promptValue({
+      title: "Better Tasks",
+      message: "Rename view",
+      placeholder: "View name",
+      initial: activeView.name || "",
+    });
+    if (!name) return;
+    persistViewsStore(renameView(viewsStore, activeView.id, name));
+  }, [controller, activeView, viewsStore, persistViewsStore]);
+
+  const handleDeleteActiveView = useCallback(() => {
+    if (!activeView?.id) return;
+    const ok = typeof window !== "undefined" ? window.confirm(`Delete view "${activeView.name}"?`) : true;
+    if (!ok) return;
+    persistViewsStore(deleteView(viewsStore, activeView.id));
+  }, [activeView, viewsStore, persistViewsStore]);
+
+  const isActiveViewDirty = useMemo(() => {
+    if (!activeView?.id) return false;
+    try {
+      const current = normalizeDashViewStateForCompare({ filters, grouping, query });
+      const saved = normalizeDashViewStateForCompare(activeView.state || {});
+      return JSON.stringify(current) !== JSON.stringify(saved);
+    } catch (_) {
+      return true;
+    }
+  }, [activeView, filters, grouping, query]);
+
+  const viewMenuActions = useMemo(() => {
+    if (!activeView?.id) return [];
+    return [
+      { key: "rename", label: "Rename…", handler: () => handleRenameActiveView() },
+      { key: "delete", label: "Delete", danger: true, handler: () => handleDeleteActiveView() },
+    ];
+  }, [activeView, handleRenameActiveView, handleDeleteActiveView]);
+
   const headerRef = useCallback(
     (node) => {
       if (typeof onHeaderReady === "function") {
@@ -1175,6 +1542,42 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           </button>
         </div>
       </header>
+
+      <div className="bt-dashboard__toolbar">
+        <div className="bt-toolbar__left">
+          <span className="bt-filter-row__label">Saved Views</span>
+          <div className="bp3-select bp3-small bt-views-select">
+            <select
+              value={viewsStore?.activeViewId || ""}
+              onChange={handleViewSelectChange}
+              aria-label="Views"
+            >
+              <option value="">Default</option>
+              {sortedViews.map((view) => (
+                <option key={view.id} value={view.id}>
+                  {view.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button type="button" className="bp3-button bp3-small" onClick={handleSaveViewAs}>
+            Save as…
+          </button>
+          <button
+            type="button"
+            className="bp3-button bp3-small"
+            onClick={handleUpdateActiveView}
+            disabled={!activeView || !isActiveViewDirty}
+          >
+            Update
+          </button>
+          <SimpleActionsMenu
+            actions={viewMenuActions}
+            title="View options"
+            disabled={!activeView}
+          />
+        </div>
+      </div>
 
       <div className="bt-dashboard__quick-add">
         <div className="bt-quick-add">
