@@ -10,6 +10,9 @@ Recently shipped:
 - Dirty-state awareness with safe Update semantics
 - Clean dashboard toolbar layout
 - Command palette integration for views
+- Seeded dashboard presets (first install) + reinstall command (add-missing only)
+- Project grouping mode in the dashboard
+- Completed-only “Completed within” range filter
 
 Remaining work focuses on **intentional expansion**, not core stability.
 
@@ -61,6 +64,9 @@ Remaining work focuses on **intentional expansion**, not core stability.
 - Clean toolbar layout
 - Command palette support
 - Cross-graph & cross-device persistence
+- Preset views seed + reinstall command
+- Project grouping
+- Completed-only “Completed within” filter
 
 ---
 
@@ -87,10 +93,9 @@ Remaining work focuses on **intentional expansion**, not core stability.
 ## 🔜 Phase 6.5 — GTD Review UX (Planned)
 
 - Guided Weekly Review flow
-- Review modes / presets:
+- Review modes / guided presets (beyond the seeded dashboard presets):
   - Projects Review
   - Waiting-For Review
-  - Stalled Projects
   - Someday Refresh
   - Full Weekly Review (unguided)
 - Contextual actions during review

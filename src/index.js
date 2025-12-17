@@ -33,6 +33,7 @@ import {
   saveViewsStore,
   createView as createDashView,
   setActiveView as setActiveDashView,
+  installPresetDashboardViews,
 } from "./dashboard/viewsStore";
 
 const DEFAULT_REPEAT_ATTR = "BT_attrRepeat";
@@ -618,6 +619,20 @@ export default {
     }
 
     activeDashboardController = createDashboardController(extensionAPI);
+
+    try {
+      installPresetDashboardViews(extensionAPI, {
+        force: false,
+        getName: (key) => {
+          const lang = getLanguageSetting();
+          const val = t(["dashboard", "viewsPresets", key], lang);
+          return typeof val === "string" ? val : null;
+        },
+      });
+    } catch (err) {
+      console.warn("[BetterTasks] preset dashboard views seed failed", err);
+    }
+
     extensionAPI.ui.commandPalette.addCommand({
       label: translateString("Toggle Better Tasks Dashboard", getLanguageSetting()),
       callback: () => activeDashboardController.toggle(),
@@ -687,6 +702,54 @@ export default {
         } catch (err) {
           console.warn("[BetterTasks] save view command failed", err);
           toast(t("toasts.dashViewsSaveFailed", getLanguageSetting()) || "Unable to save view.");
+        }
+      },
+    });
+    extensionAPI.ui.commandPalette.addCommand({
+      label:
+        t(["commands", "reinstallPresetDashViews"], getLanguageSetting()) ||
+        "Better Tasks: Reinstall preset dashboard views",
+      callback: async () => {
+        try {
+          const result = installPresetDashboardViews(extensionAPI, {
+            force: true,
+            getName: (key) => {
+              const lang = getLanguageSetting();
+              const val = t(["dashboard", "viewsPresets", key], lang);
+              return typeof val === "string" ? val : null;
+            },
+          });
+          if (result?.didSave) {
+            activeDashboardController?.notifyDashViewsStoreChanged?.(result.store);
+          }
+          const collisions = Array.isArray(result?.skippedNameCollisions)
+            ? result.skippedNameCollisions
+            : [];
+          if (collisions.length) {
+            const base =
+              t("toasts.dashViewsPresetNameCollisions", getLanguageSetting()) ||
+              "Skipped presets due to name conflicts:";
+            toast(`${base} ${collisions.join(", ")}`);
+            return;
+          }
+          const installed = Array.isArray(result?.installedIds) ? result.installedIds.length : 0;
+          if (installed > 0) {
+            toast(
+              t("toasts.dashViewsPresetInstalled", getLanguageSetting()) ||
+                "Preset dashboard views installed."
+            );
+            return;
+          }
+          toast(
+            t("toasts.dashViewsPresetNothingToInstall", getLanguageSetting()) ||
+              "All preset dashboard views are already present."
+          );
+        } catch (err) {
+          console.warn("[BetterTasks] reinstall preset views failed", err);
+          toast(
+            t("toasts.dashViewsPresetInstallFailed", getLanguageSetting()) ||
+              "Unable to reinstall preset dashboard views."
+          );
         }
       },
     });

@@ -658,6 +658,14 @@ body.bt-theme-dark .bt-task-menu__trigger {
     gap: 8px;
 }
 
+.bt-grouping__label {
+    display: inline-flex;
+    align-items: center;
+    font-size: 12px;
+    color: var(--bt-muted);
+    white-space: nowrap;
+}
+
 .bt-chip {
     padding: 2px 10px;
     border-radius: 999px;

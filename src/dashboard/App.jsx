@@ -10,7 +10,15 @@ import React, {
 import { createPortal } from "react-dom";
 import { useVirtualizer, measureElement } from "@tanstack/react-virtual";
 import { i18n as I18N_MAP } from "../i18n";
-import { createView, updateView, renameView, deleteView, setActiveView } from "./viewsStore";
+import {
+  createView,
+  updateView,
+  renameView,
+  deleteView,
+  setActiveView,
+  setLastDefaultState,
+  DASHBOARD_PRESET_IDS,
+} from "./viewsStore";
 
 function resolvePath(obj, parts = []) {
   return parts.reduce(
@@ -275,6 +283,29 @@ function groupTasks(tasks, grouping, options = {}) {
   const workingTasks = completedOnly ? tasks.filter((task) => !task.isCompleted) : tasks;
   const labels = options.groupLabels || GROUP_LABELS;
   const groups = [];
+  if (grouping === "project") {
+    const buckets = new Map();
+    for (const task of workingTasks) {
+      const project = (task?.metadata?.project || "").trim();
+      const key = project || "__none__";
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(task);
+    }
+    const keys = Array.from(buckets.keys()).sort((a, b) => {
+      if (a === "__none__") return 1;
+      if (b === "__none__") return -1;
+      return String(a).localeCompare(String(b), undefined, { sensitivity: "base" });
+    });
+    for (const key of keys) {
+      const items = buckets.get(key) || [];
+      const title = key === "__none__" ? labels.noProject || "No Project" : key;
+      if (items.length) groups.push({ id: `project-${key}`, title, items });
+    }
+    if (completedTasks.length) {
+      groups.unshift({ id: "completed", title: labels["completed"] || "Completed", items: completedTasks });
+    }
+    return groups;
+  }
   if (grouping === "recurrence") {
     for (const key of GROUP_ORDER_RECURRENCE) {
       const items = workingTasks.filter((task) => task.recurrenceBucket === key);
@@ -1112,15 +1143,26 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     controller?.getContextOptions?.() || []
   );
   const initialViewAppliedRef = useRef(false);
+  const defaultStatePersistTimerRef = useRef(null);
+  const lastDefaultStateSigRef = useRef(null);
   const sortedViews = useMemo(() => {
     const views = Array.isArray(viewsStore?.views) ? viewsStore.views : [];
+    const presetOrder = new Map(DASHBOARD_PRESET_IDS.map((id, idx) => [id, idx]));
     return views
       .slice()
       .sort(
-        (a, b) =>
-          String(a?.name || "").localeCompare(String(b?.name || ""), undefined, {
-            sensitivity: "base",
-          }) || (Number(b?.updatedAt || 0) - Number(a?.updatedAt || 0))
+        (a, b) => {
+          const aPreset = presetOrder.has(a?.id);
+          const bPreset = presetOrder.has(b?.id);
+          if (aPreset && bPreset) return presetOrder.get(a.id) - presetOrder.get(b.id);
+          if (aPreset) return -1;
+          if (bPreset) return 1;
+          return (
+            String(a?.name || "").localeCompare(String(b?.name || ""), undefined, {
+              sensitivity: "base",
+            }) || (Number(b?.updatedAt || 0) - Number(a?.updatedAt || 0))
+          );
+        }
       );
   }, [viewsStore]);
   const activeView = useMemo(() => {
@@ -1200,8 +1242,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   );
   const groupingOptions = useMemo(
     () => [
-      { value: "time", label: tt(["dashboard", "groupingLabels", "time"], "By Time") },
-      { value: "recurrence", label: tt(["dashboard", "groupingLabels", "recurrence"], "By Recurrence") },
+      { value: "time", label: tt(["dashboard", "groupingLabels", "time"], "Time") },
+      { value: "recurrence", label: tt(["dashboard", "groupingLabels", "recurrence"], "Recurrence") },
+      { value: "project", label: tt(["dashboard", "groupingLabels", "project"], "Project") },
     ],
     [tt]
   );
@@ -1214,6 +1257,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       recurring: tt(["dashboard", "groupLabels", "recurring"], "Recurring"),
       "one-off": tt(["dashboard", "groupLabels", "one-off"], "One-off"),
       completed: tt(["dashboard", "groupLabels", "completed"], "Completed"),
+      noProject: tt(["dashboard", "groupLabels", "noProject"], "No Project"),
     }),
     [tt]
   );
@@ -1261,6 +1305,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       quickAddButton: tt(["dashboard", "quickAddButton"], "OK"),
       searchPlaceholder: tt(["dashboard", "searchPlaceholder"], "Search Better Tasks"),
       filtersLabel: tt(["dashboard", "filtersLabel"], "Filters"),
+      groupByLabel: tt(["dashboard", "groupByLabel"], "Group by"),
       projectFilterLabel: tt(["dashboard", "projectFilterLabel"], "Project"),
       projectFilterPlaceholder: tt(["dashboard", "projectFilterPlaceholder"], "Project name"),
       projectFilterAny: tt(["dashboard", "projectFilterAny"], "All projects"),
@@ -1392,10 +1437,49 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   }, [controller, filters, grouping, query]);
 
   useEffect(() => {
+    if (viewsStore?.activeViewId) return undefined;
+    if (!controller?.saveViewsStore) return undefined;
+    const dashState = { filters, grouping, query };
+    let sig = null;
+    try {
+      sig = JSON.stringify(normalizeDashViewStateForCompare(dashState));
+    } catch (_) {
+      sig = null;
+    }
+    if (sig && lastDefaultStateSigRef.current === sig) return undefined;
+    if (defaultStatePersistTimerRef.current && typeof window !== "undefined") {
+      clearTimeout(defaultStatePersistTimerRef.current);
+    }
+    if (typeof window !== "undefined") {
+      defaultStatePersistTimerRef.current = window.setTimeout(() => {
+        defaultStatePersistTimerRef.current = null;
+        const latest = controller?.loadViewsStore ? controller.loadViewsStore() : viewsStore;
+        const next = setLastDefaultState(latest, dashState);
+        const saved = controller.saveViewsStore(next);
+        setViewsStore(saved);
+        controller?.notifyDashViewsStoreChanged?.(saved);
+        if (sig) lastDefaultStateSigRef.current = sig;
+      }, 500);
+    }
+    return () => {
+      if (defaultStatePersistTimerRef.current && typeof window !== "undefined") {
+        clearTimeout(defaultStatePersistTimerRef.current);
+        defaultStatePersistTimerRef.current = null;
+      }
+    };
+  }, [viewsStore?.activeViewId, controller, filters, grouping, query, viewsStore]);
+
+  useEffect(() => {
     if (initialViewAppliedRef.current) return;
     const id = viewsStore?.activeViewId;
     if (!id) {
       initialViewAppliedRef.current = true;
+      const fallbackDefault = viewsStore?.lastDefaultState;
+      if (fallbackDefault) {
+        dispatchFilters({ type: "hydrate", value: fallbackDefault.filters });
+        setGrouping(typeof fallbackDefault.grouping === "string" ? fallbackDefault.grouping : "time");
+        setQuery(typeof fallbackDefault.query === "string" ? fallbackDefault.query : "");
+      }
       return;
     }
     const view = (viewsStore?.views || []).find((v) => v.id === id);
@@ -1475,6 +1559,18 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     [filters, grouping, query]
   );
 
+  const persistDefaultState = useCallback(
+    (dashState) => {
+      if (!controller?.saveViewsStore) return;
+      const latest = controller?.loadViewsStore ? controller.loadViewsStore() : viewsStore;
+      const next = setLastDefaultState(latest, dashState);
+      const saved = controller.saveViewsStore(next);
+      setViewsStore(saved);
+      controller?.notifyDashViewsStoreChanged?.(saved);
+    },
+    [controller, viewsStore]
+  );
+
   const persistViewsStore = useCallback(
     (nextStore) => {
       if (!controller?.saveViewsStore) {
@@ -1500,15 +1596,21 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     (e) => {
       const id = e?.target?.value || null;
       if (!id) {
-        persistViewsStore(setActiveView(viewsStore, null));
+        const storeNow = controller?.loadViewsStore ? controller.loadViewsStore() : viewsStore;
+        const savedStore = persistViewsStore(setActiveView(storeNow, null));
+        const defaultState = savedStore?.lastDefaultState || storeNow?.lastDefaultState || null;
+        if (defaultState) applyDashViewState(defaultState);
         return;
+      }
+      if (!viewsStore?.activeViewId) {
+        persistDefaultState(getDashViewState());
       }
       const view = (viewsStore?.views || []).find((v) => v.id === id);
       if (!view) return;
       applyDashViewState(view.state);
       persistViewsStore(setActiveView(viewsStore, id));
     },
-    [viewsStore, persistViewsStore, applyDashViewState]
+    [viewsStore, persistViewsStore, applyDashViewState, controller, persistDefaultState, getDashViewState]
   );
 
   const handleSaveViewAs = useCallback(async () => {
@@ -1669,6 +1771,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             onChange={(e) => setQuery(e.target.value)}
           />
           <div className="bt-grouping">
+            <span className="bt-grouping__label">{ui.groupByLabel}</span>
             {ui.groupingOptions.map((option) => (
               <button
                 key={option.value}

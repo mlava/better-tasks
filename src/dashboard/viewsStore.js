@@ -1,14 +1,29 @@
 export const SETTINGS_KEY_VIEWS = "bt_dashViews";
+export const SETTINGS_KEY_SEEDS_INSTALLED = "bt_seedsInstalled";
 
 const STORE_SCHEMA = 1;
 const VIEW_SCHEMA = 1;
+
+export const DASHBOARD_PRESET_IDS = [
+  "bt_preset_next_actions",
+  "bt_preset_waiting_for",
+  "bt_preset_completed_7d",
+  "bt_preset_someday",
+  "bt_preset_all_open",
+];
 
 function nowMs() {
   return Date.now();
 }
 
 function emptyStore() {
-  return { schema: STORE_SCHEMA, activeViewId: null, views: [] };
+  return {
+    schema: STORE_SCHEMA,
+    activeViewId: null,
+    views: [],
+    lastDefaultState: null,
+    lastDefaultUpdatedAt: null,
+  };
 }
 
 function cloneJsonSafe(value) {
@@ -66,7 +81,14 @@ function normalizeStore(store) {
     typeof store.activeViewId === "string" && views.some((v) => v.id === store.activeViewId)
       ? store.activeViewId
       : null;
-  return { schema: STORE_SCHEMA, activeViewId, views };
+  const lastDefaultStateRaw = store.lastDefaultState;
+  const lastDefaultState =
+    lastDefaultStateRaw && typeof lastDefaultStateRaw === "object"
+      ? normalizeDashState(lastDefaultStateRaw)
+      : null;
+  const lastDefaultUpdatedAt =
+    typeof store.lastDefaultUpdatedAt === "number" ? store.lastDefaultUpdatedAt : null;
+  return { schema: STORE_SCHEMA, activeViewId, views, lastDefaultState, lastDefaultUpdatedAt };
 }
 
 function generateId() {
@@ -74,6 +96,10 @@ function generateId() {
     return crypto.randomUUID();
   }
   return `btv_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+}
+
+function normalizeNameForCompare(name) {
+  return String(name || "").trim().toLowerCase();
 }
 
 export function loadViewsStore(extensionAPI) {
@@ -93,6 +119,178 @@ export function saveViewsStore(extensionAPI, store) {
     // ignore settings failures
   }
   return normalized;
+}
+
+export function setLastDefaultState(store, dashState) {
+  const next = normalizeStore(store);
+  next.lastDefaultState = normalizeDashState(dashState);
+  next.lastDefaultUpdatedAt = nowMs();
+  return next;
+}
+
+export function buildPresetViews({ getName } = {}) {
+  const nameFor = (key, fallback) => {
+    try {
+      const v = typeof getName === "function" ? getName(key) : null;
+      if (typeof v === "string" && v.trim()) return v.trim();
+    } catch (_) {
+      // ignore
+    }
+    return fallback;
+  };
+  const t = nowMs();
+  return [
+    {
+      id: "bt_preset_next_actions",
+      name: nameFor("nextActions", "Next Actions"),
+      createdAt: t,
+      updatedAt: t,
+      schema: VIEW_SCHEMA,
+      state: {
+        filters: { Completion: ["open"], GTD: ["next action"], completedRange: "any" },
+        grouping: "time",
+        query: "",
+      },
+    },
+    {
+      id: "bt_preset_waiting_for",
+      name: nameFor("waitingFor", "Waiting For"),
+      createdAt: t,
+      updatedAt: t,
+      schema: VIEW_SCHEMA,
+      state: {
+        filters: { Completion: ["open"], GTD: ["delegated"], completedRange: "any" },
+        grouping: "time",
+        query: "",
+      },
+    },
+    {
+      id: "bt_preset_completed_7d",
+      name: nameFor("completed7d", "Completed (Last 7 Days)"),
+      createdAt: t,
+      updatedAt: t,
+      schema: VIEW_SCHEMA,
+      state: {
+        filters: { Completion: ["completed"], completedRange: "7d" },
+        grouping: "time",
+        query: "",
+      },
+    },
+    {
+      id: "bt_preset_someday",
+      name: nameFor("someday", "Someday / Maybe"),
+      createdAt: t,
+      updatedAt: t,
+      schema: VIEW_SCHEMA,
+      state: {
+        filters: { Completion: ["open"], GTD: ["someday"], completedRange: "any" },
+        grouping: "project",
+        query: "",
+      },
+    },
+    {
+      id: "bt_preset_all_open",
+      name: nameFor("allOpen", "All Open Tasks"),
+      createdAt: t,
+      updatedAt: t,
+      schema: VIEW_SCHEMA,
+      state: {
+        filters: { Completion: ["open"], completedRange: "any" },
+        grouping: "time",
+        query: "",
+      },
+    },
+  ];
+}
+
+export function installPresetDashboardViews(
+  extensionAPI,
+  { force = false, getName } = {}
+) {
+  const store = loadViewsStore(extensionAPI);
+  let seedsInstalled = false;
+  try {
+    const raw = extensionAPI?.settings?.get?.(SETTINGS_KEY_SEEDS_INSTALLED);
+    seedsInstalled = raw === true || raw === "1" || raw === "true";
+  } catch (_) {
+    seedsInstalled = false;
+  }
+
+  const shouldSeedInitial = !force && !seedsInstalled && (store.views?.length || 0) === 0;
+  const shouldAttempt = force || shouldSeedInitial;
+  if (!shouldAttempt) {
+    return {
+      store,
+      installedIds: [],
+      skippedNameCollisions: [],
+      skippedExistingIds: [],
+      didSave: false,
+    };
+  }
+
+  const presets = buildPresetViews({ getName }).map(normalizeView).filter(Boolean);
+  const existingById = new Set((store.views || []).map((v) => v.id));
+  const existingNames = new Set((store.views || []).map((v) => normalizeNameForCompare(v.name)));
+  const toAdd = [];
+  const skippedNameCollisions = [];
+  const skippedExistingIds = [];
+
+  for (const preset of presets) {
+    if (existingById.has(preset.id)) {
+      skippedExistingIds.push(preset.id);
+      continue;
+    }
+    const normalizedName = normalizeNameForCompare(preset.name);
+    if (normalizedName && existingNames.has(normalizedName)) {
+      skippedNameCollisions.push(preset.name);
+      continue;
+    }
+    toAdd.push(preset);
+    existingById.add(preset.id);
+    if (normalizedName) existingNames.add(normalizedName);
+  }
+
+  if (!toAdd.length) {
+    if (shouldSeedInitial && !seedsInstalled) {
+      try {
+        extensionAPI?.settings?.set?.(SETTINGS_KEY_SEEDS_INSTALLED, "1");
+      } catch (_) {
+        // ignore
+      }
+    }
+    return {
+      store,
+      installedIds: [],
+      skippedNameCollisions,
+      skippedExistingIds,
+      didSave: false,
+    };
+  }
+
+  const next = normalizeStore({
+    schema: STORE_SCHEMA,
+    activeViewId: store.activeViewId || null,
+    lastDefaultState: store.lastDefaultState || null,
+    lastDefaultUpdatedAt: store.lastDefaultUpdatedAt || null,
+    views: [...toAdd, ...(store.views || [])],
+  });
+  const saved = saveViewsStore(extensionAPI, next);
+
+  if (shouldSeedInitial && !seedsInstalled) {
+    try {
+      extensionAPI?.settings?.set?.(SETTINGS_KEY_SEEDS_INSTALLED, "1");
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  return {
+    store: saved,
+    installedIds: toAdd.map((v) => v.id),
+    skippedNameCollisions,
+    skippedExistingIds,
+    didSave: true,
+  };
 }
 
 export function setActiveView(store, idOrNull) {
@@ -159,4 +357,3 @@ export function deleteView(store, id) {
   }
   return next;
 }
-

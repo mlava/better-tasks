@@ -21,14 +21,20 @@ https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
   - Save, switch, update, rename, and delete named dashboard views capturing filters, grouping, and search state.
   - Cross-Graph & Cross-Device Persistence
     - Views are stored via Roam Depot extension settings and sync automatically across graphs and devices.
+  - Default (Unsaved) State
+    - Selecting “Default” restores your last “unsaved working state” across reloads/devices.
   - Dirty State Awareness
     - The Update action is only enabled when the current dashboard state differs from the saved view.
   - Improved Dashboard Toolbar Layout
     - Clean separation between header actions (Refresh / Close) and view controls for a more stable, predictable layout.
   - Command Palette Support
     - Quickly save or switch dashboard views directly from the command palette.
+  - Preset Views (Seeded)
+    - First install seeds a small set of GTD review presets when no views exist; a command can reinstall missing presets later (without overwriting user views).
 - Completed within date range filter
   - shows if filtered to Completed tasks only
+- Project grouping in dashboard
+  - group tasks by project (with a “No Project” bucket)
 
 - Added unified pickers and in-memory indexes for Projects, Waiting-for, and Context across inline pills, dashboard menus, and the create/convert prompt; options refresh from your configured attributes and clean up when removed.
 - Added a 'Today Widget' - automatically place a block and children or block and React panel in today's DNP
@@ -61,10 +67,10 @@ When completed:
 {{[[DONE]]}} Write weekly newsletter
   - BT_attrRepeat:: every Friday
   - BT_attrDue:: [[2025-11-07]]
-  - completed:: [[2025-10-31]]
+  - BT_attrCompleted:: [[2025-10-31]]
 ```
 
-Optionally include a start attribute `BT_attrStart::` (when the task becomes available) and/or defer attribute `BT_attrDefer::` (when it should resurface). These labels are configurable in settings; defaults are `BT_attrStart` and `BT_attrDefer`. The completion attribute defaults to `completed::` but can also be configured in Settings.
+Optionally include a start attribute `BT_attrStart::` (when the task becomes available) and/or defer attribute `BT_attrDefer::` (when it should resurface). These labels are configurable in settings; defaults are `BT_attrStart` and `BT_attrDefer`. The completion attribute defaults to `BT_attrCompleted::` but can also be configured in Settings.
 
 ### 🔹 Scheduled (One-Off) Tasks
 
@@ -237,6 +243,10 @@ You can trigger these from Roam’s Command Palette (`Ctrl+P` / `Cmd+P`) or bloc
 
 - **Convert TODO to Better Task**
 - **Create a Better Task**
+- **Toggle Better Tasks Dashboard**
+- **Better Tasks: Switch view…**
+- **Better Tasks: Save current view as…**
+- **Better Tasks: Reinstall preset dashboard views**
 
 These commands let you turn an existing task into a repeating Better Task or start a new scheduled TODO; just leave the repeat field blank to create a one-off with start/defer/due timing.
 

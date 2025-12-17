@@ -81,6 +81,9 @@ export const i18n = {
       close: "Close",
       tryAgain: "Try again",
     },
+    commands: {
+      reinstallPresetDashViews: "Better Tasks: Reinstall preset dashboard views",
+    },
     prompts: {
       addProject: { title: "Add Project", message: "Enter a project", placeholder: "Project name" },
       addContext: { title: "Add Context", message: "Enter context", placeholder: "Context" },
@@ -189,6 +192,10 @@ export const i18n = {
       dashViewsOpenToSave: "Open Better Tasks Dashboard to save views.",
       dashViewsReadStateFailed: "Unable to read dashboard state. Try reopening the dashboard.",
       dashViewsSaveFailed: "Unable to save view.",
+      dashViewsPresetInstalled: "Preset dashboard views installed.",
+      dashViewsPresetNothingToInstall: "All preset dashboard views are already present.",
+      dashViewsPresetNameCollisions: "Skipped presets due to name conflicts:",
+      dashViewsPresetInstallFailed: "Unable to reinstall preset dashboard views.",
     },
     dashboard: {
       topbarTitle: "Better Tasks Dashboard",
@@ -196,6 +203,7 @@ export const i18n = {
       subtitle: "Manage start, defer, due, and recurring tasks without leaving Roam.",
       refresh: "Refresh",
       close: "Close",
+      groupByLabel: "Group by",
       views: {
         label: "Saved Views",
         default: "Default",
@@ -213,6 +221,13 @@ export const i18n = {
           overwrite: (name) => `Overwrite view "${name}"?`,
           delete: (name) => `Delete view "${name}"?`,
         },
+      },
+      viewsPresets: {
+        nextActions: "Next Actions",
+        waitingFor: "Waiting For",
+        completed7d: "Completed (Last 7 Days)",
+        someday: "Someday / Maybe",
+        allOpen: "All Open Tasks",
       },
       quickAddPlaceholder: "Add a Better Task",
       quickAddButton: "OK",
@@ -274,6 +289,7 @@ export const i18n = {
         recurring: "Recurring",
         "one-off": "One-off",
         completed: "Completed",
+        noProject: "No Project",
       },
       metaPills: {
         priority: "Priority",
@@ -292,8 +308,9 @@ export const i18n = {
       contextFilterLabel: "Context",
       contextFilterAny: "All contexts",
       groupingLabels: {
-        time: "By Time",
-        recurrence: "By Recurrence",
+        time: "Time",
+        recurrence: "Recurrence",
+        project: "Project",
       },
       taskOptions: "Task options",
       markDone: "Mark as done",
@@ -462,6 +479,9 @@ export const i18n = {
       close: "关闭",
       tryAgain: "重试",
     },
+    commands: {
+      reinstallPresetDashViews: "Better Tasks：重新安装仪表板预设视图",
+    },
     prompts: {
       addProject: { title: "添加项目", message: "输入项目名称", placeholder: "项目名称" },
       addContext: { title: "添加情境", message: "输入情境", placeholder: "情境" },
@@ -570,6 +590,10 @@ export const i18n = {
       dashViewsOpenToSave: "请打开 Better Tasks 仪表板以保存视图。",
       dashViewsReadStateFailed: "无法读取仪表板状态。请尝试重新打开仪表板。",
       dashViewsSaveFailed: "无法保存视图。",
+      dashViewsPresetInstalled: "已安装仪表板预设视图。",
+      dashViewsPresetNothingToInstall: "所有仪表板预设视图均已存在。",
+      dashViewsPresetNameCollisions: "由于名称冲突而跳过预设：",
+      dashViewsPresetInstallFailed: "无法重新安装仪表板预设视图。",
     },
     dashboard: {
       topbarTitle: "Better Tasks Dashboard",
@@ -577,6 +601,7 @@ export const i18n = {
       subtitle: "在不离开 Roam 的情况下管理开始、延期、到期和重复任务。",
       refresh: "刷新",
       close: "关闭",
+      groupByLabel: "分组依据",
       views: {
         label: "已保存视图",
         default: "默认",
@@ -594,6 +619,13 @@ export const i18n = {
           overwrite: (name) => `覆盖视图“${name}”？`,
           delete: (name) => `删除视图“${name}”？`,
         },
+      },
+      viewsPresets: {
+        nextActions: "下一步行动",
+        waitingFor: "等待中",
+        completed7d: "已完成（最近 7 天）",
+        someday: "也许 / 某天",
+        allOpen: "全部未完成任务",
       },
       quickAddPlaceholder: "添加 Better Task",
       quickAddButton: "确定",
@@ -655,6 +687,7 @@ export const i18n = {
         recurring: "重复",
         "one-off": "一次性",
         completed: "已完成",
+        noProject: "无项目",
       },
       metaPills: {
         priority: "优先级",
@@ -673,8 +706,9 @@ export const i18n = {
       contextFilterLabel: "情境",
       contextFilterAny: "全部情境",
       groupingLabels: {
-        time: "按时间",
-        recurrence: "按重复规则",
+        time: "时间",
+        recurrence: "重复",
+        project: "项目",
       },
       taskOptions: "任务选项",
       markDone: "标记为完成",
@@ -843,6 +877,9 @@ export const i18n = {
       close: "關閉",
       tryAgain: "再試一次",
     },
+    commands: {
+      reinstallPresetDashViews: "Better Tasks：重新安裝儀表板預設檢視",
+    },
     prompts: {
       addProject: { title: "新增專案", message: "輸入專案名稱", placeholder: "專案名稱" },
       addContext: { title: "新增情境", message: "輸入情境", placeholder: "情境" },
@@ -951,6 +988,10 @@ export const i18n = {
       dashViewsOpenToSave: "請先開啟 Better Tasks 儀表板以儲存檢視。",
       dashViewsReadStateFailed: "無法讀取儀表板狀態。請嘗試重新開啟儀表板。",
       dashViewsSaveFailed: "無法儲存檢視。",
+      dashViewsPresetInstalled: "已安裝儀表板預設檢視。",
+      dashViewsPresetNothingToInstall: "所有儀表板預設檢視均已存在。",
+      dashViewsPresetNameCollisions: "因名稱衝突而略過預設：",
+      dashViewsPresetInstallFailed: "無法重新安裝儀表板預設檢視。",
     },
     dashboard: {
       topbarTitle: "Better Tasks Dashboard",
@@ -958,6 +999,7 @@ export const i18n = {
       subtitle: "在不離開 Roam 的情況下管理開始、延後、到期與重複任務。",
       refresh: "重新整理",
       close: "關閉",
+      groupByLabel: "分組依據",
       views: {
         label: "已儲存檢視",
         default: "預設",
@@ -975,6 +1017,13 @@ export const i18n = {
           overwrite: (name) => `覆寫檢視「${name}」？`,
           delete: (name) => `刪除檢視「${name}」？`,
         },
+      },
+      viewsPresets: {
+        nextActions: "下一步行動",
+        waitingFor: "等待中",
+        completed7d: "已完成（最近 7 天）",
+        someday: "也許 / 某天",
+        allOpen: "全部未完成任務",
       },
       quickAddPlaceholder: "新增 Better Task",
       quickAddButton: "確定",
@@ -1036,6 +1085,7 @@ export const i18n = {
         recurring: "重複",
         "one-off": "一次性",
         completed: "已完成",
+        noProject: "無專案",
       },
       metaPills: {
         priority: "優先級",
@@ -1054,8 +1104,9 @@ export const i18n = {
       contextFilterLabel: "情境",
       contextFilterAny: "全部情境",
       groupingLabels: {
-        time: "依時間",
-        recurrence: "依重複規則",
+        time: "時間",
+        recurrence: "重複",
+        project: "專案",
       },
       taskOptions: "任務選項",
       markDone: "標記為完成",
