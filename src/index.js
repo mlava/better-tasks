@@ -10095,6 +10095,12 @@ export default {
       const title = formatDashboardTitle(block.string || "");
       const attrCompleted = meta?.completed || meta?.childAttrMap?.completed?.value || null;
       const isCompleted = isBlockCompleted(block) || !!attrCompleted;
+      const completedAtRaw = meta?.childAttrMap?.completed?.value || null;
+      const completedAtParsed = completedAtRaw ? parseRoamDate(completedAtRaw) : null;
+      const completedAt =
+        completedAtParsed instanceof Date && !Number.isNaN(completedAtParsed.getTime())
+          ? completedAtParsed
+          : null;
       const startAt = meta?.start instanceof Date && !Number.isNaN(meta.start.getTime()) ? meta.start : null;
       const deferUntil = meta?.defer instanceof Date && !Number.isNaN(meta.defer.getTime()) ? meta.defer : null;
       const dueAt = meta?.due instanceof Date && !Number.isNaN(meta.due.getTime()) ? meta.due : null;
@@ -10133,6 +10139,7 @@ export default {
         recurrenceBucket,
         availabilityLabel,
         isCompleted,
+        completedAt,
         startDisplay: formatDateDisplay(startAt, set),
         deferDisplay: formatDateDisplay(deferUntil, set),
         dueDisplay: formatDateDisplay(dueAt, set),

@@ -259,6 +259,13 @@ export const i18n = {
         delegated: "Delegated",
         someday: "Someday",
       },
+      completedWithinLabel: "Completed within",
+      completedWithinOptions: {
+        any: "Any time",
+        "7d": "Last 7 days",
+        "30d": "Last 30 days",
+        "90d": "Last 90 days",
+      },
       groupLabels: {
         overdue: "Overdue",
         today: "Today",
@@ -633,6 +640,13 @@ export const i18n = {
         delegated: "已委派",
         someday: "某天",
       },
+      completedWithinLabel: "完成时间范围",
+      completedWithinOptions: {
+        any: "不限时间",
+        "7d": "最近 7 天",
+        "30d": "最近 30 天",
+        "90d": "最近 90 天",
+      },
       groupLabels: {
         overdue: "逾期",
         today: "今天",
@@ -1006,6 +1020,13 @@ export const i18n = {
         "next action": "下一步行動",
         delegated: "已委派",
         someday: "某天",
+      },
+      completedWithinLabel: "完成時間範圍",
+      completedWithinOptions: {
+        any: "不限時間",
+        "7d": "最近 7 天",
+        "30d": "最近 30 天",
+        "90d": "最近 90 天",
       },
       groupLabels: {
         overdue: "逾期",

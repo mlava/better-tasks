@@ -64,6 +64,7 @@ const DEFAULT_FILTERS = {
   Defer: [],
   Due: [],
   Completion: ["open"],
+  completedRange: "any",
   Priority: [],
   Energy: [],
   GTD: [],
@@ -205,16 +206,37 @@ function applyFilters(tasks, filters, query) {
   const deferFilter = new Set(filters.Defer || filters.defer || []);
   const dueFilter = new Set(filters.Due || filters.due || []);
   const completionFilter = new Set(filters.Completion || filters.completion || []);
+  const completionArr = Array.from(completionFilter);
+  const completedOnly = completionArr.length === 1 && completionArr[0] === "completed";
   const priorityFilter = new Set(filters.Priority || filters.priority || []);
   const energyFilter = new Set(filters.Energy || filters.energy || []);
   const gtdFilter = new Set(filters.GTD || filters.gtd || []);
+  const completedRange = typeof filters.completedRange === "string" ? filters.completedRange : "any";
   const projectText = (filters.projectText || "").trim();
   const waitingText = (filters.waitingText || "").trim().toLowerCase();
   const contextText = (filters.contextText || "").trim().toLowerCase();
+
+  const isWithinCompletedRange = (date, range) => {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return false;
+    if (range === "any") return true;
+    const now = new Date();
+    const startOfToday = new Date(now.getTime());
+    startOfToday.setHours(0, 0, 0, 0);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const days =
+      range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 90 : null;
+    if (!days) return true;
+    const threshold = new Date(startOfToday.getTime() - (days - 1) * dayMs);
+    return date >= threshold;
+  };
+
   return tasks.filter((task) => {
     if (completionFilter.size) {
       const value = task.isCompleted ? "completed" : "open";
       if (!completionFilter.has(value)) return false;
+    }
+    if (completedOnly && completedRange !== "any" && task.isCompleted) {
+      if (!isWithinCompletedRange(task.completedAt, completedRange)) return false;
     }
     if (recurrenceFilter.size && !recurrenceFilter.has(task.recurrenceBucket)) return false;
     if (startFilter.size && !startFilter.has(task.startBucket)) return false;
@@ -1246,6 +1268,11 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       contextFilterAny: tt(["dashboard", "contextFilterAny"], "All contexts"),
       waitingFilterLabel: tt(["dashboard", "waitingFilterLabel"], "Waiting for"),
       waitingFilterPlaceholder: tt(["dashboard", "waitingFilterPlaceholder"], "Waiting for"),
+      completedWithinLabel: tt(["dashboard", "completedWithinLabel"], "Completed within"),
+      completedWithinAny: tt(["dashboard", "completedWithinOptions", "any"], "Any time"),
+      completedWithin7d: tt(["dashboard", "completedWithinOptions", "7d"], "Last 7 days"),
+      completedWithin30d: tt(["dashboard", "completedWithinOptions", "30d"], "Last 30 days"),
+      completedWithin90d: tt(["dashboard", "completedWithinOptions", "90d"], "Last 90 days"),
       groupingOptions,
       groupLabels,
       metaLabels,
@@ -1429,6 +1456,17 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     dispatchFilters({ type: "setText", section: "contextText", value: e.target.value });
   const handleWaitingFilterChange = (e) =>
     dispatchFilters({ type: "setText", section: "waitingText", value: e.target.value });
+
+  const completionOnlyIsCompleted = useMemo(() => {
+    const list = Array.isArray(filters?.Completion) ? filters.Completion : [];
+    return list.length === 1 && list[0] === "completed";
+  }, [filters]);
+
+  useEffect(() => {
+    if (completionOnlyIsCompleted) return;
+    if ((filters?.completedRange || "any") === "any") return;
+    dispatchFilters({ type: "setText", section: "completedRange", value: "any" });
+  }, [completionOnlyIsCompleted, filters?.completedRange]);
 
   const handleRefresh = () => controller.refresh?.({ reason: "manual" });
 
@@ -1747,9 +1785,29 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                     {filters.contextText &&
                     !contextOptions.includes(filters.contextText) ? (
                         <option value={filters.contextText}>{filters.contextText}</option>
-                      ) : null}
+                    ) : null}
                   </select>
                 </label>
+                {completionOnlyIsCompleted ? (
+                  <label className="bt-filter-text">
+                    <span>{ui.completedWithinLabel}</span>
+                    <select
+                      value={filters.completedRange || "any"}
+                      onChange={(e) =>
+                        dispatchFilters({
+                          type: "setText",
+                          section: "completedRange",
+                          value: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="any">{ui.completedWithinAny}</option>
+                      <option value="7d">{ui.completedWithin7d}</option>
+                      <option value="30d">{ui.completedWithin30d}</option>
+                      <option value="90d">{ui.completedWithin90d}</option>
+                    </select>
+                  </label>
+                ) : null}
               </div>
             </div>
           </div>
