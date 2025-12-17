@@ -27,6 +27,8 @@ https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
     - Clean separation between header actions (Refresh / Close) and view controls for a more stable, predictable layout.
   - Command Palette Support
     - Quickly save or switch dashboard views directly from the command palette.
+- Completed within date range filter
+  - shows if filtered to Completed tasks only
 
 - Added unified pickers and in-memory indexes for Projects, Waiting-for, and Context across inline pills, dashboard menus, and the create/convert prompt; options refresh from your configured attributes and clean up when removed.
 - Added a 'Today Widget' - automatically place a block and children or block and React panel in today's DNP
