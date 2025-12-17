@@ -627,13 +627,13 @@ export default {
       callback: async () => {
         try {
           if (!activeDashboardController?.isOpen?.()) {
-            toast("Open Better Tasks Dashboard to switch views.");
+            toast(t("toasts.dashViewsOpenToSwitch", getLanguageSetting()) || "Open Better Tasks Dashboard to switch views.");
             return;
           }
           const store = activeDashboardController.loadViewsStore?.();
           const views = store?.views || [];
           if (!views.length) {
-            toast("No saved views.");
+            toast(t("toasts.dashViewsNoSaved", getLanguageSetting()) || "No saved views.");
             return;
           }
           const pickedId = await promptForDashView({
@@ -651,7 +651,7 @@ export default {
           activeDashboardController.requestApplyDashViewState?.(view.state);
         } catch (err) {
           console.warn("[BetterTasks] switch view command failed", err);
-          toast("Unable to switch view.");
+          toast(t("toasts.dashViewsSwitchFailed", getLanguageSetting()) || "Unable to switch view.");
         }
       },
     });
@@ -660,12 +660,15 @@ export default {
       callback: async () => {
         try {
           if (!activeDashboardController?.isOpen?.()) {
-            toast("Open Better Tasks Dashboard to save views.");
+            toast(t("toasts.dashViewsOpenToSave", getLanguageSetting()) || "Open Better Tasks Dashboard to save views.");
             return;
           }
           const dashState = activeDashboardController.getDashViewState?.();
           if (!dashState) {
-            toast("Unable to read dashboard state. Try reopening the dashboard.");
+            toast(
+              t("toasts.dashViewsReadStateFailed", getLanguageSetting()) ||
+                "Unable to read dashboard state. Try reopening the dashboard."
+            );
             return;
           }
           const name = activeDashboardController.promptValue
@@ -683,7 +686,7 @@ export default {
           activeDashboardController.notifyDashViewsStoreChanged?.(saved);
         } catch (err) {
           console.warn("[BetterTasks] save view command failed", err);
-          toast("Unable to save view.");
+          toast(t("toasts.dashViewsSaveFailed", getLanguageSetting()) || "Unable to save view.");
         }
       },
     });

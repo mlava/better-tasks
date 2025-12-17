@@ -1217,6 +1217,24 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
         tt(["dashboard", "subtitle"], "Manage start, defer, due, and recurring tasks without leaving Roam."),
       refresh: tt(["dashboard", "refresh"], "Refresh"),
       close: tt(["dashboard", "close"], "Close"),
+      savedViewsLabel: tt(["dashboard", "views", "label"], "Saved Views"),
+      viewsDefault: tt(["dashboard", "views", "default"], "Default"),
+      viewsSaveAs: tt(["dashboard", "views", "saveAs"], "Save as…"),
+      viewsUpdate: tt(["dashboard", "views", "update"], "Update"),
+      viewsOptions: tt(["dashboard", "views", "options"], "View options"),
+      viewsRename: tt(["dashboard", "views", "rename"], "Rename…"),
+      viewsDelete: tt(["dashboard", "views", "delete"], "Delete"),
+      viewsSaveAsMessage: tt(["dashboard", "views", "prompts", "saveAsMessage"], "Save current view as"),
+      viewsRenameMessage: tt(["dashboard", "views", "prompts", "renameMessage"], "Rename view"),
+      viewsNamePlaceholder: tt(["dashboard", "views", "prompts", "namePlaceholder"], "View name"),
+      viewsConfirmOverwrite: tt(
+        ["dashboard", "views", "confirms", "overwrite"],
+        (name) => `Overwrite view "${name}"?`
+      ),
+      viewsConfirmDelete: tt(
+        ["dashboard", "views", "confirms", "delete"],
+        (name) => `Delete view "${name}"?`
+      ),
       quickAddPlaceholder: tt(["dashboard", "quickAddPlaceholder"], "Add a Better Task"),
       quickAddButton: tt(["dashboard", "quickAddButton"], "OK"),
       searchPlaceholder: tt(["dashboard", "searchPlaceholder"], "Search Better Tasks"),
@@ -1459,39 +1477,47 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     if (!controller?.promptValue) return;
     const name = await controller.promptValue({
       title: "Better Tasks",
-      message: "Save current view as",
-      placeholder: "View name",
+      message: ui.viewsSaveAsMessage,
+      placeholder: ui.viewsNamePlaceholder,
       initial: "",
     });
     if (!name) return;
     persistViewsStore(createView(viewsStore, name, getDashViewState()));
-  }, [controller, viewsStore, getDashViewState, persistViewsStore]);
+  }, [controller, viewsStore, getDashViewState, persistViewsStore, ui.viewsSaveAsMessage, ui.viewsNamePlaceholder]);
 
   const handleUpdateActiveView = useCallback(() => {
     if (!activeView?.id) return;
-    const ok = typeof window !== "undefined" ? window.confirm(`Overwrite view "${activeView.name}"?`) : true;
+    const confirmText =
+      typeof ui.viewsConfirmOverwrite === "function"
+        ? ui.viewsConfirmOverwrite(activeView.name)
+        : `Overwrite view "${activeView.name}"?`;
+    const ok = typeof window !== "undefined" ? window.confirm(confirmText) : true;
     if (!ok) return;
     persistViewsStore(updateView(viewsStore, activeView.id, getDashViewState()));
-  }, [activeView, viewsStore, getDashViewState, persistViewsStore]);
+  }, [activeView, viewsStore, getDashViewState, persistViewsStore, ui.viewsConfirmOverwrite]);
 
   const handleRenameActiveView = useCallback(async () => {
     if (!activeView?.id || !controller?.promptValue) return;
     const name = await controller.promptValue({
       title: "Better Tasks",
-      message: "Rename view",
-      placeholder: "View name",
+      message: ui.viewsRenameMessage,
+      placeholder: ui.viewsNamePlaceholder,
       initial: activeView.name || "",
     });
     if (!name) return;
     persistViewsStore(renameView(viewsStore, activeView.id, name));
-  }, [controller, activeView, viewsStore, persistViewsStore]);
+  }, [controller, activeView, viewsStore, persistViewsStore, ui.viewsRenameMessage, ui.viewsNamePlaceholder]);
 
   const handleDeleteActiveView = useCallback(() => {
     if (!activeView?.id) return;
-    const ok = typeof window !== "undefined" ? window.confirm(`Delete view "${activeView.name}"?`) : true;
+    const confirmText =
+      typeof ui.viewsConfirmDelete === "function"
+        ? ui.viewsConfirmDelete(activeView.name)
+        : `Delete view "${activeView.name}"?`;
+    const ok = typeof window !== "undefined" ? window.confirm(confirmText) : true;
     if (!ok) return;
     persistViewsStore(deleteView(viewsStore, activeView.id));
-  }, [activeView, viewsStore, persistViewsStore]);
+  }, [activeView, viewsStore, persistViewsStore, ui.viewsConfirmDelete]);
 
   const isActiveViewDirty = useMemo(() => {
     if (!activeView?.id) return false;
@@ -1507,10 +1533,10 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const viewMenuActions = useMemo(() => {
     if (!activeView?.id) return [];
     return [
-      { key: "rename", label: "Rename…", handler: () => handleRenameActiveView() },
-      { key: "delete", label: "Delete", danger: true, handler: () => handleDeleteActiveView() },
+      { key: "rename", label: ui.viewsRename, handler: () => handleRenameActiveView() },
+      { key: "delete", label: ui.viewsDelete, danger: true, handler: () => handleDeleteActiveView() },
     ];
-  }, [activeView, handleRenameActiveView, handleDeleteActiveView]);
+  }, [activeView, handleRenameActiveView, handleDeleteActiveView, ui.viewsRename, ui.viewsDelete]);
 
   const headerRef = useCallback(
     (node) => {
@@ -1545,14 +1571,14 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
 
       <div className="bt-dashboard__toolbar">
         <div className="bt-toolbar__left">
-          <span className="bt-filter-row__label">Saved Views</span>
+          <span className="bt-filter-row__label">{ui.savedViewsLabel}</span>
           <div className="bp3-select bp3-small bt-views-select">
             <select
               value={viewsStore?.activeViewId || ""}
               onChange={handleViewSelectChange}
-              aria-label="Views"
+              aria-label={ui.savedViewsLabel}
             >
-              <option value="">Default</option>
+              <option value="">{ui.viewsDefault}</option>
               {sortedViews.map((view) => (
                 <option key={view.id} value={view.id}>
                   {view.name}
@@ -1561,7 +1587,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             </select>
           </div>
           <button type="button" className="bp3-button bp3-small" onClick={handleSaveViewAs}>
-            Save as…
+            {ui.viewsSaveAs}
           </button>
           <button
             type="button"
@@ -1569,11 +1595,11 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             onClick={handleUpdateActiveView}
             disabled={!activeView || !isActiveViewDirty}
           >
-            Update
+            {ui.viewsUpdate}
           </button>
           <SimpleActionsMenu
             actions={viewMenuActions}
-            title="View options"
+            title={ui.viewsOptions}
             disabled={!activeView}
           />
         </div>
