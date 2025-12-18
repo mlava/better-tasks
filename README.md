@@ -125,41 +125,29 @@ Regardless of how you enter the attributes, the extension emits a compact **pill
 
 ## ⚙️ Settings
 
-### Destination for Next Task
-Determines where the next instance of a Better Task appears:
-- **Daily Notes Page (DNP)** — Default; next occurrence is created on its due date’s DNP.  
-- **Same Page** — Next occurrence appears below the current one.
-- **Under a Heading on DNP** — Adds the new task under the heading you specify (default: “Tasks”).
+Better Tasks settings use **progressive disclosure**: advanced options appear only when relevant (e.g. when you enable a feature or choose a mode).
 
-### DNP heading
-Heading for **Under a Heading on DNP**
+### Core
+- **Language** — Preferred language for Better Tasks UI.
+- **Destination for next task** — Where to create the next occurrence (`DNP`, `Same Page`, or `DNP under heading`). When you choose `DNP under heading`, the **DNP heading** field appears.
+- **Confirm before spawning next task** — Confirmation prompt when completing a repeating task.
+- **First day of the week** — Used for weekly ranges and some weekly interval rules; default is Monday.
+- **Inline pill checkbox threshold** — Caps how many checkboxes can be on a page before pill rendering is skipped (performance safeguard).
 
-### Repeat attribute name
-Label for a child block attribute for the recurrence pattern
+### Today Badge
+- **Enable Today badge** — When enabled, reveals label/overdue/color settings and shows a “Today” link + count badge in the left sidebar.
 
-### Start attribute name
-Label for the optional “start/available on” date attribute (default `BT_attrStart`)
+### Today Widget
+- **Enable Today widget** — When enabled, reveals widget configuration (title/placement/heading/layout/overdue/completed) and renders on the DNP.
 
-### Defer attribute name
-Label for the optional “defer/snooze until” date attribute (default `BT_attrDefer`)
+### AI parsing (experimental)
+- **AI parsing mode** — When set to “Use my OpenAI key”, the **OpenAI API key** field appears. See “AI Task Input Parsing” below for details.
 
-### Due attribute name
-Label for the optional “due” date attribute (default `BT_attrDue`)
+### Picklist exclusions (Projects / Context / Waiting-for)
+- **Advanced Project/Context/Waiting options** — When enabled, reveals **Exclude pages from picklists** (comma-separated; wrap titles containing commas—like daily note pages—in `[[...]]`). `roam/*` pages are always excluded.
 
-### Completed attribute name
-Label written when the task is marked DONE (default `BT_attrCompleted`).
-
-### GTD status attribute name
-Label for an optional GTD status child block (default `BT_attrGTD`), cycling through Next Action, Delegated, Deferred, Someday, or cleared.
-
-You can change any of these attributes in Settings. These defaults have been chosen to minimise the risk of unexpected behaviours if you already use start:: defer:: repeat:: due:: or completed:: in your graph for other purposes.
-
-### Confirm Before Spawning Next Task
-If enabled, shows a confirmation dialogue (“Spawn next occurrence?”) when you complete a repeating Better Task.
-
-### First day of the week
-Tells Better Tasks which weekday your graph treats as the start of the week, and allows you to match your Roam Research preference setting.  
-Weekly rules that span multiple days or intervals (e.g., `every 2 weeks on Sat & Sun`, `Mon-Fri`) interpret ranges using this anchor. Default is **Monday**.
+### Customise attribute names (advanced)
+- **Customise attribute names (advanced)** — When enabled, reveals attribute name fields (Repeat, Start, Defer, Due, Completed, Project, GTD, Waiting-for, Context, Priority, Energy). Defaults are chosen to reduce accidental matches if you already use similar attributes in your graph.
 
 ## 🤖 AI Task Input Parsing (Experimental)
 - What it does: optionally sends the raw task text to OpenAI (BYO key, client-side) and maps the returned JSON into Better Task title/repeat/date attributes. If anything fails, the normal “Create a Better Task” flow runs instead.
@@ -169,15 +157,6 @@ Weekly rules that span multiple days or intervals (e.g., `every 2 weeks on Sat &
 - Failure behaviour: network/JSON/validation issues show a small toast (“AI parsing unavailable…”) and the normal Better Task prompt runs so task creation never blocks.
 - How it flows: use the existing “Create a Better Task” command palette entry or block context menu. If AI is enabled and you have text in the block, it’s sent to OpenAI; otherwise you’ll be prompted for text. A small spinner toast appears while waiting for the API.
 - Data safety: only the task text you supply plus your API key are sent directly to OpenAI; no proxy/server is involved. Nothing else from your graph is transmitted. If you hit quota issues, you’ll see a toast pointing you to the provider’s billing/limits page (`https://platform.openai.com/settings/organization/billing/overview`).
-
-### Inline pill checkbox threshold
-Caps how many checkboxes can be on the page before inline pill rendering is skipped. Default is 100. Increase to show pills on very large pages (slower), or decrease to prioritise performance; pills will still render on-demand when you interact with a specific block.
-
-### Picklist exclusions (Projects / Context / Waiting-for)
-Better Tasks can exclude specific pages from contributing values to the Project / Context / Waiting-for picklists (used in the dashboard and toasts). `roam/*` pages are always excluded, and you can optionally add your own exclusions (comma-separated; wrap titles containing commas—like daily note pages—in `[[...]]`).
-
-**Note:** 
-The settings pane for the extension allows you to use whatever name for the repeat and start/defer/due date atttributes you choose. The extension defaults to using 'BT_attrRepeat', 'BT_attrStart', 'BT_attrDefer' and 'BT_attrDue' for the recurrence pattern and start/defer/due dates respectively. If you happen to already use these attributes for other purposes, the extension will recognise and attempt to use them if you don't set alternatives in the settings. Using 'frequency' and 'when' for example, would prevent the extension from acting on anything for which you already use 'BT_attrRepeat' and 'BT_attrDue'.
 
 ### Today Widget
 - **Enable Today widget** — Show the widget on the Daily Notes Page.
@@ -416,18 +395,18 @@ Better Tasks is fully locale-aware across the UI:
 - Dashboard UI, filters, saved views, and review presets
 - Locale-aware date formatting and first-day-of-week handling
 
-### Note on Natural Language Parsing (NLP)
-
-Natural-language parsing for recurrence patterns (e.g. “every second Tuesday”, “fortnightly”, or non-English equivalents) is **explicitly out of scope** for the current i18n implementation.
-
-This is recognised as a **future AI/NLP enhancement**, rather than a missing localisation feature. The current recurrence system prioritises correctness, transparency, and explicit user intent over heuristic parsing.
-
 Currently supported languages are:
 - English (en)
 - Simplified Chinese (zh)
 - Traditional Chinese (zhHant)
 
 We welcome contributions from users who wish to add other languages.
+
+### Note on Natural Language Parsing (NLP)
+
+Localised natural-language parsing for recurrence patterns (e.g. “every second Tuesday”, “fortnightly”, or non-English equivalents) is **explicitly out of scope** for the current i18n implementation.
+
+This is recognised as a **future AI/NLP enhancement**, rather than a missing localisation feature. The current recurrence system prioritises correctness, transparency, and explicit user intent over heuristic parsing.
 
 ---
 
