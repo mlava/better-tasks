@@ -1301,6 +1301,8 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
         tt(["dashboard", "subtitle"], "Manage start, defer, due, and recurring tasks without leaving Roam."),
       refresh: tt(["dashboard", "refresh"], "Refresh"),
       close: tt(["dashboard", "close"], "Close"),
+      fullPageEnter: tt(["dashboard", "fullPage", "enter"], "Expand"),
+      fullPageExit: tt(["dashboard", "fullPage", "exit"], "Exit full page"),
       savedViewsLabel: tt(["dashboard", "views", "label"], "Saved Views"),
       viewsDefault: tt(["dashboard", "views", "default"], "Default"),
       viewsSaveAs: tt(["dashboard", "views", "saveAs"], "Save as…"),
@@ -1323,6 +1325,15 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       quickAddButton: tt(["dashboard", "quickAddButton"], "OK"),
       searchPlaceholder: tt(["dashboard", "searchPlaceholder"], "Search Better Tasks"),
       filtersLabel: tt(["dashboard", "filtersLabel"], "Filters"),
+      filtersShow: tt(["dashboard", "filters", "show"], "Show filters"),
+      filtersHide: tt(["dashboard", "filters", "hide"], "Hide filters"),
+      tagsLabel: tt(["dashboard", "filters", "tagsLabel"], "Tags"),
+      filtersGroups: {
+        status: tt(["dashboard", "filters", "groups", "status"], "Status"),
+        dates: tt(["dashboard", "filters", "groups", "dates"], "Dates"),
+        gtd: tt(["dashboard", "filters", "groups", "gtd"], "GTD"),
+        meta: tt(["dashboard", "filters", "groups", "meta"], "Meta"),
+      },
       groupByLabel: tt(["dashboard", "groupByLabel"], "Group by"),
       projectFilterLabel: tt(["dashboard", "projectFilterLabel"], "Project"),
       projectFilterPlaceholder: tt(["dashboard", "projectFilterPlaceholder"], "Project name"),
@@ -1596,6 +1607,187 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   }, [completionOnlyIsCompleted, filters?.completedRange]);
 
   const handleRefresh = () => controller.refresh?.({ reason: "manual" });
+  const isFullPage = !!snapshot?.isFullPage;
+  const handleToggleFullPage = () => controller.toggleDashboardFullPage?.();
+
+  const fullPageUiKey = useMemo(() => {
+    let graphName = "default";
+    try {
+      graphName = window?.roamAlphaAPI?.graph?.name?.() || "default";
+    } catch (_) {
+      // ignore
+    }
+    return `betterTasks.dashboard.fullPage.uiState.${encodeURIComponent(String(graphName))}`;
+  }, []);
+
+  const readFullPageUiState = useCallback(() => {
+    const defaultSidebarWidth = 310;
+    const defaults = {
+      sidebarCollapsed: false,
+      groupsCollapsed: {
+        status: false,
+        dates: false,
+        gtd: false,
+        meta: false,
+      },
+      sidebarWidth: defaultSidebarWidth,
+    };
+    if (typeof window === "undefined") return defaults;
+    try {
+      const raw = window.localStorage?.getItem(fullPageUiKey);
+      if (!raw) return defaults;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return defaults;
+      const groups =
+        parsed.groupsCollapsed && typeof parsed.groupsCollapsed === "object"
+          ? parsed.groupsCollapsed
+          : {};
+      const sidebarWidthRaw = parsed.sidebarWidth;
+      const sidebarWidthNum =
+        typeof sidebarWidthRaw === "number"
+          ? sidebarWidthRaw
+          : typeof sidebarWidthRaw === "string"
+            ? parseFloat(sidebarWidthRaw)
+            : NaN;
+      const sidebarWidth = Number.isFinite(sidebarWidthNum)
+        ? Math.min(480, Math.max(240, Math.round(sidebarWidthNum)))
+        : defaultSidebarWidth;
+      return {
+        sidebarCollapsed: !!parsed.sidebarCollapsed,
+        groupsCollapsed: {
+          status: !!groups.status,
+          dates: !!(groups.dates ?? groups.flow),
+          gtd: !!(groups.gtd ?? groups.structure),
+          meta: !!(groups.meta ?? groups.effort),
+        },
+        sidebarWidth,
+      };
+    } catch (_) {
+      return defaults;
+    }
+  }, [fullPageUiKey]);
+
+  const [fullPageUiState, setFullPageUiState] = useState(() => readFullPageUiState());
+
+  useEffect(() => {
+    if (!isFullPage) return;
+    setFullPageUiState(readFullPageUiState());
+  }, [isFullPage, readFullPageUiState]);
+
+  const persistFullPageUiState = useCallback(
+    (next) => {
+      if (typeof window === "undefined") return;
+      try {
+        window.localStorage?.setItem(fullPageUiKey, JSON.stringify(next));
+      } catch (_) {
+        // ignore
+      }
+    },
+    [fullPageUiKey]
+  );
+
+  const updateFullPageUiState = useCallback(
+    (updater) => {
+      setFullPageUiState((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : prev;
+        persistFullPageUiState(next);
+        return next;
+      });
+    },
+    [persistFullPageUiState]
+  );
+
+  const sidebarCollapsed = !!fullPageUiState.sidebarCollapsed;
+  const groupsCollapsed = fullPageUiState.groupsCollapsed || {};
+  const sidebarWidth =
+    typeof fullPageUiState.sidebarWidth === "number" && Number.isFinite(fullPageUiState.sidebarWidth)
+      ? fullPageUiState.sidebarWidth
+      : 310;
+  const isResizingSidebarRef = useRef(false);
+  const sidebarResizeStartRef = useRef({ x: 0, width: sidebarWidth });
+  const sidebarResizeRafRef = useRef(null);
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    updateFullPageUiState((prev) => ({ ...prev, sidebarCollapsed: !prev.sidebarCollapsed }));
+  }, [updateFullPageUiState]);
+
+  const toggleGroupCollapsed = useCallback(
+    (key) => {
+      updateFullPageUiState((prev) => ({
+        ...prev,
+        groupsCollapsed: { ...(prev.groupsCollapsed || {}), [key]: !prev.groupsCollapsed?.[key] },
+      }));
+    },
+    [updateFullPageUiState]
+  );
+
+  const setSidebarWidth = useCallback(
+    (nextWidth) => {
+      const width =
+        typeof nextWidth === "number" && Number.isFinite(nextWidth)
+          ? Math.min(480, Math.max(240, Math.round(nextWidth)))
+          : sidebarWidth;
+      updateFullPageUiState((prev) => ({ ...prev, sidebarWidth: width }));
+    },
+    [sidebarWidth, updateFullPageUiState]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (sidebarResizeRafRef.current) {
+        cancelAnimationFrame(sidebarResizeRafRef.current);
+        sidebarResizeRafRef.current = null;
+      }
+      isResizingSidebarRef.current = false;
+    };
+  }, []);
+
+  const handleSidebarResizerPointerDown = useCallback(
+    (event) => {
+      if (!isFullPage) return;
+      if (sidebarCollapsed) return;
+      if (!event || typeof event.clientX !== "number") return;
+      isResizingSidebarRef.current = true;
+      sidebarResizeStartRef.current = { x: event.clientX, width: sidebarWidth };
+      try {
+        event.currentTarget?.setPointerCapture?.(event.pointerId);
+      } catch (_) {
+        // ignore
+      }
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    [isFullPage, sidebarCollapsed, sidebarWidth]
+  );
+
+  const handleSidebarResizerPointerMove = useCallback(
+    (event) => {
+      if (!isResizingSidebarRef.current) return;
+      if (!event || typeof event.clientX !== "number") return;
+      const { x, width } = sidebarResizeStartRef.current || { x: 0, width: sidebarWidth };
+      const delta = event.clientX - x;
+      const next = width + delta;
+      if (sidebarResizeRafRef.current) return;
+      sidebarResizeRafRef.current = requestAnimationFrame(() => {
+        sidebarResizeRafRef.current = null;
+        setSidebarWidth(next);
+      });
+      event.preventDefault();
+    },
+    [setSidebarWidth, sidebarWidth]
+  );
+
+  const handleSidebarResizerPointerUp = useCallback((event) => {
+    if (!isResizingSidebarRef.current) return;
+    isResizingSidebarRef.current = false;
+    try {
+      event.currentTarget?.releasePointerCapture?.(event.pointerId);
+    } catch (_) {
+      // ignore
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  }, []);
 
   const getDashViewState = useCallback(
     () => ({ filters, grouping, query }),
@@ -1812,6 +2004,380 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     [onHeaderReady]
   );
 
+  function FullPageFilterGroup({ groupKey, title, children }) {
+    const isCollapsed = !!groupsCollapsed?.[groupKey];
+    return (
+      <section className="bt-filter-group" data-group={groupKey}>
+        <button
+          type="button"
+          className="bt-filter-group__header"
+          onClick={() => toggleGroupCollapsed(groupKey)}
+          aria-expanded={!isCollapsed}
+        >
+          <span className="bt-filter-group__title">{title}</span>
+          <span className="bt-filter-group__caret" aria-hidden="true">
+            {isCollapsed ? "▸" : "▾"}
+          </span>
+        </button>
+        {!isCollapsed ? <div className="bt-filter-group__body">{children}</div> : null}
+      </section>
+    );
+  }
+
+  const fullPageFiltersSidebar = !sidebarCollapsed ? (
+    <aside className="bt-dashboard__sidebar" aria-label={ui.filtersLabel} style={{ width: `${sidebarWidth}px` }}>
+      <div className="bt-sidebar__header">
+        <span className="bt-sidebar__title">{ui.filtersLabel}</span>
+      </div>
+
+      <FullPageFilterGroup groupKey="status" title={ui.filtersGroups.status}>
+        <FilterChips
+          sectionKey="Completion"
+          label={filterSectionLabels["Completion"] || "Completion"}
+          chips={filterDefs["Completion"]}
+          activeValues={filters["Completion"]}
+          onToggle={handleFilterToggle}
+        />
+        {completionOnlyIsCompleted ? (
+          <label className="bt-filter-text">
+            <span>{ui.completedWithinLabel}</span>
+            <select
+              value={filters.completedRange || "any"}
+              onChange={(e) =>
+                dispatchFilters({
+                  type: "setText",
+                  section: "completedRange",
+                  value: e.target.value,
+                })
+              }
+            >
+              <option value="any">{ui.completedWithinAny}</option>
+              <option value="7d">{ui.completedWithin7d}</option>
+              <option value="30d">{ui.completedWithin30d}</option>
+              <option value="90d">{ui.completedWithin90d}</option>
+            </select>
+          </label>
+        ) : null}
+        <FilterChips
+          sectionKey="Recurrence"
+          label={filterSectionLabels["Recurrence"] || "Recurrence"}
+          chips={filterDefs["Recurrence"]}
+          activeValues={filters["Recurrence"]}
+          onToggle={handleFilterToggle}
+        />
+      </FullPageFilterGroup>
+
+      <FullPageFilterGroup groupKey="dates" title={ui.filtersGroups.dates}>
+        <FilterChips
+          sectionKey="Start"
+          label={filterSectionLabels["Start"] || "Start"}
+          chips={filterDefs["Start"]}
+          activeValues={filters["Start"]}
+          onToggle={handleFilterToggle}
+        />
+        <FilterChips
+          sectionKey="Defer"
+          label={filterSectionLabels["Defer"] || "Defer"}
+          chips={filterDefs["Defer"]}
+          activeValues={filters["Defer"]}
+          onToggle={handleFilterToggle}
+        />
+        <FilterChips
+          sectionKey="Due"
+          label={filterSectionLabels["Due"] || "Due"}
+          chips={filterDefs["Due"]}
+          activeValues={filters["Due"]}
+          onToggle={handleFilterToggle}
+        />
+      </FullPageFilterGroup>
+
+      <FullPageFilterGroup groupKey="gtd" title={ui.filtersGroups.gtd}>
+        <FilterChips
+          sectionKey="GTD"
+          label={ui.tagsLabel}
+          chips={filterDefs["GTD"]}
+          activeValues={filters["GTD"]}
+          onToggle={handleFilterToggle}
+        />
+        <label className="bt-filter-text">
+          <span>{ui.projectFilterLabel}</span>
+          <select value={filters.projectText || ""} onChange={handleProjectFilterChange}>
+            <option value="">{ui.projectFilterAny || ui.projectFilterPlaceholder || "All projects"}</option>
+            {projectOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+            {filters.projectText && !projectOptions.includes(filters.projectText) ? (
+              <option value={filters.projectText}>{filters.projectText}</option>
+            ) : null}
+          </select>
+        </label>
+        <label className="bt-filter-text">
+          <span>{ui.waitingFilterLabel}</span>
+          <select value={filters.waitingText || ""} onChange={handleWaitingFilterChange}>
+            <option value="">{ui.waitingFilterAny || ui.waitingFilterPlaceholder || "All waiting"}</option>
+            {waitingOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+            {filters.waitingText && !waitingOptions.includes(filters.waitingText) ? (
+              <option value={filters.waitingText}>{filters.waitingText}</option>
+            ) : null}
+          </select>
+        </label>
+        <label className="bt-filter-text">
+          <span>{ui.contextFilterLabel}</span>
+          <select value={filters.contextText || ""} onChange={handleContextFilterChange}>
+            <option value="">{ui.contextFilterAny || "All contexts"}</option>
+            {contextOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+            {filters.contextText && !contextOptions.includes(filters.contextText) ? (
+              <option value={filters.contextText}>{filters.contextText}</option>
+            ) : null}
+          </select>
+        </label>
+      </FullPageFilterGroup>
+
+      <FullPageFilterGroup groupKey="meta" title={ui.filtersGroups.meta}>
+        <FilterChips
+          sectionKey="Priority"
+          label={filterSectionLabels["Priority"] || "Priority"}
+          chips={filterDefs["Priority"]}
+          activeValues={filters["Priority"]}
+          onToggle={handleFilterToggle}
+        />
+        <FilterChips
+          sectionKey="Energy"
+          label={filterSectionLabels["Energy"] || "Energy"}
+          chips={filterDefs["Energy"]}
+          activeValues={filters["Energy"]}
+          onToggle={handleFilterToggle}
+        />
+      </FullPageFilterGroup>
+    </aside>
+  ) : null;
+
+  if (isFullPage) {
+    return (
+      <div className="bt-dashboard">
+        <header className="bt-dashboard__header" ref={headerRef}>
+          <div>
+            <h2>{ui.headerTitle}</h2>
+            <p>{ui.headerSubtitle}</p>
+          </div>
+          <div className="bt-dashboard__header-actions">
+            <button type="button" className="bp3-button bp3-small" onClick={handleToggleFullPage}>
+              {isFullPage ? ui.fullPageExit : ui.fullPageEnter}
+            </button>
+            <button type="button" className="bp3-button bp3-small" onClick={handleRefresh}>
+              {ui.refresh}
+            </button>
+            <button
+              type="button"
+              className="bp3-button bp3-small"
+              onClick={onRequestClose}
+              aria-label={ui.close}
+            >
+              ✕
+            </button>
+          </div>
+        </header>
+
+        <div className="bt-dashboard__quick-add">
+          <div className="bt-quick-add">
+            <input
+              type="text"
+              className="bt-quick-add__input"
+              placeholder={ui.quickAddPlaceholder}
+              value={quickText}
+              onChange={(e) => setQuickText(e.target.value)}
+              onKeyDown={handleQuickAddKeyDown}
+            />
+            <button type="button" className="bp3-button bp3-small" onClick={handleQuickAddSubmit}>
+              {ui.quickAddButton}
+            </button>
+          </div>
+        </div>
+
+        <div className="bt-dashboard__toolbar">
+          <div className="bt-toolbar__left">
+            <span className="bt-filter-row__label">{ui.savedViewsLabel}</span>
+            <div className="bp3-select bp3-small bt-views-select">
+              <select
+                value={viewsStore?.activeViewId || ""}
+                onChange={handleViewSelectChange}
+                aria-label={ui.savedViewsLabel}
+              >
+                <option value="">{ui.viewsDefault}</option>
+                {sortedViews.map((view) => (
+                  <option key={view.id} value={view.id}>
+                    {view.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button type="button" className="bp3-button bp3-small" onClick={handleSaveViewAs}>
+              {ui.viewsSaveAs}
+            </button>
+            <button
+              type="button"
+              className="bp3-button bp3-small"
+              onClick={handleUpdateActiveView}
+              disabled={!activeView || !isActiveViewDirty}
+            >
+              {ui.viewsUpdate}
+            </button>
+            <SimpleActionsMenu actions={viewMenuActions} title={ui.viewsOptions} disabled={!activeView} />
+          </div>
+          <div className="bt-toolbar__right">
+            <button
+              type="button"
+              className={`bp3-button bp3-small bt-weekly-review-button${
+                reviewState.active ? " bt-weekly-review-button--inactive" : ""
+              }`}
+              onClick={startReview}
+              disabled={reviewState.active || !effectiveReviewIds.length}
+            >
+              {ui.reviewButton}
+            </button>
+          </div>
+        </div>
+
+        <div className="bt-dashboard__main">
+          {fullPageFiltersSidebar}
+          {!sidebarCollapsed ? (
+            <div
+              className="bt-dashboard__sidebar-resizer"
+              role="separator"
+              aria-orientation="vertical"
+              onPointerDown={handleSidebarResizerPointerDown}
+              onPointerMove={handleSidebarResizerPointerMove}
+              onPointerUp={handleSidebarResizerPointerUp}
+              onPointerCancel={handleSidebarResizerPointerUp}
+            />
+          ) : null}
+          <div className="bt-dashboard__mainpane">
+            <div className="bt-dashboard__controls">
+              <div className="bt-search-row">
+                <input
+                  type="text"
+                  className="bt-search"
+                  placeholder={ui.searchPlaceholder}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                <div className="bt-grouping">
+                  <span className="bt-grouping__label">{ui.groupByLabel}</span>
+                  {ui.groupingOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`bt-chip${grouping === option.value ? " bt-chip--active" : ""}`}
+                      onClick={() => setGrouping(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="bt-chip bt-chip--filters-toggle"
+                    onClick={toggleSidebarCollapsed}
+                    aria-label={ui.filtersLabel}
+                  >
+                    {sidebarCollapsed ? ui.filtersShow : ui.filtersHide}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {reviewState.active ? (
+              <div className="bt-dashboard__reviewbar">
+                <div className="bt-reviewbar__left">
+                  <span className="bt-reviewbar__title">
+                    {ui.reviewLabel} · {Math.min(reviewState.index + 1, effectiveReviewIds.length)} {ui.reviewOf}{" "}
+                    {effectiveReviewIds.length}
+                  </span>
+                  {activeReviewView?.name ? <span className="bt-reviewbar__current">{activeReviewView.name}</span> : null}
+                </div>
+                <div className="bt-reviewbar__right">
+                  <button
+                    type="button"
+                    className="bp3-button bp3-small"
+                    onClick={goReviewBack}
+                    disabled={reviewState.index <= 0}
+                  >
+                    {ui.reviewBack}
+                  </button>
+                  <button
+                    type="button"
+                    className="bp3-button bp3-small"
+                    onClick={goReviewNext}
+                    disabled={reviewState.index >= effectiveReviewIds.length - 1}
+                  >
+                    {ui.reviewNext}
+                  </button>
+                  <button type="button" className="bp3-button bp3-small" onClick={exitReview}>
+                    {ui.reviewExit}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="bt-dashboard__content" ref={parentRef}>
+              <div className="bt-virtualizer" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const row = rows[virtualRow.index];
+                  const style = {
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualRow.start}px)`,
+                  };
+                  if (row.type === "group") {
+                    const expanded = expandedGroups[row.group.id] !== false;
+                    return (
+                      <div style={style} key={row.key} data-index={virtualRow.index} ref={rowVirtualizer.measureElement}>
+                        <GroupHeader
+                          title={row.group.title}
+                          count={row.group.items.length}
+                          isExpanded={expanded}
+                          onToggle={() =>
+                            setExpandedGroups((prev) => ({
+                              ...prev,
+                              [row.group.id]: !expanded,
+                            }))
+                          }
+                        />
+                      </div>
+                    );
+                  }
+                  return (
+                    <div style={style} key={row.key} data-index={virtualRow.index} ref={rowVirtualizer.measureElement}>
+                      <TaskRow task={row.task} controller={controller} strings={ui} />
+                    </div>
+                  );
+                })}
+              </div>
+              {!rows.length ? (
+                <div className="bt-content-empty">
+                  <EmptyState status={snapshot.status} onRefresh={handleRefresh} strings={ui.empty} />
+                </div>
+              ) : null}
+            </div>
+
+            <footer className="bt-dashboard__footer"></footer>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bt-dashboard">
       <header className="bt-dashboard__header" ref={headerRef}>
@@ -1820,6 +2386,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           <p>{ui.headerSubtitle}</p>
         </div>
         <div className="bt-dashboard__header-actions">
+          <button type="button" className="bp3-button bp3-small" onClick={handleToggleFullPage}>
+            {isFullPage ? ui.fullPageExit : ui.fullPageEnter}
+          </button>
           <button type="button" className="bp3-button bp3-small" onClick={handleRefresh}>
             {ui.refresh}
           </button>

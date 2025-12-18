@@ -38,6 +38,9 @@ https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
   - Available when filtering to Completed tasks only.
 - Project grouping in dashboard
   - group tasks by project (with a “No Project” bucket).
+- Full-page dashboard mode
+  - Expand the dashboard to fill Roam’s main content area (with a dedicated command palette entry).
+  - Full-page layout includes a persistent, collapsible, resizable filters sidebar with grouped sections.
 
 - Added unified pickers and in-memory indexes for Projects, Waiting-for, and Context across inline pills, dashboard menus, and the create/convert prompt; options refresh from your configured attributes and clean up when removed.
 - Picklist exclusions (Projects / Context / Waiting-for)
@@ -207,6 +210,7 @@ Open the dashboard from the command palette (`Toggle Better Tasks Dashboard`) or
 - Quick snooze actions, completion toggles, and links back to the originating blocks.
 - Background refreshes whenever task attributes change so pills and dashboard stay in sync.
 - A floating panel you can drag anywhere within the Roam window. The position is remembered, so place it where it works best for your workflow.
+- Optional full-page mode that expands to fill Roam’s main content area; in full-page mode filters move into a persistent left sidebar (collapsible groups, hide/show, and resizable width).
 - A subtle ⋯ menu beside each task’s pills that lets you add or remove repeat/start/defer/due attributes (or edit them) without leaving the dashboard.
 - Optional metadata chips (project, waiting-for, context, priority, energy) with filters plus add/remove buttons that mirror the inline pill behaviour.
 - A quick-add input at the top: type a task and hit **OK** or Enter to create it (uses AI parsing when enabled, otherwise the manual Better Task flow with scheduling).
@@ -235,6 +239,7 @@ You can trigger these from Roam’s Command Palette (`Ctrl+P` / `Cmd+P`) or bloc
 - **Better Tasks: Save current view as…**
 - **Better Tasks: Reinstall preset dashboard views**
 - **Better Tasks: Weekly Review**
+- **Toggle Better Tasks Dashboard (Full page)**
 
 These commands let you turn an existing task into a repeating Better Task or start a new scheduled TODO; just leave the repeat field blank to create a one-off with start/defer/due timing.
 

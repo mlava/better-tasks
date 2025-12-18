@@ -821,6 +821,20 @@ export default {
       callback: () => activeDashboardController.toggle(),
     });
     extensionAPI.ui.commandPalette.addCommand({
+      label: t(["commands", "toggleDashboardFullPage"], getLanguageSetting()) || "Toggle Better Tasks Dashboard (Full page)",
+      callback: () => {
+        if (!activeDashboardController) return;
+        if (!activeDashboardController.isOpen?.()) {
+          activeDashboardController.open?.();
+          requestAnimationFrame(() => {
+            activeDashboardController.setDashboardFullPage?.(true);
+          });
+          return;
+        }
+        activeDashboardController.toggleDashboardFullPage?.();
+      },
+    });
+    extensionAPI.ui.commandPalette.addCommand({
       label: translateString("Better Tasks: Switch view…", getLanguageSetting()),
       callback: async () => {
         try {
@@ -9422,7 +9436,53 @@ export default {
     }
 
     function createDashboardController(extensionAPI) {
-      const initialState = { tasks: [], status: "idle", error: null, lastUpdated: null };
+      const DASHBOARD_FULLPAGE_KEY_BASE = "betterTasks.dashboard.fullPage";
+      const getDashboardFullPageKey = () => {
+        if (typeof window === "undefined") return DASHBOARD_FULLPAGE_KEY_BASE;
+        let graphName = "default";
+        try {
+          graphName = window.roamAlphaAPI?.graph?.name?.() || "default";
+        } catch (_) {
+          // ignore
+        }
+        return `${DASHBOARD_FULLPAGE_KEY_BASE}.${encodeURIComponent(String(graphName))}`;
+      };
+      const readDashboardFullPageSetting = () => {
+        if (typeof window === "undefined") return false;
+        try {
+          const key = getDashboardFullPageKey();
+          let raw = window.localStorage?.getItem(key);
+          // Migrate from legacy global key (if present) to per-graph key.
+          if (raw == null) {
+            const legacy = window.localStorage?.getItem(DASHBOARD_FULLPAGE_KEY_BASE);
+            if (legacy != null) {
+              raw = legacy;
+              window.localStorage?.setItem(key, legacy);
+            }
+          }
+          const norm = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+          return norm === "true" || norm === "1";
+        } catch (_) {
+          return false;
+        }
+      };
+      const writeDashboardFullPageSetting = (enabled) => {
+        if (typeof window === "undefined") return;
+        try {
+          window.localStorage?.setItem(getDashboardFullPageKey(), enabled ? "true" : "false");
+        } catch (_) {
+          // ignore
+        }
+      };
+
+      let isFullPage = typeof window !== "undefined" ? readDashboardFullPageSetting() : false;
+      const initialState = {
+        tasks: [],
+        status: "idle",
+        error: null,
+        lastUpdated: null,
+        isFullPage,
+      };
       let state = { ...initialState };
       const subscribers = new Set();
       const dashViewRequestSubscribers = new Set();
@@ -9442,6 +9502,12 @@ export default {
       let dragOffsetY = 0;
       let isDraggingDashboard = false;
       let resizeListenerAttached = false;
+      let fullPagePrevStyleText = "";
+      let fullPageHostEl = null;
+      let fullPageObserver = null;
+      let fullPageWindowListenerAttached = false;
+      let fullPageRafPending = false;
+      let lastFullPageRect = null;
 
       const controller = {
         getSnapshot: () => state,
@@ -9492,6 +9558,9 @@ export default {
         getDashViewState,
         subscribeDashReviewRequests,
         requestStartDashReview,
+        isDashboardFullPage: () => !!isFullPage,
+        setDashboardFullPage,
+        toggleDashboardFullPage: () => setDashboardFullPage(!isFullPage),
         dispose,
       };
       // Ensure prompt helpers are always present for dashboard consumers.
@@ -9701,6 +9770,131 @@ export default {
         }
       }
 
+      function scheduleApplyFullPageRect() {
+        if (fullPageRafPending) return;
+        fullPageRafPending = true;
+        requestAnimationFrame(() => {
+          fullPageRafPending = false;
+          applyFullPageRect();
+        });
+      }
+
+      function attachFullPageObserver(host) {
+        if (fullPageObserver) {
+          try {
+            fullPageObserver.disconnect();
+          } catch (_) {
+            // ignore
+          }
+          fullPageObserver = null;
+        }
+        if (!host || typeof ResizeObserver === "undefined") return;
+        fullPageObserver = new ResizeObserver(() => scheduleApplyFullPageRect());
+        try {
+          fullPageObserver.observe(host);
+        } catch (_) {
+          // ignore
+        }
+      }
+
+      function applyFullPageRect() {
+        if (!isFullPage || !container || typeof document === "undefined") return;
+        const host = document.querySelector(".roam-body-main");
+        if (!host) return;
+        if (host !== fullPageHostEl) {
+          fullPageHostEl = host;
+          attachFullPageObserver(host);
+        }
+        const rect = host.getBoundingClientRect();
+        const next = {
+          top: Math.round(rect.top),
+          left: Math.round(rect.left),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        };
+        if (
+          lastFullPageRect &&
+          lastFullPageRect.top === next.top &&
+          lastFullPageRect.left === next.left &&
+          lastFullPageRect.width === next.width &&
+          lastFullPageRect.height === next.height
+        ) {
+          return;
+        }
+        lastFullPageRect = next;
+        container.style.position = "fixed";
+        container.style.top = `${next.top}px`;
+        container.style.left = `${next.left}px`;
+        container.style.width = `${next.width}px`;
+        container.style.height = `${next.height}px`;
+        container.style.right = "auto";
+        container.style.bottom = "auto";
+      }
+
+      function enableFullPage() {
+        if (!container || !root || isDraggingDashboard) {
+          cleanupDragListeners();
+        }
+        if (!container) return;
+        if (container.classList.contains("bt-dashboard-host--fullpage")) return;
+        fullPagePrevStyleText = container.getAttribute("style") || "";
+        container.classList.add("bt-dashboard-host--fullpage");
+        registerDragHandle(dragHandle);
+        fullPageHostEl = null;
+        lastFullPageRect = null;
+        scheduleApplyFullPageRect();
+        if (!fullPageWindowListenerAttached && typeof window !== "undefined") {
+          window.addEventListener("resize", scheduleApplyFullPageRect);
+          fullPageWindowListenerAttached = true;
+        }
+      }
+
+      function disableFullPage({ restore = true } = {}) {
+        if (fullPageObserver) {
+          try {
+            fullPageObserver.disconnect();
+          } catch (_) {
+            // ignore
+          }
+          fullPageObserver = null;
+        }
+        if (fullPageWindowListenerAttached && typeof window !== "undefined") {
+          window.removeEventListener("resize", scheduleApplyFullPageRect);
+          fullPageWindowListenerAttached = false;
+        }
+        fullPageHostEl = null;
+        lastFullPageRect = null;
+        if (!container) return;
+        container.classList.remove("bt-dashboard-host--fullpage");
+        if (restore) {
+          if (fullPagePrevStyleText) {
+            container.setAttribute("style", fullPagePrevStyleText);
+          } else {
+            container.removeAttribute("style");
+          }
+        }
+        fullPagePrevStyleText = "";
+        registerDragHandle(dragHandle);
+        if (savedPosition) {
+          requestAnimationFrame(() => applySavedPosition());
+        }
+      }
+
+      function setDashboardFullPage(enabled) {
+        const next = !!enabled;
+        if (next === isFullPage) return;
+        isFullPage = next;
+        writeDashboardFullPageSetting(next);
+        state = { ...state, isFullPage: next };
+        emit();
+        if (!root || !container) return;
+        if (next) {
+          enableFullPage();
+        } else {
+          disableFullPage({ restore: true });
+        }
+      }
+
       function setTopbarActive(active) {
         if (typeof document === "undefined") return;
         const button = document.getElementById(DASHBOARD_TOPBAR_BUTTON_ID);
@@ -9725,10 +9919,10 @@ export default {
         );
         ensureInitialLoad();
         setTopbarActive(true);
-        if (savedPosition) {
-          requestAnimationFrame(() => {
-            applySavedPosition();
-          });
+        if (isFullPage) {
+          requestAnimationFrame(() => enableFullPage());
+        } else if (savedPosition) {
+          requestAnimationFrame(() => applySavedPosition());
         }
       }
 
@@ -9748,6 +9942,9 @@ export default {
       function close() {
         cleanupDragListeners();
         registerDragHandle(null);
+        if (isFullPage) {
+          disableFullPage({ restore: false });
+        }
         setTopbarActive(false);
         if (root) {
           root.unmount();
@@ -9961,20 +10158,20 @@ export default {
       }
 
       function registerDragHandle(node) {
-        if (dragHandle === node) return;
         if (dragHandle) {
           dragHandle.removeEventListener("pointerdown", handlePointerDown);
           dragHandle.classList.remove("bt-dashboard__header--dragging");
           dragHandle.classList.remove("bt-dashboard__header--draggable");
         }
         dragHandle = node;
-        if (dragHandle) {
+        if (dragHandle && !isFullPage) {
           dragHandle.classList.add("bt-dashboard__header--draggable");
           dragHandle.addEventListener("pointerdown", handlePointerDown);
         }
       }
 
       function handlePointerDown(event) {
+        if (isFullPage) return;
         if (!container || !dragHandle) return;
         if (event.button !== undefined && event.button !== 0) return;
         const blocker = event.target?.closest?.("button, a, input, textarea, select");
@@ -10116,6 +10313,10 @@ export default {
 
       function handleWindowResize() {
         if (!container) return;
+        if (isFullPage) {
+          scheduleApplyFullPageRect();
+          return;
+        }
         if (savedPosition) {
           applySavedPosition({ persist: true });
         }

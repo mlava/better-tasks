@@ -14,6 +14,11 @@ Recently shipped:
 - Weekly Review (guided review flow over presets)
 - Project grouping mode in the dashboard
 - Completed-only “Completed within” date range filter
+- Picklist exclusions (Projects / Context / Waiting-for)
+  - `roam/*` pages are always excluded; optional user-defined exclude list is available in settings
+- Full-page dashboard mode
+  - Dock the dashboard to Roam’s main content area
+  - Full-page layout includes a persistent, collapsible, resizable filters sidebar with grouped sections
 - Full locale support across dashboard, pills, tooltips, and settings UI
 
 Remaining work focuses on **review workflows, advanced automation, and power-user features** — not core correctness.

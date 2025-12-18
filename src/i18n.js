@@ -90,6 +90,7 @@ export const i18n = {
     commands: {
       reinstallPresetDashViews: "Better Tasks: Reinstall preset dashboard views",
       startReview: "Better Tasks: Weekly Review",
+      toggleDashboardFullPage: "Toggle Better Tasks Dashboard (Full page)",
     },
     prompts: {
       addProject: { title: "Add Project", message: "Enter a project", placeholder: "Project name" },
@@ -212,6 +213,10 @@ export const i18n = {
       subtitle: "Manage start, defer, due, and recurring tasks without leaving Roam.",
       refresh: "Refresh",
       close: "Close",
+      fullPage: {
+        enter: "Expand",
+        exit: "Exit full page",
+      },
       groupByLabel: "Group by",
       review: {
         button: "Weekly Review",
@@ -255,6 +260,17 @@ export const i18n = {
         recurrence: "By Recurrence",
       },
       filtersLabel: "Filters",
+      filters: {
+        show: "Show filters",
+        hide: "Hide filters",
+        tagsLabel: "Tags",
+        groups: {
+          status: "Status",
+          dates: "Dates",
+          gtd: "GTD",
+          meta: "Meta",
+        },
+      },
       empty: {
         loading: "Loading tasks…",
         error: "Couldn’t load tasks.",
@@ -505,6 +521,7 @@ export const i18n = {
     commands: {
       reinstallPresetDashViews: "Better Tasks：重新安装仪表板预设视图",
       startReview: "Better Tasks：每周复盘",
+      toggleDashboardFullPage: "切换 Better Tasks 仪表板（全页）",
     },
     prompts: {
       addProject: { title: "添加项目", message: "输入项目名称", placeholder: "项目名称" },
@@ -627,6 +644,10 @@ export const i18n = {
       subtitle: "在不离开 Roam 的情况下管理开始、延期、到期和重复任务。",
       refresh: "刷新",
       close: "关闭",
+      fullPage: {
+        enter: "展开",
+        exit: "退出全页",
+      },
       groupByLabel: "分组依据",
       review: {
         button: "每周复盘",
@@ -670,6 +691,17 @@ export const i18n = {
         recurrence: "按重复规则",
       },
       filtersLabel: "筛选器",
+      filters: {
+        show: "显示筛选器",
+        hide: "隐藏筛选器",
+        tagsLabel: "标签",
+        groups: {
+          status: "状态",
+          dates: "日期",
+          gtd: "GTD",
+          meta: "元信息",
+        },
+      },
       empty: {
         loading: "正在加载任务…",
         error: "无法加载任务。",
@@ -920,6 +952,7 @@ export const i18n = {
     commands: {
       reinstallPresetDashViews: "Better Tasks：重新安裝儀表板預設檢視",
       startReview: "Better Tasks：每週複盤",
+      toggleDashboardFullPage: "切換 Better Tasks 儀表板（全頁）",
     },
     prompts: {
       addProject: { title: "新增專案", message: "輸入專案名稱", placeholder: "專案名稱" },
@@ -1042,6 +1075,10 @@ export const i18n = {
       subtitle: "在不離開 Roam 的情況下管理開始、延後、到期與重複任務。",
       refresh: "重新整理",
       close: "關閉",
+      fullPage: {
+        enter: "展開",
+        exit: "退出全頁",
+      },
       groupByLabel: "分組依據",
       review: {
         button: "每週複盤",
@@ -1085,6 +1122,17 @@ export const i18n = {
         recurrence: "依重複規則",
       },
       filtersLabel: "篩選器",
+      filters: {
+        show: "顯示篩選器",
+        hide: "隱藏篩選器",
+        tagsLabel: "標籤",
+        groups: {
+          status: "狀態",
+          dates: "日期",
+          gtd: "GTD",
+          meta: "元資訊",
+        },
+      },
       empty: {
         loading: "正在載入任務…",
         error: "無法載入任務。",
