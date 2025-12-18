@@ -36,6 +36,7 @@ import {
   installPresetDashboardViews,
 } from "./dashboard/viewsStore";
 
+const ADV_ATTR_NAMES_SETTING = "bt-advanced-attr-names";
 const DEFAULT_REPEAT_ATTR = "BT_attrRepeat";
 const DEFAULT_START_ATTR = "BT_attrStart";
 const DEFAULT_DEFER_ATTR = "BT_attrDefer";
@@ -279,256 +280,430 @@ export default {
     initProjectStore(extensionAPI);
     initWaitingStore(extensionAPI);
     initContextStore(extensionAPI);
-    const buildSettingsConfig = ({ todayEnabled, badgeEnabled, lang } = {}) => {
+    const PICKLIST_EXCLUDE_ENABLED_SETTING = "bt_excludePicklistPagesEnabled";
+    const PICKLIST_EXCLUDE_PAGES_SETTING = "bt_excludePicklistPages";
+    const normalizeBooleanSetting = (raw) => {
+      if (raw === true || raw === 1) return true;
+      if (raw === false || raw === 0) return false;
+      if (raw === undefined || raw === null) return false;
+      const norm = typeof raw === "string" ? raw.trim().toLowerCase() : String(raw).trim().toLowerCase();
+      if (["true", "1", "yes", "on"].includes(norm)) return true;
+      if (["false", "0", "no", "off"].includes(norm)) return false;
+      return !!raw;
+    };
+
+    const buildSettingsConfig = ({ todayEnabled, badgeEnabled, picklistExcludeEnabled, lang, uiOverrides } = {}) => {
       const langSetting = getLanguageSetting(lang);
+      const tr = (k, fallback) => t(k, langSetting) || fallback;
+      const overrides = uiOverrides && typeof uiOverrides === "object" ? uiOverrides : {};
+
       const todayEnabledValue = todayEnabled ?? getTodayWidgetEnabled();
       const badgeEnabledValue = badgeEnabled ?? getTodayBadgeEnabled();
-      const settings = [
+
+      const picklistExcludeEnabledValue =
+        picklistExcludeEnabled !== null && picklistExcludeEnabled !== undefined
+          ? normalizeBooleanSetting(picklistExcludeEnabled)
+          : normalizeBooleanSetting(extensionAPI?.settings?.get?.(PICKLIST_EXCLUDE_ENABLED_SETTING));
+
+      const advancedAttrNamesEnabled =
+        overrides.advancedAttrNamesEnabled !== undefined
+          ? normalizeBooleanSetting(overrides.advancedAttrNamesEnabled)
+          : normalizeBooleanSetting(extensionAPI?.settings?.get?.(ADV_ATTR_NAMES_SETTING));
+      const destination =
+        overrides.destination !== undefined
+          ? overrides.destination
+          : extensionAPI?.settings?.get?.("rt-destination");
+      const isDnpUnderHeading = destination === "DNP under heading";
+
+      const AI_MODE_USE_KEY = AI_MODE_OPTIONS[1];
+      const aiMode =
+        overrides.aiMode !== undefined ? overrides.aiMode : extensionAPI?.settings?.get?.(AI_MODE_SETTING);
+      const shouldShowAiKey = aiMode === AI_MODE_USE_KEY;
+
+      // Helper to set + rebuild (keeps handlers consistent)
+      const setAndRebuild = (id, value, nextUiOverrides = null) => {
+        try {
+          extensionAPI?.settings?.set?.(id, value);
+        } catch (_) {
+          // ignore
+        }
+        // Rebuild so conditional blocks appear/disappear immediately
+        rebuildSettingsPanel(null, null, null, null, nextUiOverrides);
+      };
+
+      const coreSettings = [
         {
           id: LANGUAGE_SETTING,
-          name: t("settings.language", langSetting) || "Language",
-          description: t("settings.languageDescription", langSetting) || "Preferred language for Better Tasks",
+          name: tr("settings.language", "Language"),
+          description: tr("settings.languageDescription", "Preferred language for Better Tasks"),
           action: { type: "select", items: SUPPORTED_LANGUAGES, onChange: (v) => handleLanguageChange(v) },
         },
         {
           id: "rt-destination",
-          name: t("settings.destNextTask", langSetting) || "Destination for next task",
-          description: t("settings.destNextTaskDescription", langSetting) || "Where to create the next occurrence",
-          action: { type: "select", items: t("settings.destinationOptions", getLanguageSetting()) || ["DNP", "Same Page", "DNP under heading"] },
+          name: tr("settings.destNextTask", "Destination for next task"),
+          description: tr("settings.destNextTaskDescription", "Where to create the next occurrence"),
+          action: {
+            type: "select",
+            items: tr("settings.destinationOptions", ["DNP", "Same Page", "DNP under heading"]) || ["DNP", "Same Page", "DNP under heading"],
+            onChange: (v) => {
+              // Save destination then rebuild so rt-dnp-heading can show/hide
+              const next = v?.value ?? v?.target?.value ?? v;
+              setAndRebuild("rt-destination", next, { destination: next });
+            },
+          },
         },
-        {
-          id: "rt-dnp-heading",
-          name: t("settings.dnpHeading", getLanguageSetting()) || "DNP heading (optional)",
-          description: t("settings.dnpHeadingDescription", getLanguageSetting()) || "Create under this heading on DNP when destination is DNP under heading",
-          action: { type: "input", placeholder: "Tasks" },
-        },
-        {
-          id: "rt-repeat-attr",
-          name: t("settings.repeatAttr", getLanguageSetting()) || "Repeat attribute name",
-          description: t("settings.repeatAttrDescription", getLanguageSetting()) || "Label for the recurrence rule attribute",
-          action: { type: "input", placeholder: DEFAULT_REPEAT_ATTR, onChange: handleAttributeNameChange },
-        },
-        {
-          id: "rt-start-attr",
-          name: t("settings.startAttr", getLanguageSetting()) || "Start attribute name",
-          description: t("settings.startAttrDescription", getLanguageSetting()) || "Label for start/available date attribute",
-          action: { type: "input", placeholder: DEFAULT_START_ATTR, onChange: handleAttributeNameChange },
-        },
-        {
-          id: "rt-defer-attr",
-          name: t("settings.deferAttr", getLanguageSetting()) || "Defer attribute name",
-          description: t("settings.deferAttrDescription", getLanguageSetting()) || "Label for defer/snooze date attribute",
-          action: { type: "input", placeholder: DEFAULT_DEFER_ATTR, onChange: handleAttributeNameChange },
-        },
-        {
-          id: "rt-due-attr",
-          name: t("settings.dueAttr", getLanguageSetting()) || "Due attribute name",
-          description: t("settings.dueAttrDescription", getLanguageSetting()) || "Label for due date attribute",
-          action: { type: "input", placeholder: DEFAULT_DUE_ATTR, onChange: handleAttributeNameChange },
-        },
-        {
-          id: "rt-completed-attr",
-          name: t("settings.completedAttr", getLanguageSetting()) || "Completed attribute name",
-          description: t("settings.completedAttrDescription", getLanguageSetting()) || "Label written when a recurring/scheduled task is completed",
-          action: { type: "input", placeholder: DEFAULT_COMPLETED_ATTR, onChange: handleAttributeNameChange },
-        },
-        {
-          id: "bt-attr-project",
-          name: t("settings.projectAttr", getLanguageSetting()) || "Project attribute name",
-          description: t("settings.projectAttrDescription", getLanguageSetting()) || "Label for project attribute (child block)",
-          action: { type: "input", placeholder: "BT_attrProject", onChange: handleAttributeNameChange },
-        },
-        {
-          id: "bt-attr-gtd",
-          name: t("settings.gtdAttr", getLanguageSetting()) || "GTD status attribute name",
-          description: t("settings.gtdAttrDescription", getLanguageSetting()) || "Label for GTD status attribute (child block)",
-          action: { type: "input", placeholder: DEFAULT_GTD_ATTR, onChange: handleAttributeNameChange },
-        },
-        {
-          id: "bt-attr-waitingFor",
-          name: t("settings.waitingAttr", getLanguageSetting()) || "Waiting-for attribute name",
-          description: t("settings.waitingAttrDescription", getLanguageSetting()) || "Label for waiting-for attribute (child block)",
-          action: { type: "input", placeholder: "BT_attrWaitingFor", onChange: handleAttributeNameChange },
-        },
-        {
-          id: "bt-attr-context",
-          name: t("settings.contextAttr", getLanguageSetting()) || "Context attribute name",
-          description: t("settings.contextAttrDescription", getLanguageSetting()) || "Label for context/tags attribute (child block)",
-          action: { type: "input", placeholder: "BT_attrContext", onChange: handleAttributeNameChange },
-        },
-        {
-          id: "bt-attr-priority",
-          name: t("settings.priorityAttr", getLanguageSetting()) || "Priority attribute name",
-          description: t("settings.priorityAttrDescription", getLanguageSetting()) || "Label for priority attribute (child block)",
-          action: { type: "input", placeholder: "BT_attrPriority", onChange: handleAttributeNameChange },
-        },
-        {
-          id: "bt-attr-energy",
-          name: t("settings.energyAttr", getLanguageSetting()) || "Energy attribute name",
-          description: t("settings.energyAttrDescription", getLanguageSetting()) || "Label for energy attribute (child block)",
-          action: { type: "input", placeholder: "BT_attrEnergy", onChange: handleAttributeNameChange },
-        },
+        ...(isDnpUnderHeading
+          ? [
+            {
+              id: "rt-dnp-heading",
+              name: tr("settings.dnpHeading", "DNP heading"),
+              description: tr(
+                "settings.dnpHeadingDescription",
+                "Create under this heading on DNP when destination is DNP under heading"
+              ),
+              action: { type: "input", placeholder: "Tasks" },
+            },
+          ]
+          : []),
         {
           id: "rt-confirm",
-          name: t("settings.confirmBeforeSpawn", getLanguageSetting()) || "Confirm before spawning next task",
-          description: t("settings.confirmBeforeSpawnDescription", getLanguageSetting()) || "Ask for confirmation before spawning when a repeating Better Task is completed",
+          name: tr("settings.confirmBeforeSpawn", "Confirm before spawning next task"),
+          description: tr(
+            "settings.confirmBeforeSpawnDescription",
+            "Ask for confirmation before spawning when a repeating Better Task is completed"
+          ),
           action: { type: "switch" },
         },
         {
           id: "rt-week-start",
-          name: t("settings.weekStart", getLanguageSetting()) || "First day of the week",
-          description: t("settings.weekStartDescription", getLanguageSetting()) || "Used to align weekly schedules with your graph preference",
-          action: { type: "select", items: t("settings.weekStartOptions", getLanguageSetting()) || WEEK_START_OPTIONS },
-        },
-        {
-          id: AI_MODE_SETTING,
-          name: t("settings.aiMode", getLanguageSetting()) || "AI parsing mode",
-          description: t("settings.aiModeDescription", getLanguageSetting()) || "Optional: use your OpenAI API key for AI-assisted task parsing",
-          action: { type: "select", items: t("settings.aiModeOptions", getLanguageSetting()) || AI_MODE_OPTIONS },
-        },
-        {
-          id: AI_KEY_SETTING,
-          name: t("settings.aiKey", getLanguageSetting()) || "OpenAI API key",
-          description: t("settings.aiKeyDescription", getLanguageSetting()) || "Sensitive: stored in Roam settings; used client-side only for AI parsing",
-          action: { type: "input", placeholder: "sk-...", onChange: () => { } },
+          name: tr("settings.weekStart", "First day of the week"),
+          description: tr("settings.weekStartDescription", "Used to align weekly schedules with your graph preference"),
+          action: { type: "select", items: tr("settings.weekStartOptions", WEEK_START_OPTIONS) || WEEK_START_OPTIONS },
         },
         {
           id: PILL_THRESHOLD_SETTING,
-          name: t("settings.pillThreshold", getLanguageSetting()) || "Inline pill checkbox threshold",
-          description:
-            t("settings.pillThresholdDescription", getLanguageSetting()) ||
-            "Max checkbox count before Better Tasks inline pills skip initial rendering (default 100). Higher values will render but the page may be slower.",
+          name: tr("settings.pillThreshold", "Inline pill checkbox threshold"),
+          description: tr(
+            "settings.pillThresholdDescription",
+            "Max checkbox count before Better Tasks inline pills skip initial rendering (default 100). Higher values will render but the page may be slower."
+          ),
           action: { type: "input", placeholder: DEFAULT_PILL_THRESHOLD.toString() },
         },
+      ];
+
+      // NEW: Attribute names behind a toggle
+      const attributeSettingsToggle = [
+        {
+          id: ADV_ATTR_NAMES_SETTING,
+          name: tr("settings.advancedAttrNames", "Customise attribute names (advanced)"),
+          description: tr(
+            "settings.advancedAttrNamesDescription",
+            "Show settings to customise the attribute/page names Better Tasks uses. Defaults work for most users."
+          ),
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(ADV_ATTR_NAMES_SETTING, normalized, { advancedAttrNamesEnabled: normalized });
+            },
+          },
+        },
+      ];
+
+      const attributeSettings = [
+        {
+          id: "rt-repeat-attr",
+          name: tr("settings.repeatAttr", "Repeat attribute name"),
+          description: tr("settings.repeatAttrDescription", "Label for the recurrence rule attribute"),
+          action: { type: "input", placeholder: DEFAULT_REPEAT_ATTR, onChange: handleAttributeNameChange },
+        },
+        {
+          id: "rt-start-attr",
+          name: tr("settings.startAttr", "Start attribute name"),
+          description: tr("settings.startAttrDescription", "Label for start/available date attribute"),
+          action: { type: "input", placeholder: DEFAULT_START_ATTR, onChange: handleAttributeNameChange },
+        },
+        {
+          id: "rt-defer-attr",
+          name: tr("settings.deferAttr", "Defer attribute name"),
+          description: tr("settings.deferAttrDescription", "Label for defer/snooze date attribute"),
+          action: { type: "input", placeholder: DEFAULT_DEFER_ATTR, onChange: handleAttributeNameChange },
+        },
+        {
+          id: "rt-due-attr",
+          name: tr("settings.dueAttr", "Due attribute name"),
+          description: tr("settings.dueAttrDescription", "Label for due date attribute"),
+          action: { type: "input", placeholder: DEFAULT_DUE_ATTR, onChange: handleAttributeNameChange },
+        },
+        {
+          id: "rt-completed-attr",
+          name: tr("settings.completedAttr", "Completed attribute name"),
+          description: tr("settings.completedAttrDescription", "Label written when a recurring/scheduled task is completed"),
+          action: { type: "input", placeholder: DEFAULT_COMPLETED_ATTR, onChange: handleAttributeNameChange },
+        },
+        {
+          id: "bt-attr-project",
+          name: tr("settings.projectAttr", "Project attribute name"),
+          description: tr("settings.projectAttrDescription", "Label for project attribute (child block)"),
+          action: { type: "input", placeholder: "BT_attrProject", onChange: handleAttributeNameChange },
+        },
+        {
+          id: "bt-attr-gtd",
+          name: tr("settings.gtdAttr", "GTD status attribute name"),
+          description: tr("settings.gtdAttrDescription", "Label for GTD status attribute (child block)"),
+          action: { type: "input", placeholder: DEFAULT_GTD_ATTR, onChange: handleAttributeNameChange },
+        },
+        {
+          id: "bt-attr-waitingFor",
+          name: tr("settings.waitingAttr", "Waiting-for attribute name"),
+          description: tr("settings.waitingAttrDescription", "Label for waiting-for attribute (child block)"),
+          action: { type: "input", placeholder: "BT_attrWaitingFor", onChange: handleAttributeNameChange },
+        },
+        {
+          id: "bt-attr-context",
+          name: tr("settings.contextAttr", "Context attribute name"),
+          description: tr("settings.contextAttrDescription", "Label for context/tags attribute (child block)"),
+          action: { type: "input", placeholder: "BT_attrContext", onChange: handleAttributeNameChange },
+        },
+        {
+          id: "bt-attr-priority",
+          name: tr("settings.priorityAttr", "Priority attribute name"),
+          description: tr("settings.priorityAttrDescription", "Label for priority attribute (child block)"),
+          action: { type: "input", placeholder: "BT_attrPriority", onChange: handleAttributeNameChange },
+        },
+        {
+          id: "bt-attr-energy",
+          name: tr("settings.energyAttr", "Energy attribute name"),
+          description: tr("settings.energyAttrDescription", "Label for energy attribute (child block)"),
+          action: { type: "input", placeholder: "BT_attrEnergy", onChange: handleAttributeNameChange },
+        },
+      ];
+
+      const picklistAdvanced = [
+        {
+          id: PICKLIST_EXCLUDE_ENABLED_SETTING,
+          name: tr("settings.picklistExcludesAdvanced", "Advanced Project/Context/Waiting options"),
+          description: tr(
+            "settings.picklistExcludesAdvancedDescription",
+            "Show settings to exclude specific pages from Project/Context/Waiting picklists (roam/* pages are always excluded)."
+          ),
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeTodaySettingValue(v);
+              const nextEnabled = normalizeBooleanSetting(normalized);
+              try {
+                extensionAPI?.settings?.set?.(PICKLIST_EXCLUDE_ENABLED_SETTING, nextEnabled);
+              } catch (_) { }
+              try {
+                void refreshProjectOptions(true);
+                void refreshWaitingOptions(true);
+                void refreshContextOptions(true);
+              } catch (_) { }
+              rebuildSettingsPanel(null, null, null, nextEnabled);
+            },
+          },
+        },
+        ...(picklistExcludeEnabledValue
+          ? [
+            {
+              id: PICKLIST_EXCLUDE_PAGES_SETTING,
+              name: tr("settings.excludePicklistPages", "Exclude pages from picklists"),
+              description: tr(
+                "settings.excludePicklistPagesDescription",
+                "Comma-separated page titles. Wrap titles containing commas (e.g. daily notes) in [[...]]. Values found on these pages will not populate Project/Context/Waiting picklists (useful for Templates/SmartBlocks)."
+              ),
+              action: {
+                type: "input",
+                placeholder: tr(
+                  "settings.excludePicklistPagesPlaceholder",
+                  "Templates, SmartBlocks, [[December 18th, 2025]]"
+                ),
+                onChange: (v) => {
+                  const normalized = normalizeTodaySettingValue(v);
+                  try {
+                    extensionAPI?.settings?.set?.(PICKLIST_EXCLUDE_PAGES_SETTING, String(normalized || ""));
+                  } catch (_) { }
+                  try {
+                    void refreshProjectOptions(true);
+                    void refreshWaitingOptions(true);
+                    void refreshContextOptions(true);
+                  } catch (_) { }
+                },
+              },
+            },
+          ]
+          : []),
+      ];
+
+      const aiSettings = [
+        {
+          id: AI_MODE_SETTING,
+          name: tr("settings.aiMode", "AI parsing mode"),
+          description: tr("settings.aiModeDescription", "Optional: use your OpenAI API key for AI-assisted task parsing"),
+          action: {
+            type: "select",
+            items: t("settings.aiModeOptions", langSetting) || AI_MODE_OPTIONS,
+            onChange: (v) => {
+              const next = v?.value ?? v?.target?.value ?? v;
+              try { extensionAPI?.settings?.set?.(AI_MODE_SETTING, next); } catch (_) { }
+              rebuildSettingsPanel(null, null, null, null, { aiMode: next });
+            },
+          },
+        },
+        ...(shouldShowAiKey
+          ? [
+            {
+              id: AI_KEY_SETTING,
+              name: tr("settings.aiKey", "OpenAI API key"),
+              description: tr("settings.aiKeyDescription", "Sensitive: stored in Roam settings; used client-side only for AI parsing"),
+              action: {
+                type: "input",
+                placeholder: "sk-...",
+                onChange: (v) => {
+                  const normalized = normalizeTodaySettingValue(v);
+                  try {
+                    extensionAPI?.settings?.set?.(AI_KEY_SETTING, String(normalized || ""));
+                  } catch (_) { }
+                },
+              },
+            },
+          ]
+          : []),
+      ];
+
+      const todayBadgeSettings = [
         {
           id: TODAY_BADGE_ENABLE_SETTING,
-          name: t("settings.todayBadgeEnable", getLanguageSetting()) || "Enable Today badge",
-          description: t("settings.todayBadgeEnableDescription", getLanguageSetting()) || "Show a Today link and badge in the left sidebar (default off)",
+          name: tr("settings.todayBadgeEnable", "Enable Today badge"),
+          description: tr("settings.todayBadgeEnableDescription", "Show a Today link and badge in the left sidebar (default off)"),
           action: { type: "switch", onChange: (v) => handleTodayBadgeSettingChange(TODAY_BADGE_ENABLE_SETTING, v) },
         },
         ...(badgeEnabledValue
           ? [
             {
               id: TODAY_BADGE_LABEL_SETTING,
-              name: t("settings.todayBadgeLabel", getLanguageSetting()) || "Today badge label",
-              description:
-                t("settings.todayBadgeLabelDescription", getLanguageSetting()) ||
-                "Text for the Today badge/link (markdown ignored for matching)",
-              action: {
-                type: "input",
-                placeholder: "Today",
-                onChange: (v) => handleTodayBadgeSettingChange(TODAY_BADGE_LABEL_SETTING, v),
-              },
+              name: tr("settings.todayBadgeLabel", "Today badge label"),
+              description: tr("settings.todayBadgeLabelDescription", "Text for the Today badge/link (markdown ignored for matching)"),
+              action: { type: "input", placeholder: "Today", onChange: (v) => handleTodayBadgeSettingChange(TODAY_BADGE_LABEL_SETTING, v) },
             },
             {
               id: TODAY_BADGE_OVERDUE_SETTING,
-              name: t("settings.todayBadgeIncludeOverdue", getLanguageSetting()) || "Include overdue in Today badge",
-              description:
-                t("settings.todayBadgeIncludeOverdueDescription", getLanguageSetting()) ||
-                "Counts overdue tasks in the badge (completed tasks are never counted)",
+              name: tr("settings.todayBadgeIncludeOverdue", "Include overdue in Today badge"),
+              description: tr("settings.todayBadgeIncludeOverdueDescription", "Counts overdue tasks in the badge (completed tasks are never counted)"),
               action: { type: "switch", onChange: (v) => handleTodayBadgeSettingChange(TODAY_BADGE_OVERDUE_SETTING, v) },
             },
             {
               id: TODAY_BADGE_BG_SETTING,
-              name: t("settings.todayBadgeBg", getLanguageSetting()) || "Today badge background",
-              description: t("settings.todayBadgeBgDescription", getLanguageSetting()) || "CSS color for the badge background",
+              name: tr("settings.todayBadgeBg", "Today badge background"),
+              description: tr("settings.todayBadgeBgDescription", "CSS color for the badge background"),
               action: { type: "input", placeholder: "#1F6FEB", onChange: (v) => handleTodayBadgeSettingChange(TODAY_BADGE_BG_SETTING, v) },
             },
             {
               id: TODAY_BADGE_FG_SETTING,
-              name: t("settings.todayBadgeFg", getLanguageSetting()) || "Today badge text",
-              description: t("settings.todayBadgeFgDescription", getLanguageSetting()) || "CSS color for the badge text",
+              name: tr("settings.todayBadgeFg", "Today badge text"),
+              description: tr("settings.todayBadgeFgDescription", "CSS color for the badge text"),
               action: { type: "input", placeholder: "#FFFFFF", onChange: (v) => handleTodayBadgeSettingChange(TODAY_BADGE_FG_SETTING, v) },
             },
           ]
           : []),
+      ];
+
+      const todayWidgetSettings = [
         {
           id: TODAY_WIDGET_ENABLE_SETTING,
-          name: t("settings.enableTodayWidget", getLanguageSetting()) || "Enable Today widget",
-          description:
-            t("settings.enableTodayWidgetDescription", getLanguageSetting()) ||
-            "Show the Better Tasks Today widget on your daily note page",
+          name: tr("settings.enableTodayWidget", "Enable Today widget"),
+          description: tr("settings.enableTodayWidgetDescription", "Show the Better Tasks Today widget on your daily note page"),
           action: { type: "switch", onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_ENABLE_SETTING, v) },
         },
       ];
 
-      if (todayEnabledValue) {
-        settings.push(
+      const todayWidgetDetails = todayEnabledValue
+        ? [
           {
             id: TODAY_WIDGET_TITLE_SETTING,
-            name: t("settings.todayWidgetTitle", getLanguageSetting()) || "Today widget title",
-            description:
-              t("settings.todayWidgetTitleDescription", getLanguageSetting()) ||
-              "Title used for the Today anchor; if a matching block exists on the DNP (any level), the widget renders under it, otherwise it creates one at the configured placement.",
-            action: {
-              type: "input",
-              placeholder: TODAY_WIDGET_ANCHOR_TEXT_DEFAULT,
-              onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_TITLE_SETTING, v),
-            },
+            name: tr("settings.todayWidgetTitle", "Today widget title"),
+            description: tr(
+              "settings.todayWidgetTitleDescription",
+              "Title used for the Today anchor; if a matching block exists on the DNP (any level), the widget renders under it, otherwise it creates one at the configured placement."
+            ),
+            action: { type: "input", placeholder: TODAY_WIDGET_ANCHOR_TEXT_DEFAULT, onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_TITLE_SETTING, v) },
           },
           {
             id: TODAY_WIDGET_PLACEMENT_SETTING,
-            name: t("settings.todayWidgetPlacement", getLanguageSetting()) || "Today widget placement",
-            description: t("settings.todayWidgetPlacementDescription", getLanguageSetting()) || "Place the widget at the top or bottom of the DNP",
-            action: {
-              type: "select",
-              items: t("settings.placementOptions", getLanguageSetting()) || ["Top", "Bottom"],
-              onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_PLACEMENT_SETTING, v),
-            },
+            name: tr("settings.todayWidgetPlacement", "Today widget placement"),
+            description: tr("settings.todayWidgetPlacementDescription", "Place the widget at the top or bottom of the DNP"),
+            action: { type: "select", items: tr("settings.placementOptions", ["Top", "Bottom"]) || ["Top", "Bottom"], onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_PLACEMENT_SETTING, v) },
           },
           {
             id: TODAY_WIDGET_HEADING_SETTING,
-            name: t("settings.todayWidgetHeadingLevel", getLanguageSetting()) || "Today widget heading level",
-            description: t("settings.todayWidgetHeadingLevelDescription", getLanguageSetting()) || "Apply heading styling to the Today widget anchor block",
-            action: {
-              type: "select",
-              items: t("settings.headingLevelOptions", getLanguageSetting()) || ["None", "H1", "H2", "H3"],
-              onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_HEADING_SETTING, v),
-            },
+            name: tr("settings.todayWidgetHeadingLevel", "Today widget heading level"),
+            description: tr("settings.todayWidgetHeadingLevelDescription", "Apply heading styling to the Today widget anchor block"),
+            action: { type: "select", items: tr("settings.headingLevelOptions", ["None", "H1", "H2", "H3"]) || ["None", "H1", "H2", "H3"], onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_HEADING_SETTING, v) },
           },
           {
             id: TODAY_WIDGET_LAYOUT_SETTING,
-            name: t("settings.todayWidgetLayout", getLanguageSetting()) || "Today widget layout",
-            description: t("settings.todayWidgetLayoutDescription", getLanguageSetting()) || "Choose how the Today widget appears on your DNP",
-            action: {
-              type: "select",
-              items: t("settings.todayWidgetLayoutOptions", getLanguageSetting()) || ["Panel", "Roam-style inline"],
-              onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_LAYOUT_SETTING, v),
-            },
+            name: tr("settings.todayWidgetLayout", "Today widget layout"),
+            description: tr("settings.todayWidgetLayoutDescription", "Choose how the Today widget appears on your DNP"),
+            action: { type: "select", items: tr("settings.todayWidgetLayoutOptions", ["Panel", "Roam-style inline"]) || ["Panel", "Roam-style inline"], onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_LAYOUT_SETTING, v) },
           },
           {
             id: TODAY_WIDGET_OVERDUE_SETTING,
-            name: t("settings.todayWidgetIncludeOverdue", getLanguageSetting()) || "Include overdue tasks in Today widget",
-            description: t("settings.todayWidgetIncludeOverdueDescription", getLanguageSetting()) || "Show tasks with due dates before today",
+            name: tr("settings.todayWidgetIncludeOverdue", "Include overdue tasks in Today widget"),
+            description: tr("settings.todayWidgetIncludeOverdueDescription", "Show tasks with due dates before today"),
             action: { type: "switch", onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_OVERDUE_SETTING, v) },
           },
           {
             id: TODAY_WIDGET_COMPLETED_SETTING,
-            name: t("settings.todayWidgetShowCompleted", getLanguageSetting()) || "Show completed tasks in Today widget",
-            description: t("settings.todayWidgetShowCompletedDescription", getLanguageSetting()) || "Include completed tasks (hidden by default)",
+            name: tr("settings.todayWidgetShowCompleted", "Show completed tasks in Today widget"),
+            description: tr("settings.todayWidgetShowCompletedDescription", "Include completed tasks (hidden by default)"),
             action: { type: "switch", onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_COMPLETED_SETTING, v) },
-          }
-        );
-      }
+          },
+        ]
+        : [];
+
+      // Final ordering:
+      // 1) Core
+      // 2) Today Badge
+      // 3) Today Widget
+      // 4) AI
+      // 5) Picklist advanced
+      // 6) Attribute names (advanced) toggle + fields
+      const settings = [
+        ...coreSettings,
+        ...todayBadgeSettings,
+        ...todayWidgetSettings,
+        ...(todayEnabledValue ? todayWidgetDetails : []),
+        ...aiSettings,
+        ...picklistAdvanced,
+        ...attributeSettingsToggle,
+        ...(advancedAttrNamesEnabled ? attributeSettings : []),
+      ];
 
       return {
-        tabTitle: t("settings.tabTitle", getLanguageSetting()) || "Better Tasks",
+        tabTitle: tr("settings.tabTitle", "Better Tasks"),
         settings,
       };
     };
-    const rebuildSettingsPanel = (todayEnabledOverride = null, langOverride = null, badgeEnabledOverride = null) => {
+
+    const rebuildSettingsPanel = (
+      todayEnabledOverride = null,
+      langOverride = null,
+      badgeEnabledOverride = null,
+      picklistExcludeEnabledOverride = null,
+      uiOverrides = null
+    ) => {
       try {
         const effectiveTodayEnabled =
-          todayEnabledOverride !== null && todayEnabledOverride !== undefined
-            ? todayEnabledOverride
-            : getTodayWidgetEnabled();
+          todayEnabledOverride !== null && todayEnabledOverride !== undefined ? todayEnabledOverride : getTodayWidgetEnabled();
         const effectiveBadgeEnabled =
-          badgeEnabledOverride !== null && badgeEnabledOverride !== undefined
-            ? badgeEnabledOverride
-            : getTodayBadgeEnabled();
+          badgeEnabledOverride !== null && badgeEnabledOverride !== undefined ? badgeEnabledOverride : getTodayBadgeEnabled();
+
         const config = buildSettingsConfig({
           todayEnabled: effectiveTodayEnabled,
           badgeEnabled: effectiveBadgeEnabled,
+          picklistExcludeEnabled: picklistExcludeEnabledOverride,
+          uiOverrides,
           lang: langOverride,
         });
         extensionAPI.settings.panel.create(config);
@@ -536,8 +711,10 @@ export default {
         console.warn("[BetterTasks] failed to rebuild settings panel", err);
       }
     };
+
     const config = buildSettingsConfig();
     extensionAPI.settings.panel.create(config);
+
     if (extensionAPI.settings.get(TODAY_WIDGET_ENABLE_SETTING) == null) {
       extensionAPI.settings.set(TODAY_WIDGET_ENABLE_SETTING, false);
     }
@@ -561,6 +738,12 @@ export default {
     }
     if (extensionAPI.settings.get(TODAY_BADGE_OVERDUE_SETTING) == null) {
       extensionAPI.settings.set(TODAY_BADGE_OVERDUE_SETTING, false);
+    }
+    if (extensionAPI.settings.get(PICKLIST_EXCLUDE_ENABLED_SETTING) == null) {
+      extensionAPI.settings.set(PICKLIST_EXCLUDE_ENABLED_SETTING, false);
+    }
+    if (extensionAPI.settings.get(PICKLIST_EXCLUDE_PAGES_SETTING) == null) {
+      extensionAPI.settings.set(PICKLIST_EXCLUDE_PAGES_SETTING, "");
     }
     lastAttrNames = resolveAttributeNames();
 
@@ -682,7 +865,7 @@ export default {
           if (!dashState) {
             toast(
               t("toasts.dashViewsReadStateFailed", getLanguageSetting()) ||
-                "Unable to read dashboard state. Try reopening the dashboard."
+              "Unable to read dashboard state. Try reopening the dashboard."
             );
             return;
           }
@@ -750,19 +933,19 @@ export default {
           if (installed > 0) {
             toast(
               t("toasts.dashViewsPresetInstalled", getLanguageSetting()) ||
-                "Preset dashboard views installed."
+              "Preset dashboard views installed."
             );
             return;
           }
           toast(
             t("toasts.dashViewsPresetNothingToInstall", getLanguageSetting()) ||
-              "All preset dashboard views are already present."
+            "All preset dashboard views are already present."
           );
         } catch (err) {
           console.warn("[BetterTasks] reinstall preset views failed", err);
           toast(
             t("toasts.dashViewsPresetInstallFailed", getLanguageSetting()) ||
-              "Unable to reinstall preset dashboard views."
+            "Unable to reinstall preset dashboard views."
           );
         }
       },
@@ -10726,7 +10909,7 @@ export default {
 
         const perfInline = perfMark("renderTodayInline");
         await teardownTodayPanel();
-        
+
         const lang = getLanguageSetting();
         const todayStrings = t(["today"], lang) || {};
 

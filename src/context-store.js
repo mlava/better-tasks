@@ -1,6 +1,11 @@
 const DEFAULT_CONTEXT_ATTR = "BT_attrContext";
 const CACHE_TTL_MS = 8 * 60 * 1000;
 
+import {
+  parseExcludedPicklistPages,
+  shouldExcludePicklistSourcePage,
+} from "./picklist-excludes";
+
 let extensionAPI = null;
 let lastRefreshed = 0;
 let refreshPromise = null;
@@ -30,6 +35,13 @@ function normalizeContextValue(raw) {
 function getContextAttrName() {
   const configured = extensionAPI?.settings?.get?.("bt-attr-context");
   return sanitizeAttrName(configured ?? DEFAULT_CONTEXT_ATTR, DEFAULT_CONTEXT_ATTR);
+}
+
+function getPicklistExcludeConfig() {
+  const enabledRaw = extensionAPI?.settings?.get?.("bt_excludePicklistPagesEnabled");
+  const enabled = enabledRaw === true || enabledRaw === "true" || enabledRaw === "1";
+  const raw = extensionAPI?.settings?.get?.("bt_excludePicklistPages") || "";
+  return { enabled, excluded: parseExcludedPicklistPages(raw) };
 }
 
 function notifySubscribers() {
@@ -71,53 +83,68 @@ function removeContextOption(name) {
 async function queryContextFromGraph() {
   const attrName = getContextAttrName();
   if (!attrName || typeof window === "undefined" || !window.roamAlphaAPI?.q) return [];
-  const safeAttr = escapeForQuery(attrName);
-  const defaultSafe = escapeForQuery(DEFAULT_CONTEXT_ATTR);
-  const labels = Array.from(new Set([safeAttr, defaultSafe])).filter(Boolean);
-  const pull = "[:block/string {:block/refs [:node/title]}]";
+  const excludeCfg = getPicklistExcludeConfig();
+  try {
+    const safeAttr = escapeForQuery(attrName);
+    const defaultSafe = escapeForQuery(DEFAULT_CONTEXT_ATTR);
+    const labels = Array.from(new Set([safeAttr, defaultSafe])).filter(Boolean);
+    const pull = "[:block/string {:block/refs [:node/title]} {:block/page [:node/title]}]";
 
-  const refQuery = `
-    [:find (pull ?c ${pull})
-     :in $ [?label ...]
-     :where
-       [?attr :node/title ?label]
-       [?c :block/refs ?attr]]`;
+    const refQuery = `
+      [:find (pull ?c ${pull}) ?pageTitle
+       :in $ [?label ...]
+       :where
+         [?attr :node/title ?label]
+         [?c :block/refs ?attr]
+         [?c :block/page ?p]
+         [?p :node/title ?pageTitle]]`;
 
-  const inlineRegexQuery = `
-    [:find ?s
-     :in $ ?pattern
-     :where
-       [?c :block/string ?s]
-       [(re-pattern ?pattern) ?rp]
-       [(re-find ?rp ?s)]]`;
+    const inlineRegexQuery = `
+      [:find (pull ?c ${pull}) ?pageTitle
+       :in $ ?pattern
+       :where
+         [?c :block/string ?s]
+         [(re-pattern ?pattern) ?rp]
+         [(re-find ?rp ?s)]
+         [?c :block/page ?p]
+         [?p :node/title ?pageTitle]]`;
 
-  const refRows = await window.roamAlphaAPI.q(refQuery, labels);
-  let rows = [...(refRows || [])];
+    const refRows = await window.roamAlphaAPI.q(refQuery, labels);
+    let rows = [...(refRows || [])];
 
-  const pattern = `(?i)^\\s*(?:${labels.join("|")})\\s*::`;
-  const regexRows = await window.roamAlphaAPI.q(inlineRegexQuery, pattern);
-  if (Array.isArray(regexRows)) {
-    rows = [
-      ...rows,
-      ...regexRows.map((r) => ({
-        "block/string": typeof r === "string" ? r : r?.[0],
-      })),
-    ];
-  }
-
-  const getField = (obj, candidates) => {
-    for (const key of candidates) {
-      if (obj && obj[key] != null) return obj[key];
+    const pattern = `(?i)^\\s*(?:${labels.join("|")})\\s*::`;
+    try {
+      const regexRows = await window.roamAlphaAPI.q(inlineRegexQuery, pattern);
+      if (Array.isArray(regexRows)) rows = [...rows, ...(regexRows || [])];
+    } catch (err) {
+      console.warn("[BetterTasks] context-store regex query failed", err);
     }
-    return undefined;
-  };
 
-  const out = [];
-  for (const row of rows || []) {
-    const entry = row?.[0] || row;
-    if (!entry) continue;
-    const stringVal =
-      getField(entry, ["block/string", "string", ":block/string"]) || "";
+    const getField = (obj, candidates) => {
+      for (const key of candidates) {
+        if (obj && obj[key] != null) return obj[key];
+      }
+      return undefined;
+    };
+    const getPageTitleFromEntry = (entryObj) => {
+      const raw = getField(entryObj, ["block/page", "page", ":block/page"]);
+      const pageObj = Array.isArray(raw) ? raw[0] : raw;
+      if (!pageObj || typeof pageObj !== "object") return "";
+      return pageObj["node/title"] || pageObj[":node/title"] || "";
+    };
+
+    const out = [];
+    for (const row of rows || []) {
+      const entry = row?.[0] || row;
+      if (!entry) continue;
+      const pageTitleFromQuery =
+        Array.isArray(row) && typeof row[1] === "string" ? row[1] : "";
+      const pageTitle = pageTitleFromQuery || getPageTitleFromEntry(entry);
+      const excluded = shouldExcludePicklistSourcePage(pageTitle, excludeCfg.enabled, excludeCfg.excluded);
+      if (excluded) {
+        continue;
+      }
+      const stringVal = getField(entry, ["block/string", "string", ":block/string"]) || "";
     const refsVal = getField(entry, ["block/refs", "refs", ":block/refs"]) || [];
     const refs = Array.isArray(refsVal) ? refsVal : [];
     const refTitles = refs
@@ -125,19 +152,24 @@ async function queryContextFromGraph() {
       .filter((t) => typeof t === "string")
       .map((t) => t.trim())
       .filter(Boolean);
-    const nonAttrRef = refTitles.find((title) => title !== attrName);
+      const attrTitleSet = new Set([attrName, DEFAULT_CONTEXT_ATTR]);
+      const nonAttrRef = refTitles.find((title) => !attrTitleSet.has(title));
     if (nonAttrRef) {
       out.push(nonAttrRef);
       continue;
     }
-    const parts = stringVal.split("::");
-    if (parts.length >= 2) {
-      const valuePart = parts.slice(1).join("::");
-      const normalized = normalizeContextValue(valuePart);
-      if (normalized) out.push(normalized);
+      const parts = stringVal.split("::");
+      if (parts.length >= 2) {
+        const valuePart = parts.slice(1).join("::");
+        const normalized = normalizeContextValue(valuePart);
+        if (normalized) out.push(normalized);
+      }
     }
+    return out;
+  } catch (err) {
+    console.warn("[BetterTasks] context-store query failed", err);
+    return [];
   }
-  return out;
 }
 
 async function refreshContextOptions(force = false) {

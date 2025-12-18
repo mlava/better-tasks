@@ -40,6 +40,8 @@ https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
   - group tasks by project (with a “No Project” bucket).
 
 - Added unified pickers and in-memory indexes for Projects, Waiting-for, and Context across inline pills, dashboard menus, and the create/convert prompt; options refresh from your configured attributes and clean up when removed.
+- Picklist exclusions (Projects / Context / Waiting-for)
+  - Always excludes `roam/*` pages from picklists, with an optional user-defined exclude list available in settings.
 - Added a 'Today Widget' - automatically place a block and children or block and React panel in today's DNP
   - option to set your own heading text, and the extension will find and use that for the widget placement
   - alternatively, create the widget at top or bottom of the DNP
@@ -171,6 +173,9 @@ Weekly rules that span multiple days or intervals (e.g., `every 2 weeks on Sat &
 ### Inline pill checkbox threshold
 Caps how many checkboxes can be on the page before inline pill rendering is skipped. Default is 100. Increase to show pills on very large pages (slower), or decrease to prioritise performance; pills will still render on-demand when you interact with a specific block.
 
+### Picklist exclusions (Projects / Context / Waiting-for)
+Better Tasks can exclude specific pages from contributing values to the Project / Context / Waiting-for picklists (used in the dashboard and toasts). `roam/*` pages are always excluded, and you can optionally add your own exclusions (comma-separated; wrap titles containing commas—like daily note pages—in `[[...]]`).
+
 **Note:** 
 The settings pane for the extension allows you to use whatever name for the repeat and start/defer/due date atttributes you choose. The extension defaults to using 'BT_attrRepeat', 'BT_attrStart', 'BT_attrDefer' and 'BT_attrDue' for the recurrence pattern and start/defer/due dates respectively. If you happen to already use these attributes for other purposes, the extension will recognise and attempt to use them if you don't set alternatives in the settings. Using 'frequency' and 'when' for example, would prevent the extension from acting on anything for which you already use 'BT_attrRepeat' and 'BT_attrDue'.
 
@@ -250,6 +255,7 @@ You can trigger these from Roam’s Command Palette (`Ctrl+P` / `Cmd+P`) or bloc
 - **Better Tasks: Switch view…**
 - **Better Tasks: Save current view as…**
 - **Better Tasks: Reinstall preset dashboard views**
+- **Better Tasks: Weekly Review**
 
 These commands let you turn an existing task into a repeating Better Task or start a new scheduled TODO; just leave the repeat field blank to create a one-off with start/defer/due timing.
 

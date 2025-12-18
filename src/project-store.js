@@ -1,6 +1,11 @@
 const DEFAULT_PROJECT_ATTR = "BT_attrProject";
 const CACHE_TTL_MS = 8 * 60 * 1000; // long-lived cache; caller can force refresh
 
+import {
+  parseExcludedPicklistPages,
+  shouldExcludePicklistSourcePage,
+} from "./picklist-excludes";
+
 let extensionAPI = null;
 let lastRefreshed = 0;
 let refreshPromise = null;
@@ -30,6 +35,13 @@ function normalizeProjectValue(raw) {
 function getProjectAttrName() {
   const configured = extensionAPI?.settings?.get?.("bt-attr-project");
   return sanitizeAttrName(configured ?? DEFAULT_PROJECT_ATTR, DEFAULT_PROJECT_ATTR);
+}
+
+function getPicklistExcludeConfig() {
+  const enabledRaw = extensionAPI?.settings?.get?.("bt_excludePicklistPagesEnabled");
+  const enabled = enabledRaw === true || enabledRaw === "true" || enabledRaw === "1";
+  const raw = extensionAPI?.settings?.get?.("bt_excludePicklistPages") || "";
+  return { enabled, excluded: parseExcludedPicklistPages(raw) };
 }
 
 function notifySubscribers() {
@@ -74,27 +86,32 @@ function addProjectOption(name) {
 async function queryProjectsFromGraph() {
   const attrName = getProjectAttrName();
   if (!attrName || typeof window === "undefined" || !window.roamAlphaAPI?.q) return [];
+  const excludeCfg = getPicklistExcludeConfig();
   const safeAttr = escapeForQuery(attrName);
   const defaultSafe = escapeForQuery(DEFAULT_PROJECT_ATTR);
   const labels = Array.from(new Set([safeAttr, defaultSafe])).filter(Boolean);
-  const pull = "[:block/string {:block/refs [:node/title]}]";
+  const pull = "[:block/string {:block/refs [:node/title]} {:block/page [:node/title]}]";
 
   // Query for blocks that reference the attribute page(s)
   const refQuery = `
-    [:find (pull ?c ${pull})
+    [:find (pull ?c ${pull}) ?pageTitle
      :in $ [?label ...]
      :where
        [?attr :node/title ?label]
-       [?c :block/refs ?attr]]`;
+       [?c :block/refs ?attr]
+       [?c :block/page ?p]
+       [?p :node/title ?pageTitle]]`;
 
-  // Fallback regex query for inline attr (case-insensitive), allowing leading whitespace.
+  // Regex query for inline attr (case-insensitive), allowing leading whitespace.
   const inlineRegexQuery = `
-    [:find ?s
+    [:find (pull ?c ${pull}) ?pageTitle
      :in $ ?pattern
      :where
        [?c :block/string ?s]
        [(re-pattern ?pattern) ?rp]
-       [(re-find ?rp ?s)]]`;
+       [(re-find ?rp ?s)]
+       [?c :block/page ?p]
+       [?p :node/title ?pageTitle]]`;
   try {
     const refRows = await window.roamAlphaAPI.q(refQuery, labels);
     let rows = [...(refRows || [])];
@@ -102,16 +119,10 @@ async function queryProjectsFromGraph() {
     // Regex scan (case-insensitive) for attr label at start of line (with optional leading spaces)
     const pattern = `(?i)^\\s*(?:${labels.join("|")})\\s*::`;
     try {
-    const regexRows = await window.roamAlphaAPI.q(inlineRegexQuery, pattern);
-    if (Array.isArray(regexRows)) {
-      rows = [
-        ...rows,
-        ...regexRows.map((r) => ({
-          "block/string": typeof r === "string" ? r : r?.[0],
-        })),
-      ];
-    }
-      //console.debug?.("[BetterTasks] project-store: regex fallback count", regexRows?.length || 0);
+      const regexRows = await window.roamAlphaAPI.q(inlineRegexQuery, pattern);
+      if (Array.isArray(regexRows)) {
+        rows = [...rows, ...(regexRows || [])];
+      }
     } catch (err) {
       console.warn("[BetterTasks] project-store regex query failed", err);
     }
@@ -122,10 +133,23 @@ async function queryProjectsFromGraph() {
       }
       return undefined;
     };
+    const getPageTitleFromEntry = (entryObj) => {
+      const raw = getField(entryObj, ["block/page", "page", ":block/page"]);
+      const pageObj = Array.isArray(raw) ? raw[0] : raw;
+      if (!pageObj || typeof pageObj !== "object") return "";
+      return pageObj["node/title"] || pageObj[":node/title"] || "";
+    };
     for (const row of rows || []) {
       // roamAlphaAPI.q can return either [entry] or entry directly depending on the query
       const entry = row?.[0] || row;
       if (!entry) continue;
+      const pageTitleFromQuery =
+        Array.isArray(row) && typeof row[1] === "string" ? row[1] : "";
+      const pageTitle = pageTitleFromQuery || getPageTitleFromEntry(entry);
+      const excluded = shouldExcludePicklistSourcePage(pageTitle, excludeCfg.enabled, excludeCfg.excluded);
+      if (excluded) {
+        continue;
+      }
       const stringVal =
         getField(entry, ["block/string", "string", ":block/string"]) || "";
       const refsVal =
@@ -136,13 +160,13 @@ async function queryProjectsFromGraph() {
         .filter((t) => typeof t === "string")
         .map((t) => t.trim())
         .filter(Boolean);
-      const nonAttrRef = refTitles.find((title) => title !== attrName);
+      const attrTitleSet = new Set([attrName, DEFAULT_PROJECT_ATTR]);
+      const nonAttrRef = refTitles.find((title) => !attrTitleSet.has(title));
       if (nonAttrRef) {
         values.push(nonAttrRef);
         continue;
       }
-      const rawString = typeof entry["block/string"] === "string" ? entry["block/string"] : "";
-      const parts = rawString.split("::");
+      const parts = String(stringVal || "").split("::");
       if (parts.length >= 2) {
         const valuePart = parts.slice(1).join("::");
         const normalized = normalizeProjectValue(valuePart);
