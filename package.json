@@ -24,6 +24,7 @@
     "@babel/preset-react": "^7.26.3",
     "@tanstack/react-virtual": "^3.10.7",
     "babel-loader": "^9.2.1",
+    "baseline-browser-mapping": "^2.9.11",
     "webpack": "^5.99.9",
     "webpack-cli": "^6.0.1"
   },

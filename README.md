@@ -7,6 +7,10 @@ Better Tasks automatically recognises and manages TODO items that match defined 
 **Note:** 
 Better Tasks is actively maintained. Please let me know of any bugs or unexpected behaviours in Slack  - https://app.slack.com/client/TNEAEL9QW/
 
+**Note 2:**
+Some users have reported Roam feels sluggish with Better Tasks installed. Hopefully, that is fixed in this version.
+  - If you experience this, please disable Today Widget in settings and see if that resolves the issue. Either way, please contact me via Slack to let me know, and if you can capture any developer console output that would also help.
+
 This video provides an overview of some of the extension's functionality, although many features have been added since it was recorded (see the Changelog below)!
 
 <p align="center">
@@ -16,6 +20,10 @@ https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
 ---
 
 ## 📜 Changelog (recent highlights)
+
+- Reduced memory usage, especially with Today widgets and inline pills.
+  - Some users had reported Roam felt sluggish. These adjustments will hopefully fix that issue.
+  - If you experience this, please disable Today Widget in settings and see if that resolves the issue. Either way, please contact me via Slack to let me know, and if you can capture any developer console output that would also help.
 
 - Saved Dashboard Views
   - Save, switch, update, rename, and delete named dashboard views, capturing filters, grouping, and search state.

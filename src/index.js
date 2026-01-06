@@ -127,6 +127,7 @@ function buildEnStringLookup(obj, prefix = []) {
 }
 buildEnStringLookup(I18N_MAP?.en || {});
 let todayWidgetRenderTimer = null;
+let todayTitleChangeDebounceTimer = null;
 let todayWidgetPanelRoot = null;
 let todayWidgetPanelContainer = null;
 let lastTodayWidgetSignature = null;
@@ -141,6 +142,7 @@ let todayNavListenerAttached = false;
 let teardownTodayPanelGlobal = null;
 let lastTodayAnchorUid = null;
 const todayInlineChildUids = new Set();
+const todayAnchorTextHistory = new Set();
 let pillRefreshTimer = null;
 let todayWidgetForceNext = false;
 let lastTodayRenderAt = 0;
@@ -149,12 +151,23 @@ let dashboardRefreshTimer = null;
 let dashboardWatchClearTimer = null;
 let pillScrollHandlerAttached = false;
 let pillScrollHandler = null;
+let pillScrollDebounceMs = 420;
 let todayNavListener = null;
 let detachTodayNavigationListenerGlobal = null;
 const MAX_BLOCKS_FOR_PILLS = 1500;
 const pillSkipDecorate = new Set();
 const TODAY_WIDGET_ENABLED = true; // temporary kill switch 
 const DEBUG_BT_PERF = false;
+const DASHBOARD_NOTIFY_BATCH_SIZE = 25;
+const DASHBOARD_NOTIFY_DEBOUNCE_MS = 250;
+let dashboardNotifyQueue = new Set();
+let dashboardNotifyTimer = null;
+const TODAY_WIDGET_PAGE_GUARD_TTL_MS = 1500;
+let todayWidgetPageGuard = { at: 0, value: true, inFlight: null };
+let todayWidgetRefreshTimer = null;
+let todayWidgetRefreshForcePending = false;
+const PILL_DOM_COUNT_TTL_MS = 6000;
+let pillDomCountsCache = { at: 0, blockCount: null, checkboxCount: null };
 
 let lastAttrNames = null;
 let activeDashboardController = null;
@@ -201,6 +214,55 @@ class DashboardErrorBoundary extends (ReactGlobal?.Component || class { }) {
       );
     }
     return this.props?.children || null;
+  }
+}
+
+function enqueueDashboardNotifyBlockChange(uid) {
+  if (!uid) return;
+  try {
+    if (!activeDashboardController?.isOpen?.()) return;
+  } catch (_) {
+    return;
+  }
+  dashboardNotifyQueue.add(uid);
+  if (dashboardNotifyTimer) return;
+  dashboardNotifyTimer = setTimeout(() => {
+    dashboardNotifyTimer = null;
+    void flushDashboardNotifyQueue();
+  }, DASHBOARD_NOTIFY_DEBOUNCE_MS);
+}
+
+async function flushDashboardNotifyQueue() {
+  if (!dashboardNotifyQueue.size) return;
+  let isOpen = false;
+  try {
+    isOpen = !!activeDashboardController?.isOpen?.();
+  } catch (_) {
+    isOpen = false;
+  }
+  if (!isOpen) {
+    dashboardNotifyQueue.clear();
+    return;
+  }
+  const uids = Array.from(dashboardNotifyQueue);
+  dashboardNotifyQueue.clear();
+  const batch = uids.slice(0, DASHBOARD_NOTIFY_BATCH_SIZE);
+  const remainder = uids.slice(DASHBOARD_NOTIFY_BATCH_SIZE);
+  for (const id of batch) {
+    try {
+      await activeDashboardController?.notifyBlockChange?.(id);
+    } catch (_) {
+      // ignore notify errors
+    }
+  }
+  if (remainder.length) {
+    for (const id of remainder) dashboardNotifyQueue.add(id);
+    if (!dashboardNotifyTimer) {
+      dashboardNotifyTimer = setTimeout(() => {
+        dashboardNotifyTimer = null;
+        void flushDashboardNotifyQueue();
+      }, DASHBOARD_NOTIFY_DEBOUNCE_MS);
+    }
   }
 }
 
@@ -719,7 +781,7 @@ export default {
       extensionAPI.settings.set(TODAY_WIDGET_ENABLE_SETTING, false);
     }
     if (extensionAPI.settings.get(TODAY_WIDGET_LAYOUT_SETTING) == null) {
-      extensionAPI.settings.set(TODAY_WIDGET_LAYOUT_SETTING, "Roam-style inline");
+      extensionAPI.settings.set(TODAY_WIDGET_LAYOUT_SETTING, "Panel");
     }
     if (extensionAPI.settings.get(TODAY_WIDGET_OVERDUE_SETTING) == null) {
       extensionAPI.settings.set(TODAY_WIDGET_OVERDUE_SETTING, false);
@@ -2498,6 +2560,7 @@ export default {
         document.removeEventListener("pointerdown", _onCheckboxPointer, true);
         document.removeEventListener("change", _onCheckboxChange, true);
         document.removeEventListener("keydown", _onCmdEnterKey, true);
+        detachPillEventDelegation();
         clearAllPills();
         disconnectObserver();
       };
@@ -2523,18 +2586,26 @@ export default {
 
       const obsConfig = {
         attributes: true,
-        attributeFilter: ["class", "style", "open", "aria-expanded"],
+        attributeFilter: ["class", "open", "aria-expanded"],
         attributeOldValue: true,
         childList: true,
         subtree: true,
       };
       const callback = function (mutationsList, obs) {
+        const isBtPillMutationNode = (node) => {
+          if (!(node instanceof HTMLElement)) return false;
+          if (node.classList?.contains("rt-pill-wrap")) return true;
+          return !!node.closest?.(".rt-pill-wrap");
+        };
+        let shouldBatchRefreshPills = false;
         for (const mutation of mutationsList) {
           if (mutation.type === "attributes") {
             const target = mutation.target;
             if (!(target instanceof HTMLElement)) {
               continue;
             }
+            // Ignore attribute churn caused by Better Tasks pill DOM itself.
+            if (isBtPillMutationNode(target)) continue;
             const attrName = mutation.attributeName;
             if (attrName === "class" && target.classList?.contains("rm-checkbox")) {
               const wasTodo = (mutation.oldValue || "").includes("rm-todo");
@@ -2545,41 +2616,37 @@ export default {
                   const checkbox = target.querySelector?.("input[type='checkbox']") || null;
                   noteTodoRemoval(uid);
                   enqueueCompletion(uid, { checkbox, userInitiated: true, detectedAt: Date.now() });
+                  shouldBatchRefreshPills = true;
                   continue;
                 }
               }
             }
-            const isCaret =
-              target.classList?.contains("rm-caret") ||
-              target.classList?.contains("rm-caret-container");
-            const isChildContainer =
-              target.classList?.contains("rm-block__children") ||
-              target.classList?.contains("rm-block-children");
-            if (!isCaret && !isChildContainer && attrName !== "open") {
+            // Avoid hover-driven churn: only refresh pills on expand/collapse-like attribute changes.
+            if (attrName !== "open" && attrName !== "aria-expanded") {
               continue;
             }
             let main = null;
-            if (isCaret) {
+            if (target.classList?.contains("rm-block-main")) {
+              main = target;
+            } else if (target.classList?.contains("roam-block-container") || target.classList?.contains("roam-block")) {
+              main = target.querySelector?.(":scope > .rm-block-main") || null;
+            } else {
               main = target.closest?.(".rm-block-main") || null;
-            } else if (isChildContainer) {
-              main = findMainForChildrenContainer(target);
-            } else if (attrName === "open") {
-              if (target.classList?.contains("rm-block-main")) {
-                main = target;
-              } else if (target.classList?.contains("roam-block-container") || target.classList?.contains("roam-block")) {
-                main = target.querySelector?.(":scope > .rm-block-main") || null;
-              }
             }
             if (main) {
-              schedulePillRefresh(main, null, 40);
+              // Debounce UI-driven changes (expand/collapse) so rapid interactions don't thrash.
+              schedulePillRefresh(main, null, 240);
             }
             continue;
           }
           const target = mutation.target instanceof HTMLElement ? mutation.target : null;
+          // Ignore childList churn caused by Better Tasks pill DOM itself.
+          if (target && isBtPillMutationNode(target)) continue;
 
           if (mutation.removedNodes && mutation.removedNodes.length > 0) {
             for (const node of mutation.removedNodes) {
               if (!(node instanceof HTMLElement)) continue;
+              if (isBtPillMutationNode(node)) continue;
               const todoHosts = [];
               if (node.matches?.(".rm-checkbox.rm-todo")) todoHosts.push(node);
               node.querySelectorAll?.(".rm-checkbox.rm-todo")?.forEach((el) => todoHosts.push(el));
@@ -2587,7 +2654,15 @@ export default {
                 const uid = deriveUidFromMutationNode(host, target);
                 if (uid) {
                   noteTodoRemoval(uid);
+                  shouldBatchRefreshPills = true;
                 }
+              }
+              // New blocks/checkboxes disappearing can invalidate pills.
+              if (
+                node.matches?.(".rm-block-main, .roam-block-container, .roam-block, .rm-checkbox") ||
+                node.querySelector?.(".rm-block-main, .roam-block-container, .roam-block, .rm-checkbox")
+              ) {
+                shouldBatchRefreshPills = true;
               }
             }
           }
@@ -2596,6 +2671,7 @@ export default {
 
           for (const node of mutation.addedNodes) {
             if (!(node instanceof HTMLElement)) continue;
+            if (isBtPillMutationNode(node)) continue;
             const doneHosts = [];
             if (node.matches?.(".rm-checkbox.rm-done")) doneHosts.push(node);
             node.querySelectorAll?.(".rm-checkbox.rm-done")?.forEach((el) => doneHosts.push(el));
@@ -2605,12 +2681,20 @@ export default {
               const uid = deriveUidFromMutationNode(host, target);
               if (uid) {
                 noteDoneAddition(uid, checkbox);
+                shouldBatchRefreshPills = true;
               }
             }
+            // New blocks/checkboxes appearing are the main case for pill decoration (scroll/render).
+            if (
+              node.matches?.(".rm-block-main, .roam-block-container, .roam-block, .rm-checkbox") ||
+              node.querySelector?.(".rm-block-main, .roam-block-container, .roam-block, .rm-checkbox")
+            ) {
+              shouldBatchRefreshPills = true;
+            }
           }
-          // Batch refresh pills once per mutation batch instead of per node to reduce churn.
-          schedulePillRefreshAll(120);
         }
+        // Batch refresh pills once per mutation batch instead of per node to reduce churn.
+        if (shouldBatchRefreshPills) schedulePillRefreshAll(120);
 
         sweepCompletionPairs();
         sweepProcessed();
@@ -2970,14 +3054,57 @@ export default {
       });
     }
 
+    function escapeDatalogString(value) {
+      return String(value ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    }
+
+    async function getPageUidByTitle(title) {
+      if (!title) return null;
+      try {
+        const safeTitle = escapeDatalogString(title);
+        const found = await window.roamAlphaAPI.q(
+          `[:find ?u :where [?p :node/title "${safeTitle}"] [?p :block/uid ?u]]`
+        );
+        return found?.[0]?.[0] || null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    const pendingPageUidByTitle = new Map();
+
+    async function ensurePageUid(title) {
+      if (!title) return null;
+      const existing = await getPageUidByTitle(title);
+      if (existing) return existing;
+      if (pendingPageUidByTitle.has(title)) return pendingPageUidByTitle.get(title);
+      const promise = (async () => {
+        const uid = window.roamAlphaAPI.util.generateUID();
+        try {
+          await window.roamAlphaAPI.createPage({ page: { title, uid } });
+        } catch (err) {
+          const msg = String(err?.message || "");
+          if (!/already exists/i.test(msg)) {
+            console.warn("[BetterTasks] createPage failed", { title, uid, err });
+          }
+        }
+        for (let i = 0; i < 8; i++) {
+          const retry = await getPageUidByTitle(title);
+          if (retry) return retry;
+          await delay(40 * (i + 1));
+        }
+        return await getPageUidByTitle(title);
+      })();
+      pendingPageUidByTitle.set(title, promise);
+      try {
+        return await promise;
+      } finally {
+        pendingPageUidByTitle.delete(title);
+      }
+    }
+
     async function getOrCreatePageUid(title) {
-      const found = await window.roamAlphaAPI.q(
-        `[:find ?u :where [?p :node/title "${title}"] [?p :block/uid ?u]]`
-      );
-      if (found?.[0]?.[0]) return found[0][0];
-      const uid = window.roamAlphaAPI.util.generateUID();
-      await window.roamAlphaAPI.createPage({ page: { title, uid } });
-      return uid;
+      return ensurePageUid(title);
     }
 
     async function getOrCreateChildUnderHeading(parentUid, headingText) {
@@ -7219,6 +7346,19 @@ export default {
         clearTimeout(todayWidgetRenderTimer);
         todayWidgetRenderTimer = null;
       }
+      if (settingId === TODAY_WIDGET_TITLE_SETTING) {
+        if (todayTitleChangeDebounceTimer) {
+          clearTimeout(todayTitleChangeDebounceTimer);
+          todayTitleChangeDebounceTimer = null;
+        }
+        // Debounce title changes to avoid creating/moving anchors while the user types.
+        todayTitleChangeDebounceTimer = setTimeout(() => {
+          todayTitleChangeDebounceTimer = null;
+          scheduleTodayWidgetRender(120, true);
+          scheduleTodayBadgeRefresh(120, true);
+        }, 450);
+        return;
+      }
       // Single forced render using the override to avoid flicker from double renders.
       scheduleTodayWidgetRender(40, true);
       scheduleTodayBadgeRefresh(80, true);
@@ -7613,7 +7753,8 @@ export default {
         const cache = createTodayRenderCache();
         const dnpUid = await getOrCreatePageUidCached(toDnpTitle(todayLocal()), cache);
         const { headingUid } = await getTodayParentInfo(cache);
-        const texts = new Set([getTodayAnchorText(), ...TODAY_WIDGET_ANCHOR_TEXT_LEGACY].map((s) => stripMarkdownDecorations(s || "").toLowerCase()));
+        const texts = new Set([getTodayAnchorText(), ...TODAY_WIDGET_ANCHOR_TEXT_LEGACY].map((s) => normalizeMatchText(s || "")));
+        for (const t of todayAnchorTextHistory) texts.add(t);
         const ignoreUid = includeHeading ? null : headingUid || null;
         const uids = await collectAnchorsUnder(dnpUid, texts, ignoreUid, cache, 0, 4);
         for (const u of uids) {
@@ -7705,6 +7846,51 @@ export default {
       return !!match;
     }
 
+    async function shouldRenderTodayWidgetNowCached(cache = null) {
+      const now = Date.now();
+      if (todayWidgetPageGuard.inFlight) return todayWidgetPageGuard.inFlight;
+      if (todayWidgetPageGuard.at && now - todayWidgetPageGuard.at < TODAY_WIDGET_PAGE_GUARD_TTL_MS) {
+        return todayWidgetPageGuard.value;
+      }
+      todayWidgetPageGuard.inFlight = (async () => {
+        try {
+          const value = await shouldRenderTodayWidgetNow(cache);
+          todayWidgetPageGuard.at = Date.now();
+          todayWidgetPageGuard.value = !!value;
+          return todayWidgetPageGuard.value;
+        } catch (_) {
+          // Fail open so we don't "break" rendering when Roam APIs are flaky.
+          todayWidgetPageGuard.at = Date.now();
+          todayWidgetPageGuard.value = true;
+          return true;
+        } finally {
+          todayWidgetPageGuard.inFlight = null;
+        }
+      })();
+      return todayWidgetPageGuard.inFlight;
+    }
+
+    function scheduleTodayWidgetRenderIfOnDnp(delayMs = 200, force = false) {
+      if (!TODAY_WIDGET_ENABLED || !getTodayWidgetEnabled()) return;
+      void (async () => {
+        const ok = await shouldRenderTodayWidgetNowCached(null);
+        if (!ok) return;
+        scheduleTodayWidgetRender(delayMs, force);
+      })();
+    }
+
+    function requestTodayWidgetRenderOnDnp(delayMs = 200, force = false) {
+      if (!TODAY_WIDGET_ENABLED || !getTodayWidgetEnabled()) return;
+      if (force) todayWidgetRefreshForcePending = true;
+      if (todayWidgetRefreshTimer) return;
+      todayWidgetRefreshTimer = setTimeout(() => {
+        todayWidgetRefreshTimer = null;
+        const shouldForce = todayWidgetRefreshForcePending;
+        todayWidgetRefreshForcePending = false;
+        scheduleTodayWidgetRenderIfOnDnp(0, shouldForce);
+      }, Math.max(0, delayMs));
+    }
+
     function renderPillDateSpan(span, { icon, date, set, label, tooltip }) {
       if (!span) return;
       span.textContent = "";
@@ -7737,6 +7923,10 @@ export default {
 
     function schedulePillRefreshAll(delayMs = 120) {
       if (pillRefreshTimer) return;
+      const now = Date.now();
+      const MIN_INTERVAL = 500;
+      const remaining = Math.max(0, MIN_INTERVAL - (now - lastPillDecorateRun));
+      const effectiveDelay = Math.max(delayMs, remaining);
       pillRefreshTimer = setTimeout(async () => {
         pillRefreshTimer = null;
         try {
@@ -7745,7 +7935,233 @@ export default {
         } catch (err) {
           console.warn("[BetterTasks] pill refresh failed", err);
         }
-      }, delayMs);
+      }, effectiveDelay);
+    }
+
+    let pillDelegationAttached = false;
+    let pillDelegationClickHandler = null;
+    let pillDelegationPointerHandler = null;
+    let pillDelegationLastClickAt = 0;
+    let pillDelegationLastClickKey = "";
+    const PILL_DELEGATION_GLOBAL_KEY = "__btPillDelegationV1";
+
+    function attachPillEventDelegation() {
+      if (pillDelegationAttached || typeof document === "undefined") return;
+      // Ensure only one delegated handler is attached globally (Roam can load/reload extensions without clean unload).
+      try {
+        const prev = typeof window !== "undefined" ? window[PILL_DELEGATION_GLOBAL_KEY] : null;
+        if (prev?.attached && prev?.doc === document) {
+          if (typeof prev.pointerHandler === "function") {
+            document.removeEventListener("pointerdown", prev.pointerHandler, true);
+          }
+          if (typeof prev.clickHandler === "function") {
+            document.removeEventListener("click", prev.clickHandler, true);
+          }
+        }
+      } catch (_) {
+        // ignore
+      }
+
+      pillDelegationPointerHandler = (event) => {
+        try {
+          const target = event?.target instanceof Element ? event.target : null;
+          if (!target) return;
+          const wrap = target.closest?.(".rt-pill-wrap");
+          if (!wrap) return;
+          event.preventDefault();
+          event.stopPropagation();
+        } catch (_) {
+          // ignore
+        }
+      };
+
+      pillDelegationClickHandler = async (event) => {
+        try {
+          const target = event?.target instanceof Element ? event.target : null;
+          if (!target) return;
+          const wrap = target.closest?.(".rt-pill-wrap");
+          if (!wrap) return;
+          const uid = wrap.dataset?.btUid || null;
+          if (!uid) return;
+          event.preventDefault();
+          event.stopPropagation();
+
+          const actionEl = target.closest?.("[data-bt-pill-action]") || null;
+          const action = actionEl?.dataset?.btPillAction || null;
+          // Debounce to avoid double/triple triggers from Roam/DOM churn or multiple event sources.
+          // Keyed by UID + action so different pill targets can still be clicked rapidly.
+          const clickKey = `${uid}|${action || "menu"}`;
+          const now = Date.now();
+          if (clickKey === pillDelegationLastClickKey && now - pillDelegationLastClickAt < 350) {
+            return;
+          }
+          pillDelegationLastClickKey = clickKey;
+          pillDelegationLastClickAt = now;
+
+          const set = S();
+          const attrNames = set.attrNames;
+          const metaCache = typeof window !== "undefined" ? window.__btInlineMetaCache : null;
+          const metadataInfo = metaCache?.get?.(uid) || null;
+
+          const isRecurring = wrap.dataset?.btIsRecurring === "1";
+
+          const removeSpanAndSeparator = (el) => {
+            if (!(el instanceof Element)) return;
+            const prev = el.previousElementSibling;
+            if (prev && prev.classList?.contains("rt-pill-separator")) {
+              prev.remove();
+            } else {
+              const next = el.nextElementSibling;
+              if (next && next.classList?.contains("rt-pill-separator")) {
+                next.remove();
+              }
+            }
+            el.remove();
+          };
+
+          if (!action || action === "menu") {
+            showPillMenu({ uid, set, isRecurring, metadata: metadataInfo || undefined });
+            return;
+          }
+
+          if (action === "repeat") {
+            await handleRepeatEdit(event, { uid, set, span: actionEl });
+            return;
+          }
+          if (action === "start") {
+            await handleStartClick(event, { uid, set, span: actionEl, allowCreate: true });
+            return;
+          }
+          if (action === "defer") {
+            await handleDeferClick(event, { uid, set, span: actionEl, allowCreate: true });
+            return;
+          }
+          if (action === "due") {
+            await handleDueClick(event, { uid, set, span: actionEl, allowCreate: true });
+            return;
+          }
+
+          const notifyDashboardIfOpen = async (opts = {}) => {
+            try {
+              if (!activeDashboardController?.isOpen?.()) return;
+            } catch (_) {
+              return;
+            }
+            try {
+              await activeDashboardController?.notifyBlockChange?.(uid, opts);
+            } catch (_) {
+              // ignore
+            }
+          };
+
+          if (action === "meta-project" && metadataInfo?.project) {
+            handleMetadataClick(uid, "project", { value: metadataInfo.project }, event, activeDashboardController);
+            return;
+          }
+          if (action === "meta-waitingFor" && metadataInfo?.waitingFor) {
+            handleMetadataClick(uid, "waitingFor", { value: metadataInfo.waitingFor }, event, activeDashboardController);
+            return;
+          }
+          if (action === "meta-context" && metadataInfo?.context?.length) {
+            const first = metadataInfo.context[0];
+            handleMetadataClick(uid, "context", { value: first, list: metadataInfo.context }, event, activeDashboardController);
+            return;
+          }
+
+          if (action === "cycle-gtd") {
+            const current = actionEl?.dataset?.metaValue || null;
+            const next = cycleGtdStatus(current);
+            await setRichAttribute(uid, "gtd", next, attrNames);
+            pillSkipDecorate.add(uid);
+            setTimeout(() => pillSkipDecorate.delete(uid), 800);
+            if (typeof window !== "undefined") {
+              window.__btInlineMetaCache?.delete?.(uid);
+            }
+            await notifyDashboardIfOpen({ bypassFilters: true });
+            if (next) {
+              const display = formatGtdStatusDisplay(next, getLanguageSetting());
+              actionEl.dataset.metaValue = next || "";
+              actionEl.textContent = `➡ ${display}`;
+              const metaLabels = t(["metadata"], getLanguageSetting()) || {};
+              actionEl.title = `${metaLabels.gtdLabel || metaLabels.gtd || "GTD"}: ${display}`;
+            } else {
+              removeSpanAndSeparator(actionEl);
+            }
+            return;
+          }
+
+          if (action === "cycle-priority" || action === "cycle-energy") {
+            const type = action === "cycle-priority" ? "priority" : "energy";
+            const order = [null, "low", "medium", "high"];
+            const current = actionEl?.dataset?.metaValue ? actionEl.dataset.metaValue.toLowerCase() : null;
+            const idx = order.indexOf(current);
+            const next = order[(idx + 1) % order.length];
+            await setRichAttribute(uid, type, next, attrNames);
+            pillSkipDecorate.add(uid);
+            setTimeout(() => pillSkipDecorate.delete(uid), 800);
+            await notifyDashboardIfOpen({ bypassFilters: true });
+            if (next) {
+              const display = formatPriorityEnergyDisplay(next, getLanguageSetting());
+              actionEl.dataset.metaValue = next || "";
+              actionEl.textContent = `${type === "priority" ? "!" : "🔋"} ${display}`;
+              const metaLabels = t(["metadata"], getLanguageSetting()) || {};
+              const labelKey = type === "priority" ? (metaLabels.priorityLabel || metaLabels.priority || "Priority") : (metaLabels.energyLabel || metaLabels.energy || "Energy");
+              const cycleHint =
+                type === "priority"
+                  ? (t(["pillMenu", "cyclePriority"], getLanguageSetting()) || "Click to cycle")
+                  : (t(["pillMenu", "cycleEnergy"], getLanguageSetting()) || "Click to cycle");
+              actionEl.title = `${labelKey}: ${display} (${cycleHint})`;
+            } else {
+              removeSpanAndSeparator(actionEl);
+            }
+            return;
+          }
+        } catch (err) {
+          console.warn("[BetterTasks] pill delegated click failed", err);
+        }
+      };
+
+      document.addEventListener("pointerdown", pillDelegationPointerHandler, true);
+      document.addEventListener("click", pillDelegationClickHandler, true);
+      pillDelegationAttached = true;
+      try {
+        if (typeof window !== "undefined") {
+          window[PILL_DELEGATION_GLOBAL_KEY] = {
+            attached: true,
+            doc: document,
+            pointerHandler: pillDelegationPointerHandler,
+            clickHandler: pillDelegationClickHandler,
+          };
+        }
+      } catch (_) {
+        // ignore
+      }
+    }
+
+    function detachPillEventDelegation() {
+      if (!pillDelegationAttached || typeof document === "undefined") return;
+      try {
+        document.removeEventListener("pointerdown", pillDelegationPointerHandler, true);
+        document.removeEventListener("click", pillDelegationClickHandler, true);
+      } catch (_) {
+        // ignore
+      } finally {
+        pillDelegationAttached = false;
+        pillDelegationPointerHandler = null;
+        pillDelegationClickHandler = null;
+        pillDelegationLastClickAt = 0;
+        pillDelegationLastClickKey = "";
+        try {
+          if (typeof window !== "undefined") {
+            const prev = window[PILL_DELEGATION_GLOBAL_KEY];
+            if (prev?.doc === document) {
+              delete window[PILL_DELEGATION_GLOBAL_KEY];
+            }
+          }
+        } catch (_) {
+          // ignore
+        }
+      }
     }
 
     async function syncPillsForSurface(surface) {
@@ -7754,6 +8170,7 @@ export default {
       const root = document.body || document;
       if (!root) return;
       try {
+        attachPillEventDelegation();
         const once = () => Promise.resolve(decorateBlockPills(root));
         await once();
         await new Promise((resolve) => requestAnimationFrame(() => once().then(resolve, resolve)));
@@ -7768,30 +8185,65 @@ export default {
       const now = Date.now();
       if (now - lastPillDecorateRun < 500) return;
       lastPillDecorateRun = now;
+      const sliceNow =
+        typeof performance !== "undefined" && typeof performance.now === "function"
+          ? () => performance.now()
+          : () => Date.now();
+      const yieldToBrowser = () =>
+        new Promise((resolve) => {
+          if (typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(() => resolve());
+          } else {
+            setTimeout(resolve, 0);
+          }
+        });
+      const SLICE_BUDGET_MS = 12;
+      let sliceStart = sliceNow();
       const pillSigCache = typeof window !== "undefined"
         ? window.__btPillSignatureCache || (window.__btPillSignatureCache = new Map())
         : new Map();
-      if (!pillScrollHandlerAttached && typeof window !== "undefined") {
+      if (!pillScrollHandlerAttached && typeof document !== "undefined") {
         pillScrollHandler = (() => {
           let t = null;
           return () => {
-            if (t) return;
+            if (t) clearTimeout(t);
             t = setTimeout(() => {
               t = null;
-              schedulePillRefreshAll(80);
-            }, 180);
+              // Only refresh once scrolling has paused.
+              schedulePillRefreshAll(0);
+            }, pillScrollDebounceMs);
           };
         })();
         try {
-          window.addEventListener("scroll", pillScrollHandler, { passive: true });
+          // Roam scrolls inside nested containers; use capture so we receive non-bubbling scroll events.
+          document.addEventListener("scroll", pillScrollHandler, { passive: true, capture: true });
           pillScrollHandlerAttached = true;
         } catch (_) {
           // ignore attach errors
         }
       }
+      const canUseGlobalCounts =
+        typeof document !== "undefined" &&
+        (rootEl === document || rootEl === document.body) &&
+        typeof document.querySelectorAll === "function";
+      const nowCounts = Date.now();
+      const hasFreshCounts =
+        canUseGlobalCounts &&
+        pillDomCountsCache.at &&
+        (nowCounts - pillDomCountsCache.at < PILL_DOM_COUNT_TTL_MS);
+      let globalBlockCount = hasFreshCounts ? pillDomCountsCache.blockCount : null;
+      let globalCheckboxCount = hasFreshCounts ? pillDomCountsCache.checkboxCount : null;
+
       try {
-        const blockCount = document.querySelectorAll?.(".rm-block-main, .roam-block-container, .roam-block")?.length || 0;
+        const blockCount =
+          typeof globalBlockCount === "number"
+            ? globalBlockCount
+            : (document.querySelectorAll?.(".rm-block-main, .roam-block-container, .roam-block")?.length || 0);
+        globalBlockCount = blockCount;
         if (blockCount > MAX_BLOCKS_FOR_PILLS) {
+          if (canUseGlobalCounts && !hasFreshCounts) {
+            pillDomCountsCache = { at: nowCounts, blockCount, checkboxCount: globalCheckboxCount };
+          }
           return;
         }
       } catch (_) {
@@ -7802,14 +8254,29 @@ export default {
         try {
           const checkboxRoot =
             rootEl === document || rootEl === document.body ? document : rootEl;
-          const checkboxCount = checkboxRoot.querySelectorAll?.(".rm-checkbox")?.length || 0;
+          const canUseGlobalCheckboxCount = checkboxRoot === document && typeof document.querySelectorAll === "function";
+          const hasFreshCheckboxCount = !!(canUseGlobalCheckboxCount && hasFreshCounts);
+          const checkboxCount = hasFreshCheckboxCount
+            ? (typeof globalCheckboxCount === "number" ? globalCheckboxCount : 0)
+            : (checkboxRoot.querySelectorAll?.(".rm-checkbox")?.length || 0);
+          globalCheckboxCount = checkboxCount;
           if (checkboxCount > checkboxThreshold) {
             /*
             console.warn(
               `[BetterTasks] Skipping pill decoration: ${checkboxCount} checkboxes exceed threshold ${checkboxThreshold}`
             );
             */
+            if (canUseGlobalCheckboxCount && !hasFreshCheckboxCount) {
+              pillDomCountsCache = { at: nowCounts, blockCount: globalBlockCount, checkboxCount };
+            }
             return;
+          }
+          if ((canUseGlobalCounts || canUseGlobalCheckboxCount) && !hasFreshCounts) {
+            pillDomCountsCache = {
+              at: nowCounts,
+              blockCount: canUseGlobalCounts ? globalBlockCount : pillDomCountsCache.blockCount,
+              checkboxCount: canUseGlobalCheckboxCount ? globalCheckboxCount : pillDomCountsCache.checkboxCount,
+            };
           }
         } catch (_) {
           // ignore counting errors
@@ -7836,6 +8303,10 @@ export default {
       const attrNames = set.attrNames;
       ensurePillMenuStyles();
       for (const node of nodes) {
+        if (sliceNow() - sliceStart > SLICE_BUDGET_MS) {
+          await yieldToBrowser();
+          sliceStart = sliceNow();
+        }
         try {
           if (MAX_DECORATIONS_PER_PASS && decoratedThisPass >= MAX_DECORATIONS_PER_PASS) {
             schedulePillRefresh(rootEl, null, 80);
@@ -7882,7 +8353,6 @@ export default {
           const block = await getBlock(uid);
           if (!block) continue;
           if (isTaskInCodeBlock(block)) continue;
-          activeDashboardController?.notifyBlockChange?.(uid);
 
           const originalString = block.string;
           const isAttrLine = ATTR_RE.test((originalString || "").trim());
@@ -7894,6 +8364,7 @@ export default {
           const hasTiming = !!meta.hasTimingAttrs;
           const isRecurring = !!meta.repeat;
           const isBetterTask = isBetterTasksTask(meta);
+          if (isBetterTask) enqueueDashboardNotifyBlockChange(uid);
           const metadataInfo = meta.metadata || parseRichMetadata(meta.childAttrMap || {}, attrNames);
           if (typeof window !== "undefined") {
             const metaCache = window.__btInlineMetaCache || (window.__btInlineMetaCache = new Map());
@@ -8000,14 +8471,8 @@ export default {
 
           const pillWrap = document.createElement("span");
           pillWrap.className = "rt-pill-wrap";
-          pillWrap.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          });
-          pillWrap.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          });
+          pillWrap.dataset.btUid = uid;
+          pillWrap.dataset.btIsRecurring = isRecurring ? "1" : "0";
 
           let repeatSpan = null;
           let startSpan = null;
@@ -8017,36 +8482,13 @@ export default {
           const pill = document.createElement("span");
           pill.className = "rt-pill";
           pill.title = tooltip;
-          pill.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          });
-          pill.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const target = e.target;
-            if (
-              (repeatSpan && target === repeatSpan) ||
-              (startSpan && target === startSpan) ||
-              (deferSpan && target === deferSpan) ||
-              (dueSpan && target === dueSpan) ||
-              target === menuBtn
-            ) {
-              return;
-            }
-            showPillMenu({ uid, set, isRecurring, metadata: metadataInfo });
-          });
 
           if (isRecurring && humanRepeat) {
             repeatSpan = document.createElement("span");
             repeatSpan.className = "rt-pill-repeat";
             repeatSpan.textContent = `↻ ${humanRepeat}`;
             repeatSpan.title = `${t(["metadata", "repeatRule"], getLanguageSetting()) || "Repeat rule"}: ${humanRepeat}`;
-            repeatSpan.addEventListener("click", (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleRepeatEdit(e, { uid, set, meta, span: repeatSpan });
-            });
+            repeatSpan.dataset.btPillAction = "repeat";
 
             pill.appendChild(repeatSpan);
           }
@@ -8071,11 +8513,7 @@ export default {
               label: metaLabels.start || "Start",
               tooltip: `${metaLabels.start || "Start"}: ${formatIsoDate(startDate, set)}`,
             });
-            startSpan.addEventListener("click", (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleStartClick(e, { uid, set, span: startSpan });
-            });
+            startSpan.dataset.btPillAction = "start";
             pill.appendChild(startSpan);
           }
 
@@ -8092,11 +8530,7 @@ export default {
               label: metaLabels.defer || "Defer",
               tooltip: `${metaLabels.defer || "Defer"}: ${formatIsoDate(deferDate, set)}`,
             });
-            deferSpan.addEventListener("click", (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleDeferClick(e, { uid, set, span: deferSpan });
-            });
+            deferSpan.dataset.btPillAction = "defer";
             pill.appendChild(deferSpan);
           }
 
@@ -8113,11 +8547,7 @@ export default {
               label: metaLabels.due || "Due",
               tooltip: `${metaLabels.due || "Due"}: ${formatIsoDate(dueDate, set)}`,
             });
-            dueSpan.addEventListener("click", (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleDueClick(e, { uid, set, meta, span: dueSpan });
-            });
+            dueSpan.dataset.btPillAction = "due";
             pill.appendChild(dueSpan);
           }
 
@@ -8132,46 +8562,13 @@ export default {
             return span;
           };
 
-          const cyclePriorityEnergy = async (type, currentValue) => {
-            const order = [null, "low", "medium", "high"];
-            const normalized = currentValue ? currentValue.toLowerCase() : null;
-            const idx = order.indexOf(normalized);
-            const next = order[(idx + 1) % order.length];
-            await setRichAttribute(uid, type, next, attrNames);
-            pillSkipDecorate.add(uid);
-            setTimeout(() => pillSkipDecorate.delete(uid), 800);
-            activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
-            return next;
-          };
-          const cycleGtdInline = async (currentValue) => {
-            const next = cycleGtdStatus(currentValue);
-            await setRichAttribute(uid, "gtd", next, attrNames);
-            pillSkipDecorate.add(uid);
-            setTimeout(() => pillSkipDecorate.delete(uid), 800);
-            activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
-            if (typeof window !== "undefined") {
-              window.__btInlineMetaCache?.delete?.(uid);
-            }
-            return next;
-          };
-
           if (metadataInfo?.project) {
             const span = appendMetaSpan(
               "📁",
               metadataInfo.project,
               `${metaLabels.projectLabel || metaLabels.project || "Project"}: ${metadataInfo.project}`
             );
-            span?.addEventListener("click", (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              handleMetadataClick(
-                uid,
-                "project",
-                { value: metadataInfo.project },
-                event,
-                activeDashboardController
-              );
-            });
+            if (span) span.dataset.btPillAction = "meta-project";
           }
           if (metadataInfo?.waitingFor) {
             const span = appendMetaSpan(
@@ -8179,17 +8576,7 @@ export default {
               metadataInfo.waitingFor,
               `${metaLabels.waitingLabel || metaLabels.waitingFor || "Waiting for"}: ${metadataInfo.waitingFor}`
             );
-            span?.addEventListener("click", (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              handleMetadataClick(
-                uid,
-                "waitingFor",
-                { value: metadataInfo.waitingFor },
-                event,
-                activeDashboardController
-              );
-            });
+            if (span) span.dataset.btPillAction = "meta-waitingFor";
           }
           if (metadataInfo?.context?.length) {
             const first = metadataInfo.context[0];
@@ -8203,17 +8590,7 @@ export default {
               display,
               `${metaLabels.contextLabel || metaLabels.context || "Context"}: ${metadataInfo.context.join(", ")}`
             );
-            span?.addEventListener("click", (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              handleMetadataClick(
-                uid,
-                "context",
-                { value: first, list: metadataInfo.context },
-                event,
-                activeDashboardController
-              );
-            });
+            if (span) span.dataset.btPillAction = "meta-context";
           }
           if (metadataInfo?.gtd) {
             const display = formatGtdStatusDisplay(metadataInfo.gtd, getLanguageSetting());
@@ -8225,20 +8602,7 @@ export default {
             );
             if (span) {
               span.dataset.metaValue = metadataInfo.gtd || "";
-              span.addEventListener("click", async (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                const current = span.dataset.metaValue || null;
-                const next = await cycleGtdInline(current);
-                if (next) {
-                  const nextDisplay = formatGtdStatusDisplay(next, getLanguageSetting());
-                  span.dataset.metaValue = next || "";
-                  span.textContent = `➡ ${nextDisplay}`;
-                  span.title = `${metaLabels.gtdLabel || metaLabels.gtd || "GTD"}: ${nextDisplay}`;
-                } else {
-                  span.remove();
-                }
-              });
+              span.dataset.btPillAction = "cycle-gtd";
             }
           }
           if (metadataInfo?.priority) {
@@ -8252,22 +8616,7 @@ export default {
             );
             if (span) {
               span.dataset.metaValue = metadataInfo.priority || "";
-              span.addEventListener("click", async (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                const current = span.dataset.metaValue || null;
-                const next = await cyclePriorityEnergy("priority", current);
-                if (next) {
-                  span.dataset.metaValue = next || "";
-                  span.textContent = `! ${formatPriorityEnergyDisplay(next, getLanguageSetting())}`;
-                  span.title = `${metaLabels.priorityLabel || metaLabels.priority || "Priority"}: ${formatPriorityEnergyDisplay(
-                    next,
-                    getLanguageSetting()
-                  )} (${t(["pillMenu", "cyclePriority"], getLanguageSetting()) || "Click to cycle"})`;
-                } else {
-                  span.remove();
-                }
-              });
+              span.dataset.btPillAction = "cycle-priority";
             }
           }
           if (metadataInfo?.energy) {
@@ -8281,22 +8630,7 @@ export default {
             );
             if (span) {
               span.dataset.metaValue = metadataInfo.energy || "";
-              span.addEventListener("click", async (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                const current = span.dataset.metaValue || null;
-                const next = await cyclePriorityEnergy("energy", current);
-                if (next) {
-                  span.dataset.metaValue = next || "";
-                  span.textContent = `🔋 ${formatPriorityEnergyDisplay(next, getLanguageSetting())}`;
-                  span.title = `${metaLabels.energyLabel || metaLabels.energy || "Energy"}: ${formatPriorityEnergyDisplay(
-                    next,
-                    getLanguageSetting()
-                  )} (${t(["pillMenu", "cycleEnergy"], getLanguageSetting()) || "Click to cycle"})`;
-                } else {
-                  span.remove();
-                }
-              });
+              span.dataset.btPillAction = "cycle-energy";
             }
           }
 
@@ -8304,11 +8638,7 @@ export default {
           menuBtn.className = "rt-pill-menu-btn";
           menuBtn.textContent = "⋯";
           menuBtn.title = "More task actions";
-          menuBtn.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            showPillMenu({ uid, set, isRecurring, metadata: metadataInfo });
-          });
+          menuBtn.dataset.btPillAction = "menu";
           pill.appendChild(menuBtn);
 
           pillWrap.appendChild(pill);
@@ -8613,15 +8943,27 @@ export default {
     async function openDatePage(date, options = {}) {
       if (!(date instanceof Date) || Number.isNaN(date.getTime())) return;
       const dnpTitle = toDnpTitle(date);
-      const dnpUid = await getOrCreatePageUid(dnpTitle);
-      if (!dnpUid) return;
       const { inSidebar = false } = options;
-      if (inSidebar) {
-        window.roamAlphaAPI.ui.rightSidebar.addWindow({
-          window: { type: "outline", "page-uid": dnpUid, "block-uid": dnpUid },
-        });
-      } else {
-        window.roamAlphaAPI.ui.mainWindow.openPage({ page: { uid: dnpUid } });
+      // When creating a page then immediately navigating, Roam can be briefly inconsistent.
+      // Poll for the page UID (by title) and retry navigation a few times.
+      for (let i = 0; i < 4; i++) {
+        const uid = await ensurePageUid(dnpTitle);
+        if (!uid) {
+          await delay(60 * (i + 1));
+          continue;
+        }
+        try {
+          if (inSidebar) {
+            window.roamAlphaAPI.ui.rightSidebar.addWindow({
+              window: { type: "outline", "page-uid": uid, "block-uid": uid },
+            });
+          } else {
+            window.roamAlphaAPI.ui.mainWindow.openPage({ page: { uid } });
+          }
+          return;
+        } catch (_) {
+          await delay(80 * (i + 1));
+        }
       }
     }
 
@@ -8662,6 +9004,25 @@ export default {
     }
 
     function showPillMenu({ uid, set, isRecurring = true, metadata = null }) {
+      // Ensure at most one pill menu toast is visible (defensive against multiple event handlers).
+      try {
+        const now = Date.now();
+        const k = `pillMenu:${uid}`;
+        if (typeof window !== "undefined") {
+          const last = window.__btLastPillMenuOpen || { at: 0, key: "" };
+          if (last.key === k && now - last.at < 350) return;
+          window.__btLastPillMenuOpen = { at: now, key: k };
+        }
+        document.querySelectorAll?.(".bt-pill-menu-toast")?.forEach((toastEl) => {
+          try {
+            iziToast.hide?.({}, toastEl);
+          } catch (_) {
+            // ignore
+          }
+        });
+      } catch (_) {
+        // ignore
+      }
       const menuId = `rt-pill-menu-${uid}-${Date.now()}`;
       const lang = getLanguageSetting();
       const pmStrings = t("pillMenu", lang) || {};
@@ -8761,7 +9122,7 @@ export default {
       iziToast.show({
         theme: "light",
         color: "black",
-        class: "betterTasks bt-toast-strong-icon",
+        class: "betterTasks bt-toast-strong-icon bt-pill-menu-toast",
         overlay: true,
         timeout: false,
         close: true,
@@ -9580,7 +9941,6 @@ export default {
             console.warn("[BetterTasks] dashboard subscriber failed", err);
           }
         });
-        scheduleTodayWidgetRender();
       }
 
       function subscribe(listener) {
@@ -9946,6 +10306,11 @@ export default {
           disableFullPage({ restore: false });
         }
         setTopbarActive(false);
+        if (dashboardWatchClearTimer) {
+          clearTimeout(dashboardWatchClearTimer);
+          dashboardWatchClearTimer = null;
+        }
+        clearDashboardWatches();
         if (root) {
           root.unmount();
           root = null;
@@ -9957,12 +10322,6 @@ export default {
         if (resizeListenerAttached && typeof window !== "undefined") {
           window.removeEventListener("resize", handleWindowResize);
           resizeListenerAttached = false;
-        }
-        if (!dashboardWatchClearTimer && typeof window !== "undefined") {
-          dashboardWatchClearTimer = setTimeout(() => {
-            clearDashboardWatches();
-            dashboardWatchClearTimer = null;
-          }, 180_000);
         }
       }
 
@@ -9988,6 +10347,8 @@ export default {
           toast("Unable to update task.");
         }
         await refresh({ reason: "toggle" });
+        // If the user is on the DNP, keep the Today widget in sync with dashboard completions.
+        requestTodayWidgetRenderOnDnp(120, true);
       }
 
       async function updateMetadata(uid, patch) {
@@ -10061,6 +10422,7 @@ export default {
           toast("Could not snooze task.");
         }
         await refresh({ reason: "snooze" });
+        requestTodayWidgetRenderOnDnp(120, true);
       }
 
       function removeTask(uid) {
@@ -10144,8 +10506,21 @@ export default {
           }
           state = { ...state, tasks: sortDashboardTasksList(tasks) };
           emit();
-          ensureDashboardWatch(uid);
+          if (controller.isOpen()) {
+            ensureDashboardWatch(uid);
+          } else {
+            removeDashboardWatch(uid);
+          }
           scheduleTodayBadgeRefresh(60, true);
+          // When the dashboard is open, many edits can happen in quick succession.
+          // Debounce Today widget refreshes to avoid tripping the circuit breaker.
+          let dashOpen = false;
+          try {
+            dashOpen = !!activeDashboardController?.isOpen?.();
+          } catch (_) {
+            dashOpen = false;
+          }
+          requestTodayWidgetRenderOnDnp(dashOpen ? 900 : 160, false);
         } catch (err) {
           console.warn("[BetterTasks] notifyBlockChange failed", err);
         }
@@ -10818,10 +11193,16 @@ export default {
 
     function getTodayAnchorText() {
       const configured = getTodaySetting(TODAY_WIDGET_TITLE_SETTING);
-      if (typeof configured === "string" && configured.trim()) return configured.trim();
+      if (typeof configured === "string" && configured.trim()) {
+        const t = configured.trim();
+        noteTodayAnchorText(t);
+        return t;
+      }
       const lang = getLanguageSetting();
       const translated = t(["today", "title"], lang);
-      return (typeof translated === "string" && translated.trim()) ? translated : TODAY_WIDGET_ANCHOR_TEXT_DEFAULT;
+      const out = (typeof translated === "string" && translated.trim()) ? translated : TODAY_WIDGET_ANCHOR_TEXT_DEFAULT;
+      noteTodayAnchorText(out);
+      return out;
     }
 
     function stripMarkdownDecorations(text = "") {
@@ -10840,10 +11221,16 @@ export default {
       return stripMarkdownDecorations(text).replace(/\s+/g, " ").trim().toLowerCase();
     }
 
+    function noteTodayAnchorText(text = "") {
+      const normalized = normalizeMatchText(text);
+      if (normalized) todayAnchorTextHistory.add(normalized);
+    }
+
     function matchesTodayAnchor(str = "") {
       const anchorText = normalizeMatchText(getTodayAnchorText());
       const trimmed = normalizeMatchText(str);
       if (trimmed === anchorText) return true;
+      if (todayAnchorTextHistory.has(trimmed)) return true;
       return TODAY_WIDGET_ANCHOR_TEXT_LEGACY.some((legacy) => trimmed === normalizeMatchText(legacy));
     }
 
@@ -11586,6 +11973,12 @@ export default {
     clearDashboardWatches();
     if (todayWidgetRenderTimer) clearTimeout(todayWidgetRenderTimer);
     todayWidgetRenderTimer = null;
+    if (todayWidgetRefreshTimer) clearTimeout(todayWidgetRefreshTimer);
+    todayWidgetRefreshTimer = null;
+    todayWidgetRefreshForcePending = false;
+    if (dashboardNotifyTimer) clearTimeout(dashboardNotifyTimer);
+    dashboardNotifyTimer = null;
+    dashboardNotifyQueue.clear();
     try {
       detachTodayNavigationListenerGlobal?.();
     } catch (_) {
@@ -11623,9 +12016,9 @@ export default {
     window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: "Create a Better Task" });
     // window.roamAlphaAPI.ui.blockContextMenu.removeCommand({label: "Convert Better Task to plain TODO",});
     disconnectThemeObserver();
-    if (pillScrollHandlerAttached && pillScrollHandler && typeof window !== "undefined") {
+    if (pillScrollHandlerAttached && pillScrollHandler && typeof document !== "undefined") {
       try {
-        window.removeEventListener("scroll", pillScrollHandler, { passive: true });
+        document.removeEventListener("scroll", pillScrollHandler, { passive: true, capture: true });
       } catch (_) {
         // ignore detach errors
       } finally {
