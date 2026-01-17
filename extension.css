@@ -3329,15 +3329,23 @@ body.bt-theme-dark .bt-dashboard {
 .rt-project-inline-row {
     display: flex;
     gap: 6px;
-    align-items: center;
+    align-items: flex-start;
 }
 
 .rt-project-inline-btn {
-    padding: 6px 10px;
+    margin-top: 5px;
+    height: 27px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 68px;
+    padding: 4px 4px;
     border-radius: 6px;
     border: 1px solid rgba(0, 0, 0, 0.2);
     background: rgba(0, 0, 0, 0.04);
     cursor: pointer;
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .rt-project-inline-btn:hover {
