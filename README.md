@@ -109,7 +109,7 @@ Priority / Energy cycles: **low → medium → high → none**
 ## 💊 Inline pills
 
 <p align="center">
-  <img src="images/pill-closeup.png" width="850" alt="Inline pill showing repeat and dates"/>
+  <img src="images/pills-closeup.png" width="850" alt="Inline pill showing repeat and dates"/>
 </p>
 
 (Existing image:  
