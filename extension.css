@@ -457,7 +457,8 @@ body.bt-theme-dark .bt-task-row__context {
     padding: 0 0.4em;
     aspect-ratio: 1 / 1;
     border-radius: 50%;
-    font-size: 16px;
+    line-height: 1;
+    font-size: 0.85em;
     line-height: 1;
 }
 
