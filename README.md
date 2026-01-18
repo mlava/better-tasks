@@ -146,7 +146,7 @@ All actions support **Undo**.
 Open via Command Palette → **Toggle Better Tasks Dashboard**  or the top-bar icon <img src="images/image-2.png" width="22" alt="Dashboard toggle icon">
 
 <p align="center">
-  <img src="images/dashboard-floating.png" width="900" alt="Floating dashboard"/>
+  <img src="images/dashboard-floating.png" width="800" alt="Floating dashboard"/>
 </p>
 
 Features:
@@ -161,7 +161,7 @@ Features:
 ### Full-page mode
 
 <p align="center">
-  <img src="images/dashboard-fullpage.png" width="600" alt="Full-page dashboard"/>
+  <img src="images/dashboard-fullpage.png" width="800" alt="Full-page dashboard"/>
 </p>
 
 ---
