@@ -143,9 +143,7 @@ All actions support **Undo**.
 
 ## 📊 Better Tasks dashboard
 
-Open via Command Palette → **Toggle Better Tasks Dashboard**  
-or the top-bar icon  
-<img src="images/image-2.png" width="22" alt="Dashboard toggle icon">
+Open via Command Palette → **Toggle Better Tasks Dashboard**  or the top-bar icon <img src="images/image-2.png" width="22" alt="Dashboard toggle icon">
 
 <p align="center">
   <img src="images/dashboard-floating.png" width="900" alt="Floating dashboard"/>
