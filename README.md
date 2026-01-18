@@ -171,7 +171,7 @@ Features:
 ### Today widget (on today’s DNP)
 
 <p align="center">
-  <img src="images/today-widget.png" width="600" alt="Today widget on DNP"/>
+  <img src="images/today-widget.jpg" width="600" alt="Today widget on DNP"/>
 </p>
 
 ### Today badge (left sidebar)
