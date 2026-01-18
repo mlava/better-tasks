@@ -1,9 +1,13 @@
 # 🌀 Better Tasks for Roam Research
+
 **The missing task layer for Roam.**  
+
 Turn native TODOs into **scheduled and recurring tasks** with **inline pills**, a **powerful dashboard**, and optional **Today widget/badge** — all stored as plain Roam blocks.
+<BR><BR>
 
 > ✅ Roam-native storage (child blocks) • ✅ Recurring + one-off scheduled tasks • ✅ Actively maintained
 
+<BR>
 **Support / bugs:** Please message me in the Roam Slack (include repro steps + any console output if relevant):  
 https://app.slack.com/client/TNEAEL9QW/
 
@@ -14,12 +18,6 @@ https://app.slack.com/client/TNEAEL9QW/
 <p align="center">
   <img src="images/hero-dashboard.png" width="800" alt="Better Tasks dashboard showing Today/Overdue triage"/>
 </p>
-
-**90-second tour (recommended to re-record as the “current” overview):**  
-
-
-**Repeat rules demo:**  
-
 
 ---
 
