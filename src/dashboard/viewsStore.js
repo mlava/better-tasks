@@ -95,6 +95,14 @@ function generateId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const buf = new Uint8Array(16);
+    crypto.getRandomValues(buf);
+    const hex = Array.from(buf)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    return `btv_${hex}`;
+  }
   return `btv_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
 }
 

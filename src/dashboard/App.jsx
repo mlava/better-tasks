@@ -119,6 +119,18 @@ function normalizeDashViewStateForCompare(state) {
 }
 
 const FILTER_STORAGE_KEY = "betterTasks.dashboard.filters";
+const FILTER_STORAGE_VERSION = 1;
+
+function migrateStoredFilters(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const version = typeof payload.v === "number" ? payload.v : null;
+  if (version == null) return payload;
+  if (version === FILTER_STORAGE_VERSION) return payload.filters;
+  switch (version) {
+    default:
+      return null;
+  }
+}
 
 function loadSavedFilters(defaults) {
   if (typeof window === "undefined") return { ...defaults };
@@ -127,7 +139,9 @@ function loadSavedFilters(defaults) {
     if (!raw) return { ...defaults };
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return { ...defaults };
-    return { ...defaults, ...parsed };
+    const next = migrateStoredFilters(parsed);
+    if (!next || typeof next !== "object") return { ...defaults };
+    return { ...defaults, ...next };
   } catch (err) {
     console.warn("[BetterTasks] failed to load dashboard filters", err);
     return { ...defaults };
@@ -137,7 +151,8 @@ function loadSavedFilters(defaults) {
 function saveFilters(filters) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters || {}));
+    const payload = { v: FILTER_STORAGE_VERSION, filters: filters || {} };
+    window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(payload));
   } catch (err) {
     console.warn("[BetterTasks] failed to save dashboard filters", err);
   }
@@ -165,6 +180,13 @@ const INITIAL_SNAPSHOT = {
   error: null,
   lastUpdated: null,
 };
+
+function applyToastA11y(toastEl) {
+  if (!toastEl) return;
+  toastEl.setAttribute("role", "alert");
+  toastEl.setAttribute("aria-live", "polite");
+  toastEl.setAttribute("aria-atomic", "true");
+}
 
 function filtersReducer(state, action) {
   switch (action.type) {
@@ -769,6 +791,7 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
               key={action.key}
               type="button"
               className={`bt-task-menu__item${action.danger ? " bt-task-menu__item--danger" : ""}`}
+              role="menuitem"
               onClick={async () => {
                 if (typeof action.handler === "function") {
                   await action.handler();
@@ -791,7 +814,7 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
         type="button"
         className="bt-task-menu__trigger"
         onClick={() => setOpenState((value) => !value)}
-        aria-haspopup="true"
+        aria-haspopup="menu"
         aria-expanded={open}
         title={strings?.taskOptions || "Task options"}
         ref={buttonRef}
@@ -924,6 +947,7 @@ function SimpleActionsMenu({ actions, title, disabled = false }) {
                 className={`bt-task-menu__item${
                   action.danger ? " bt-task-menu__item--danger" : ""
                 }`}
+                role="menuitem"
                 onClick={async () => {
                   if (typeof action.handler === "function") {
                     await action.handler();
@@ -948,7 +972,7 @@ function SimpleActionsMenu({ actions, title, disabled = false }) {
           if (disabled) return;
           setOpenState((value) => !value);
         }}
-        aria-haspopup="true"
+        aria-haspopup="menu"
         aria-expanded={open}
         title={title || undefined}
         ref={buttonRef}
@@ -966,6 +990,10 @@ function TaskRow({ task, controller, strings }) {
     ? strings?.markOpen || "Mark as open"
     : strings?.markDone || "Mark as done";
   const completedLabel = strings?.completedLabel || "Completed";
+  const metaDescriptionId = useMemo(
+    () => `bt-task-meta-${task.uid}`,
+    [task.uid]
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   const handleMenuOpenChange = useCallback((value) => {
     setMenuOpen(value);
@@ -1016,11 +1044,18 @@ function TaskRow({ task, controller, strings }) {
         }
         title={checkboxLabel}
         aria-label={checkboxLabel}
+        role="checkbox"
+        aria-checked={task.isCompleted}
       >
         {task.isCompleted ? "☑" : "☐"}
       </button>
       <div className="bt-task-row__body">
-        <div className="bt-task-row__title">{task.title || strings?.untitled || "(Untitled task)"}</div>
+        <div className="bt-task-row__title" aria-describedby={metaDescriptionId}>
+          {task.title || strings?.untitled || "(Untitled task)"}
+        </div>
+        <span id={metaDescriptionId} className="bt-sr-only">
+          {contextBits.map((bit) => bit.text).filter(Boolean).join(", ")}
+        </span>
           <div className="bt-task-row__meta">
             <div className="bt-task-row__meta-pills">
               {(task.metaPills || []).map((pill) => (
@@ -1806,6 +1841,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           message: String(message),
           timeout: 2400,
           close: true,
+          onOpening: (_instance, toastEl) => {
+            applyToastA11y(toastEl);
+          },
         });
       } catch (_) {
         // best effort

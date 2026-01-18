@@ -49,7 +49,9 @@ function notifySubscribers() {
   subscribers.forEach((cb) => {
     try {
       cb(snapshot);
-    } catch (_) { }
+    } catch (err) {
+      console.warn("[BetterTasks] context-store subscriber failed", err);
+    }
   });
 }
 
@@ -80,7 +82,7 @@ function removeContextOption(name) {
   notifySubscribers();
 }
 
-async function queryContextFromGraph() {
+async function queryContextFromGraph({ includeRegex = true } = {}) {
   const attrName = getContextAttrName();
   if (!attrName || typeof window === "undefined" || !window.roamAlphaAPI?.q) return [];
   const excludeCfg = getPicklistExcludeConfig();
@@ -112,12 +114,14 @@ async function queryContextFromGraph() {
     const refRows = await window.roamAlphaAPI.q(refQuery, labels);
     let rows = [...(refRows || [])];
 
-    const pattern = `(?i)^\\s*(?:${labels.join("|")})\\s*::`;
-    try {
-      const regexRows = await window.roamAlphaAPI.q(inlineRegexQuery, pattern);
-      if (Array.isArray(regexRows)) rows = [...rows, ...(regexRows || [])];
-    } catch (err) {
-      console.warn("[BetterTasks] context-store regex query failed", err);
+    if (includeRegex) {
+      const pattern = `(?i)^\\s*(?:${labels.join("|")})\\s*::`;
+      try {
+        const regexRows = await window.roamAlphaAPI.q(inlineRegexQuery, pattern);
+        if (Array.isArray(regexRows)) rows = [...rows, ...(regexRows || [])];
+      } catch (err) {
+        console.warn("[BetterTasks] context-store regex query failed", err);
+      }
     }
 
     const getField = (obj, candidates) => {
@@ -178,7 +182,11 @@ async function refreshContextOptions(force = false) {
   if (!force && now - lastRefreshed < CACHE_TTL_MS && values.length) {
     return Promise.resolve();
   }
-  refreshPromise = queryContextFromGraph()
+  queryContextFromGraph({ includeRegex: false }).then((list) => {
+    if (!list.length) return;
+    setValues(list);
+  });
+  refreshPromise = queryContextFromGraph({ includeRegex: true })
     .then((list) => {
       lastRefreshed = Date.now();
       setValues(list);

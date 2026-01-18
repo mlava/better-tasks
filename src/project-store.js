@@ -83,7 +83,7 @@ function addProjectOption(name) {
   notifySubscribers();
 }
 
-async function queryProjectsFromGraph() {
+async function queryProjectsFromGraph({ includeRegex = true } = {}) {
   const attrName = getProjectAttrName();
   if (!attrName || typeof window === "undefined" || !window.roamAlphaAPI?.q) return [];
   const excludeCfg = getPicklistExcludeConfig();
@@ -116,15 +116,17 @@ async function queryProjectsFromGraph() {
     const refRows = await window.roamAlphaAPI.q(refQuery, labels);
     let rows = [...(refRows || [])];
 
-    // Regex scan (case-insensitive) for attr label at start of line (with optional leading spaces)
-    const pattern = `(?i)^\\s*(?:${labels.join("|")})\\s*::`;
-    try {
-      const regexRows = await window.roamAlphaAPI.q(inlineRegexQuery, pattern);
-      if (Array.isArray(regexRows)) {
-        rows = [...rows, ...(regexRows || [])];
+    if (includeRegex) {
+      // Regex scan (case-insensitive) for attr label at start of line (with optional leading spaces)
+      const pattern = `(?i)^\\s*(?:${labels.join("|")})\\s*::`;
+      try {
+        const regexRows = await window.roamAlphaAPI.q(inlineRegexQuery, pattern);
+        if (Array.isArray(regexRows)) {
+          rows = [...rows, ...(regexRows || [])];
+        }
+      } catch (err) {
+        console.warn("[BetterTasks] project-store regex query failed", err);
       }
-    } catch (err) {
-      console.warn("[BetterTasks] project-store regex query failed", err);
     }
     const values = [];
     const getField = (obj, candidates) => {
@@ -188,7 +190,11 @@ async function refreshProjectOptions(force = false) {
   if (!force && now - lastRefreshed < CACHE_TTL_MS && projects.length) {
     return Promise.resolve();
   }
-  refreshPromise = queryProjectsFromGraph()
+  queryProjectsFromGraph({ includeRegex: false }).then((values) => {
+    if (!values.length) return;
+    setProjects(values);
+  });
+  refreshPromise = queryProjectsFromGraph({ includeRegex: true })
     .then((values) => {
       lastRefreshed = Date.now();
       setProjects(values);

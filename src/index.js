@@ -156,6 +156,8 @@ let todayNavListener = null;
 let detachTodayNavigationListenerGlobal = null;
 const MAX_BLOCKS_FOR_PILLS = 1500;
 const pillSkipDecorate = new Set();
+const INLINE_META_CACHE_TTL_MS = 10 * 60 * 1000;
+const INLINE_META_CACHE_MAX = 5000;
 const TODAY_WIDGET_ENABLED = true; // temporary kill switch 
 const DEBUG_BT_PERF = false;
 const DASHBOARD_NOTIFY_BATCH_SIZE = 25;
@@ -205,7 +207,7 @@ class DashboardErrorBoundary extends (ReactGlobal?.Component || class { }) {
               <p>Dashboard failed to render. Check console for details.</p>
             </div>
             <div className="bt-dashboard__header-actions">
-              <button type="button" className="bp3-button bp3-small" onClick={this.props?.onRequestClose}>
+              <button type="button" className="bp3-button bp3-small" aria-label="Close" onClick={this.props?.onRequestClose}>
                 ✕
               </button>
             </div>
@@ -1628,6 +1630,9 @@ export default {
 
     async function parseTaskWithOpenAI(input, aiSettings) {
       if (!isAiEnabled(aiSettings)) return { ok: false, reason: "disabled" };
+      const AI_RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
+      const AI_RETRY_MAX = 2;
+      const AI_RETRY_BASE_MS = 400;
       const payload = {
         model: AI_MODEL,
         messages: [
@@ -1650,18 +1655,45 @@ export default {
       //   max_tokens: payload.max_tokens,
       // });
       let response = null;
+      let lastError = null;
       try {
-        response = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${aiSettings.apiKey}`,
-          },
-          body: JSON.stringify(payload),
-        });
+        for (let attempt = 0; attempt <= AI_RETRY_MAX; attempt += 1) {
+          try {
+            response = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${aiSettings.apiKey}`,
+              },
+              body: JSON.stringify(payload),
+            });
+          } catch (err) {
+            lastError = err;
+            if (attempt < AI_RETRY_MAX) {
+              await delay(AI_RETRY_BASE_MS * Math.pow(2, attempt));
+              continue;
+            }
+            throw err;
+          }
+          if (!response || response.ok) break;
+          if (!AI_RETRY_STATUSES.has(response.status) || attempt >= AI_RETRY_MAX) break;
+          let retryDelayMs = AI_RETRY_BASE_MS * Math.pow(2, attempt);
+          if (response.status === 429) {
+            const retryAfter = response.headers?.get?.("retry-after");
+            const retryAfterSec = retryAfter ? parseFloat(retryAfter) : NaN;
+            if (Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+              retryDelayMs = Math.max(retryDelayMs, retryAfterSec * 1000);
+            }
+          }
+          const jitterFactor = 0.8 + Math.random() * 0.4;
+          await delay(Math.round(retryDelayMs * jitterFactor));
+        }
       } catch (err) {
         console.warn("[BetterTasks] OpenAI request failed", err);
         return { ok: false, error: err };
+      }
+      if (!response) {
+        return { ok: false, error: lastError || new Error("OpenAI request failed") };
       }
       let responseBodyText = null;
       try {
@@ -1788,6 +1820,7 @@ export default {
     const invalidRepeatToasted = new Set();
     const invalidDueToasted = new Set();
     const deletingChildAttrs = new Set();
+    const childAttrLocks = new Map();
     let pageLoadQuietUntil = 0;
     let lastNavigationAt = Date.now();
     let lastUserCheckboxInteraction = 0;
@@ -1905,6 +1938,9 @@ export default {
             true,
           ],
         ],
+        onOpening: (_instance, toastEl) => {
+          applyToastA11y(toastEl);
+        },
         onClosed: () => {
           dueUndoRegistry.delete(payload.blockUid);
         },
@@ -2488,6 +2524,9 @@ export default {
         }
       } finally {
         completionQueueFlushInFlight = false;
+        if (completionQueue.size > 0 && !completionQueueTimer) {
+          completionQueueTimer = setTimeout(flushCompletionQueue, 0);
+        }
         logCompletionDebug("flush-queue-finish");
       }
     }
@@ -2929,7 +2968,33 @@ export default {
       }
     }
 
+    const BLOCK_CACHE_TTL_MS = 800;
+    const BLOCK_CACHE_MAX = 5000;
+    const blockCache = new Map();
+
+    function invalidateBlockCache(uid) {
+      if (!uid) return;
+      blockCache.delete(uid);
+    }
+
+    function pruneBlockCache(now) {
+      if (blockCache.size <= BLOCK_CACHE_MAX) return;
+      const entries = Array.from(blockCache.entries());
+      entries.sort((a, b) => (a[1]?.at || 0) - (b[1]?.at || 0));
+      const overflow = entries.length - BLOCK_CACHE_MAX;
+      for (let i = 0; i < overflow; i++) {
+        blockCache.delete(entries[i][0]);
+      }
+    }
+
     async function getBlock(uid) {
+      if (!uid) return null;
+      const now = Date.now();
+      const cached = blockCache.get(uid);
+      if (cached && now - cached.at < BLOCK_CACHE_TTL_MS) {
+        return cached.block || null;
+      }
+      if (cached) blockCache.delete(uid);
       const res = await window.roamAlphaAPI.q(`
         [:find
           (pull ?b [:block/uid :block/string :block/props :block/order :block/open
@@ -2937,7 +3002,12 @@ export default {
                     {:block/page [:block/uid :node/title]}
                     {:block/parents [:block/uid]}])
          :where [?b :block/uid "${uid}"]]`);
-      return res?.[0]?.[0] || null;
+      const block = res?.[0]?.[0] || null;
+      if (block) {
+        blockCache.set(uid, { block, at: now });
+        pruneBlockCache(now);
+      }
+      return block;
     }
 
     function clonePlain(value) {
@@ -2995,6 +3065,7 @@ export default {
           }
         }
       } catch (_) { }
+      invalidateBlockCache(uid);
       return result;
     }
 
@@ -3027,7 +3098,9 @@ export default {
       for (const key of Object.keys(next)) {
         if (next[key] === undefined) delete next[key];
       }
-      return window.roamAlphaAPI.updateBlock({ block: { uid, props: next } });
+      const result = await window.roamAlphaAPI.updateBlock({ block: { uid, props: next } });
+      invalidateBlockCache(uid);
+      return result;
     }
 
     async function setBlockProps(uid, propsObject) {
@@ -3036,7 +3109,9 @@ export default {
       if (nextProps.due !== undefined) delete nextProps.due;
       if (nextProps.start !== undefined) delete nextProps.start;
       if (nextProps.defer !== undefined) delete nextProps.defer;
-      return window.roamAlphaAPI.updateBlock({ block: { uid, props: nextProps } });
+      const result = await window.roamAlphaAPI.updateBlock({ block: { uid, props: nextProps } });
+      invalidateBlockCache(uid);
+      return result;
     }
 
     function delay(ms) {
@@ -3044,14 +3119,19 @@ export default {
     }
 
     async function deleteBlock(uid) {
-      return window.roamAlphaAPI.deleteBlock({ block: { "uid": uid.toString() } });
+      const result = await window.roamAlphaAPI.deleteBlock({ block: { "uid": uid.toString() } });
+      invalidateBlockCache(uid);
+      return result;
     }
 
     async function createBlock(parentUid, order, string, uid) {
-      return window.roamAlphaAPI.createBlock({
+      const result = await window.roamAlphaAPI.createBlock({
         location: { "parent-uid": parentUid, order },
         block: uid ? { uid, string } : { string },
       });
+      invalidateBlockCache(parentUid);
+      if (uid) invalidateBlockCache(uid);
+      return result;
     }
 
     function escapeDatalogString(value) {
@@ -3442,6 +3522,11 @@ export default {
       if (!text) return {};
       const out = {};
       const attrNames = resolveAttributeNames();
+      const repeatAliases = new Set(attrNames.repeatAliases || []);
+      const dueAliases = new Set(attrNames.dueAliases || []);
+      const startAliases = new Set(attrNames.startAliases || []);
+      const deferAliases = new Set(attrNames.deferAliases || []);
+      const completedAliases = new Set(attrNames.completedAliases || []);
       const lines = text.split("\n").slice(0, 12);
       for (const line of lines) {
         const inlineRegex =
@@ -3451,15 +3536,15 @@ export default {
           const key = match[1].trim().toLowerCase();
           const value = match[2].trim();
           if (!(key in out)) out[key] = value;
-          if (key === attrNames.repeatKey && out.repeat == null) {
+          if (repeatAliases.has(key) && out.repeat == null) {
             out.repeat = value;
-          } else if (key === attrNames.dueKey && out.due == null) {
+          } else if (dueAliases.has(key) && out.due == null) {
             out.due = value;
-          } else if (key === attrNames.startKey && out.start == null) {
+          } else if (startAliases.has(key) && out.start == null) {
             out.start = value;
-          } else if (key === attrNames.deferKey && out.defer == null) {
+          } else if (deferAliases.has(key) && out.defer == null) {
             out.defer = value;
-          } else if (key === attrNames.completedKey && out.completed == null) {
+          } else if (completedAliases.has(key) && out.completed == null) {
             out.completed = value;
           }
         }
@@ -3471,6 +3556,17 @@ export default {
       if (!Array.isArray(children)) return {};
       const out = {};
       const attrNames = resolveAttributeNames();
+      const repeatAliases = new Set(attrNames.repeatAliases || []);
+      const dueAliases = new Set(attrNames.dueAliases || []);
+      const startAliases = new Set(attrNames.startAliases || []);
+      const deferAliases = new Set(attrNames.deferAliases || []);
+      const completedAliases = new Set(attrNames.completedAliases || []);
+      const projectAliases = new Set(attrNames.projectAliases || []);
+      const gtdAliases = new Set(attrNames.gtdAliases || []);
+      const waitingAliases = new Set(attrNames.waitingForAliases || []);
+      const contextAliases = new Set(attrNames.contextAliases || []);
+      const priorityAliases = new Set(attrNames.priorityAliases || []);
+      const energyAliases = new Set(attrNames.energyAliases || []);
       for (const child of children) {
         const text = typeof child?.string === "string" ? child.string : null;
         if (!text) continue;
@@ -3483,27 +3579,27 @@ export default {
               uid: child?.uid || null,
             };
           }
-          if (key === attrNames.repeatKey && out.repeat == null) {
+          if (repeatAliases.has(key) && out.repeat == null) {
             out.repeat = out[key];
-          } else if (key === attrNames.dueKey && out.due == null) {
+          } else if (dueAliases.has(key) && out.due == null) {
             out.due = out[key];
-          } else if (key === attrNames.startKey && out.start == null) {
+          } else if (startAliases.has(key) && out.start == null) {
             out.start = out[key];
-          } else if (key === attrNames.deferKey && out.defer == null) {
+          } else if (deferAliases.has(key) && out.defer == null) {
             out.defer = out[key];
-          } else if (key === attrNames.completedKey && out.completed == null) {
+          } else if (completedAliases.has(key) && out.completed == null) {
             out.completed = out[key];
-          } else if (key === attrNames.projectKey && out.project == null) {
+          } else if (projectAliases.has(key) && out.project == null) {
             out.project = out[key];
-          } else if (key === attrNames.gtdKey && out.gtd == null) {
+          } else if (gtdAliases.has(key) && out.gtd == null) {
             out.gtd = out[key];
-          } else if (key === attrNames.waitingForKey && out.waitingFor == null) {
+          } else if (waitingAliases.has(key) && out.waitingFor == null) {
             out.waitingFor = out[key];
-          } else if (key === attrNames.contextKey && out.context == null) {
+          } else if (contextAliases.has(key) && out.context == null) {
             out.context = out[key];
-          } else if (key === attrNames.priorityKey && out.priority == null) {
+          } else if (priorityAliases.has(key) && out.priority == null) {
             out.priority = out[key];
-          } else if (key === attrNames.energyKey && out.energy == null) {
+          } else if (energyAliases.has(key) && out.energy == null) {
             out.energy = out[key];
           }
         }
@@ -3681,6 +3777,74 @@ export default {
       return value.trim().replace(/:+$/, "").toLowerCase();
     }
 
+    const ATTR_NAME_HISTORY_KEY = "bt-attr-name-history";
+    let attrNameHistory = null;
+
+    function loadAttrNameHistory() {
+      if (attrNameHistory) return;
+      attrNameHistory = {};
+      if (typeof window === "undefined") return;
+      try {
+        const raw = window.localStorage?.getItem(ATTR_NAME_HISTORY_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          attrNameHistory = parsed;
+        }
+      } catch (_) {
+        attrNameHistory = {};
+      }
+    }
+
+    function saveAttrNameHistory() {
+      if (typeof window === "undefined") return;
+      try {
+        window.localStorage?.setItem(ATTR_NAME_HISTORY_KEY, JSON.stringify(attrNameHistory || {}));
+      } catch (_) {
+        // ignore storage errors
+      }
+    }
+
+    function getAttrNameHistory(settingId) {
+      loadAttrNameHistory();
+      const list = attrNameHistory?.[settingId];
+      return Array.isArray(list) ? list : [];
+    }
+
+    function rememberAttrName(settingId, name) {
+      const normalized = normalizeAttrLabel(name);
+      if (!normalized) return;
+      loadAttrNameHistory();
+      const list = Array.isArray(attrNameHistory?.[settingId]) ? attrNameHistory[settingId] : [];
+      if (!list.includes(normalized)) {
+        attrNameHistory[settingId] = [...list, normalized];
+        saveAttrNameHistory();
+      }
+    }
+
+    function updateAttrNameHistory(prev, next) {
+      const map = [
+        { type: "repeat", settingId: "rt-repeat-attr" },
+        { type: "due", settingId: "rt-due-attr" },
+        { type: "start", settingId: "rt-start-attr" },
+        { type: "defer", settingId: "rt-defer-attr" },
+        { type: "completed", settingId: "rt-completed-attr" },
+        { type: "project", settingId: "bt-attr-project" },
+        { type: "gtd", settingId: "bt-attr-gtd" },
+        { type: "waitingFor", settingId: "bt-attr-waitingFor" },
+        { type: "context", settingId: "bt-attr-context" },
+        { type: "priority", settingId: "bt-attr-priority" },
+        { type: "energy", settingId: "bt-attr-energy" },
+      ];
+      map.forEach(({ type, settingId }) => {
+        const prevLabel = prev?.[`${type}Attr`];
+        const nextLabel = next?.[`${type}Attr`];
+        if (prevLabel && prevLabel !== nextLabel) {
+          rememberAttrName(settingId, prevLabel);
+        }
+      });
+    }
+
     function isChildrenVisible(el) {
       if (!el) return false;
       if (el.childElementCount === 0) return false;
@@ -3694,15 +3858,16 @@ export default {
       const attr = sanitizeAttrName(extensionAPI.settings.get(settingId) || defaultName, defaultName);
       const key = attr.toLowerCase();
       const defaultKey = defaultName.toLowerCase();
-      const isDefault = key === defaultKey;
+      const history = getAttrNameHistory(settingId);
+      const aliasKeys = Array.from(new Set([key, defaultKey, ...history])).filter(Boolean);
       return {
         attr,
         key,
-        aliases: [key],
-        removalKeys: isDefault ? [defaultName] : [attr],
+        aliases: aliasKeys,
+        removalKeys: Array.from(new Set([attr, defaultName, ...history])).filter(Boolean),
         defaultName,
         canonicalKey: defaultKey,
-        isDefault,
+        isDefault: key === defaultKey,
       };
     }
 
@@ -4241,45 +4406,90 @@ export default {
     }
 
     // ========================= Completion + next spawn =========================
-    async function ensureChildAttr(uid, key, value, order = 0) {
-      const parent = await getBlock(uid);
-      if (!parent) {
-        return { created: false, uid: null, previousValue: null };
+    async function withChildAttrLock(uid, key, fn) {
+      if (!uid || !key) return fn();
+      const token = `${uid}::${key}`.toLowerCase();
+      const previous = childAttrLocks.get(token) || Promise.resolve();
+      let release = null;
+      const next = new Promise((resolve) => {
+        release = resolve;
+      });
+      childAttrLocks.set(token, previous.then(() => next));
+      try {
+        await previous;
+        return await fn();
+      } finally {
+        release?.();
+        if (childAttrLocks.get(token) === next) {
+          childAttrLocks.delete(token);
+        }
       }
-      const children = Array.isArray(parent.children) ? parent.children : [];
-      const keyRegex = new RegExp(`^\\s*${key}::\\s*`, "i");
-      const match = children.find((child) => keyRegex.test((child?.string || "").trim()));
-      const matchUid = typeof match?.uid === "string" ? match.uid.trim() : "";
-      if (!matchUid) {
-        const newUid = window.roamAlphaAPI.util.generateUID();
-        await createBlock(uid, order, `${key}:: ${value}`, newUid);
-        await moveChildToOrder(uid, newUid, order);
-        return { created: true, uid: newUid, previousValue: null };
-      }
-      const existingChild = await getBlock(matchUid);
-      if (!existingChild) {
-        const newUid = window.roamAlphaAPI.util.generateUID();
-        await createBlock(uid, order, `${key}:: ${value}`, newUid);
-        await moveChildToOrder(uid, newUid, order);
-        return { created: true, uid: newUid, previousValue: null };
-      }
-      const curVal =
-        existingChild.string?.replace(/^[^:]+::\s*/i, "")?.trim() ||
-        match.string?.replace(/^[^:]+::\s*/i, "")?.trim() ||
-        "";
-      if (curVal !== value) {
+    }
+
+    async function dedupeChildAttr(uid, key, keepUid) {
+      const block = await getBlock(uid);
+      if (!block) return;
+      const children = Array.isArray(block?.children) ? block.children : [];
+      const keyRegex = new RegExp(`^\\s*${escapeRegExp(String(key || "").trim())}::\\s*`, "i");
+      const matches = children
+        .filter((child) => keyRegex.test((child?.string || "").trim()))
+        .map((child) => (typeof child?.uid === "string" ? child.uid.trim() : ""))
+        .filter(Boolean);
+      for (const matchUid of matches) {
+        if (keepUid && matchUid === keepUid) continue;
         try {
-          await window.roamAlphaAPI.updateBlock({ block: { uid: matchUid, string: `${key}:: ${value}` } });
+          await deleteBlock(matchUid);
         } catch (err) {
-          console.warn("[RecurringTasks] ensureChildAttr update failed, recreating", err);
+          console.warn("[RecurringTasks] dedupeChildAttr failed", err);
+        }
+      }
+    }
+
+    async function ensureChildAttr(uid, key, value, order = 0) {
+      return withChildAttrLock(uid, key, async () => {
+        const parent = await getBlock(uid);
+        if (!parent) {
+          return { created: false, uid: null, previousValue: null };
+        }
+        const children = Array.isArray(parent.children) ? parent.children : [];
+        const keyRegex = new RegExp(`^\\s*${escapeRegExp(String(key || "").trim())}::\\s*`, "i");
+        const match = children.find((child) => keyRegex.test((child?.string || "").trim()));
+        const matchUid = typeof match?.uid === "string" ? match.uid.trim() : "";
+        if (!matchUid) {
           const newUid = window.roamAlphaAPI.util.generateUID();
           await createBlock(uid, order, `${key}:: ${value}`, newUid);
           await moveChildToOrder(uid, newUid, order);
-          return { created: true, uid: newUid, previousValue: curVal };
+          await dedupeChildAttr(uid, key, newUid);
+          return { created: true, uid: newUid, previousValue: null };
         }
-      }
-      await moveChildToOrder(uid, matchUid, order);
-      return { created: false, uid: matchUid, previousValue: curVal };
+        const existingChild = await getBlock(matchUid);
+        if (!existingChild) {
+          const newUid = window.roamAlphaAPI.util.generateUID();
+          await createBlock(uid, order, `${key}:: ${value}`, newUid);
+          await moveChildToOrder(uid, newUid, order);
+          await dedupeChildAttr(uid, key, newUid);
+          return { created: true, uid: newUid, previousValue: null };
+        }
+        const curVal =
+          existingChild.string?.replace(/^[^:]+::\s*/i, "")?.trim() ||
+          match.string?.replace(/^[^:]+::\s*/i, "")?.trim() ||
+          "";
+        if (curVal !== value) {
+          try {
+            await window.roamAlphaAPI.updateBlock({ block: { uid: matchUid, string: `${key}:: ${value}` } });
+          } catch (err) {
+            console.warn("[RecurringTasks] ensureChildAttr update failed, recreating", err);
+            const newUid = window.roamAlphaAPI.util.generateUID();
+            await createBlock(uid, order, `${key}:: ${value}`, newUid);
+            await moveChildToOrder(uid, newUid, order);
+            await dedupeChildAttr(uid, key, newUid);
+            return { created: true, uid: newUid, previousValue: curVal };
+          }
+        }
+        await moveChildToOrder(uid, matchUid, order);
+        await dedupeChildAttr(uid, key, matchUid);
+        return { created: false, uid: matchUid, previousValue: curVal };
+      });
     }
 
     async function moveChildToOrder(parentUid, childUid, order) {
@@ -4290,37 +4500,40 @@ export default {
           location: { "parent-uid": parentUid, order: normalizedOrder },
           block: { uid: childUid },
         });
+        invalidateBlockCache(parentUid);
+        invalidateBlockCache(childUid);
       } catch (err) {
         console.warn("[RecurringTasks] moveChildToOrder failed", err);
       }
     }
 
     async function removeChildAttr(uid, key) {
-      const token = `${uid}::${key}`;
-      if (deletingChildAttrs.has(token)) return;
-      deletingChildAttrs.add(token);
-      try {
-        const block = await getBlock(uid);
-        if (!block) return;
-        const children = Array.isArray(block?.children) ? block.children : [];
-        const matches = children.filter((entry) =>
-          new RegExp(`^\\s*${key}::\\s*`, "i").test((entry?.string || "").trim())
-        );
-        if (!matches.length) return;
-        for (const entry of matches) {
-          const targetUid = typeof entry?.uid === "string" ? entry.uid.trim() : "";
-          if (!targetUid) continue;
-          try {
-            const exists = await getBlock(targetUid);
-            if (!exists) continue;
-            await deleteBlock(targetUid);
-          } catch (err) {
-            console.warn("[RecurringTasks] removeChildAttr failed", err);
+      return withChildAttrLock(uid, key, async () => {
+        const token = `${uid}::${key}`.toLowerCase();
+        if (deletingChildAttrs.has(token)) return;
+        deletingChildAttrs.add(token);
+        try {
+          const block = await getBlock(uid);
+          if (!block) return;
+          const children = Array.isArray(block?.children) ? block.children : [];
+          const keyRegex = new RegExp(`^\\s*${escapeRegExp(String(key || "").trim())}::\\s*`, "i");
+          const matches = children.filter((entry) => keyRegex.test((entry?.string || "").trim()));
+          if (!matches.length) return;
+          for (const entry of matches) {
+            const targetUid = typeof entry?.uid === "string" ? entry.uid.trim() : "";
+            if (!targetUid) continue;
+            try {
+              const exists = await getBlock(targetUid);
+              if (!exists) continue;
+              await deleteBlock(targetUid);
+            } catch (err) {
+              console.warn("[RecurringTasks] removeChildAttr failed", err);
+            }
           }
+        } finally {
+          deletingChildAttrs.delete(token);
         }
-      } finally {
-        deletingChildAttrs.delete(token);
-      }
+      });
     }
 
     async function markCompleted(block, meta, set) {
@@ -4395,6 +4608,9 @@ export default {
             true,
           ],
         ],
+        onOpening: (_instance, toastEl) => {
+          applyToastA11y(toastEl);
+        },
         onClosed: () => {
           undoRegistry.delete(data.blockUid);
         },
@@ -5761,6 +5977,9 @@ export default {
           title: titleText,
           message: messageText,
           position: 'center',
+          onOpening: (_instance, toastEl) => {
+            applyToastA11y(toastEl);
+          },
           buttons: [
             [`<button>${escapeHtml(yesLabel)}</button>`, function (instance, toast, button, e, inputs) {
               instance.hide({ transitionOut: 'fadeOut' }, toast, 'button');
@@ -5779,6 +5998,13 @@ export default {
       });
     }
 
+    function applyToastA11y(toastEl) {
+      if (!toastEl) return;
+      toastEl.setAttribute("role", "alert");
+      toastEl.setAttribute("aria-live", "polite");
+      toastEl.setAttribute("aria-atomic", "true");
+    }
+
     function toast(msg, timer = 3000, className = "betterTasks bt-toast-info") {
       const lang = getLanguageSetting();
       const message =
@@ -5795,6 +6021,9 @@ export default {
         timeout: timer,
         closeOnClick: true,
         displayMode: 2,
+        onOpening: (_instance, toastEl) => {
+          applyToastA11y(toastEl);
+        },
       });
     }
 
@@ -5813,6 +6042,9 @@ export default {
           timeout: false,
           closeOnClick: true,
           displayMode: 2,
+          onOpening: (_instance, toastEl) => {
+            applyToastA11y(toastEl);
+          },
         });
       } catch (err) {
         console.warn("[BetterTasks] showPersistentToast failed", err);
@@ -5953,6 +6185,9 @@ export default {
               },
             ],
           ],
+          onOpening: (_instance, toastEl) => {
+            applyToastA11y(toastEl);
+          },
           onOpened: (_instance, toastEl) => {
             const input = toastEl.querySelector?.(`.${inputClass}`);
             input?.focus?.();
@@ -6100,6 +6335,7 @@ export default {
           ],
           onOpening: (_instance, toastEl) => {
             toastElement = toastEl;
+            applyToastA11y(toastEl);
             const input = toastEl.querySelector?.(`.${inputClass}`);
             const list = toastEl.querySelector?.(`#${listId}`);
             renderOptions(list, "");
@@ -6267,6 +6503,7 @@ export default {
           ],
           onOpening: (_instance, toastEl) => {
             toastElement = toastEl;
+            applyToastA11y(toastEl);
             const input = toastEl.querySelector(`.${inputClass}`);
             const list = toastEl.querySelector(`#${listId}`);
             const selectAndClose = (val) => {
@@ -6377,6 +6614,7 @@ export default {
             ],
           ],
           onOpening: (_instance, toastEl) => {
+            applyToastA11y(toastEl);
             const input = toastEl.querySelector(`.${dateInputClass}`);
             if (!input) return;
             inputEl = input;
@@ -6809,6 +7047,9 @@ export default {
               },
             ],
           ],
+          onOpening: (_instance, toastEl) => {
+            applyToastA11y(toastEl);
+          },
           onOpened: (_instance, toastEl) => {
             if (!toastEl) return;
             const inputsContainer = toastEl.querySelector(".iziToast-inputs");
@@ -7020,6 +7261,9 @@ export default {
               },
             ],
           ],
+          onOpening: (_instance, toastEl) => {
+            applyToastA11y(toastEl);
+          },
           onClosed: () => finish(null),
         });
       });
@@ -7065,6 +7309,10 @@ export default {
     }
 
     function handleAttributeNameChange() {
+      const prev = lastAttrNames || resolveAttributeNames();
+      const next = resolveAttributeNames();
+      updateAttrNameHistory(prev, next);
+      lastAttrNames = next;
       repeatOverrides.clear();
       scheduleSurfaceSync(lastAttrSurface);
       void refreshProjectOptions(true);
@@ -7945,6 +8193,47 @@ export default {
     let pillDelegationLastClickKey = "";
     const PILL_DELEGATION_GLOBAL_KEY = "__btPillDelegationV1";
 
+    function getInlineMetaCache() {
+      if (typeof window === "undefined") return null;
+      return window.__btInlineMetaCache || (window.__btInlineMetaCache = new Map());
+    }
+
+    function readInlineMetaCache(uid) {
+      const metaCache = getInlineMetaCache();
+      if (!metaCache || !uid) return null;
+      const entry = metaCache.get(uid);
+      if (!entry) return null;
+      if (entry && typeof entry === "object" && Object.prototype.hasOwnProperty.call(entry, "metadata")) {
+        const at = entry.at || 0;
+        if (at && Date.now() - at > INLINE_META_CACHE_TTL_MS) {
+          metaCache.delete(uid);
+          return null;
+        }
+        return entry.metadata || null;
+      }
+      return entry;
+    }
+
+    function writeInlineMetaCache(uid, metadata, now = Date.now()) {
+      const metaCache = getInlineMetaCache();
+      if (!metaCache || !uid) return;
+      metaCache.set(uid, { metadata, at: now });
+      if (metaCache.size > INLINE_META_CACHE_MAX) {
+        const entries = Array.from(metaCache.entries());
+        entries.sort((a, b) => (a[1]?.at || 0) - (b[1]?.at || 0));
+        const overflow = entries.length - INLINE_META_CACHE_MAX;
+        for (let i = 0; i < overflow; i++) {
+          metaCache.delete(entries[i][0]);
+        }
+      }
+      for (const [cacheUid, entry] of metaCache.entries()) {
+        const at = entry?.at || 0;
+        if (at && now - at > INLINE_META_CACHE_TTL_MS) {
+          metaCache.delete(cacheUid);
+        }
+      }
+    }
+
     function attachPillEventDelegation() {
       if (pillDelegationAttached || typeof document === "undefined") return;
       // Ensure only one delegated handler is attached globally (Roam can load/reload extensions without clean unload).
@@ -8000,8 +8289,7 @@ export default {
 
           const set = S();
           const attrNames = set.attrNames;
-          const metaCache = typeof window !== "undefined" ? window.__btInlineMetaCache : null;
-          const metadataInfo = metaCache?.get?.(uid) || null;
+          const metadataInfo = readInlineMetaCache(uid);
 
           const isRecurring = wrap.dataset?.btIsRecurring === "1";
 
@@ -8202,6 +8490,8 @@ export default {
       const pillSigCache = typeof window !== "undefined"
         ? window.__btPillSignatureCache || (window.__btPillSignatureCache = new Map())
         : new Map();
+      const PILL_SIG_CACHE_MAX = 5000;
+      const PILL_SIG_CACHE_TTL_MS = 10 * 60 * 1000;
       if (!pillScrollHandlerAttached && typeof document !== "undefined") {
         pillScrollHandler = (() => {
           let t = null;
@@ -8233,6 +8523,7 @@ export default {
         (nowCounts - pillDomCountsCache.at < PILL_DOM_COUNT_TTL_MS);
       let globalBlockCount = hasFreshCounts ? pillDomCountsCache.blockCount : null;
       let globalCheckboxCount = hasFreshCounts ? pillDomCountsCache.checkboxCount : null;
+      let restrictToVisible = false;
 
       try {
         const blockCount =
@@ -8244,7 +8535,7 @@ export default {
           if (canUseGlobalCounts && !hasFreshCounts) {
             pillDomCountsCache = { at: nowCounts, blockCount, checkboxCount: globalCheckboxCount };
           }
-          return;
+          restrictToVisible = true;
         }
       } catch (_) {
         // ignore count errors
@@ -8283,7 +8574,9 @@ export default {
         }
       }
 
-      const selector = ".rm-block-main, .roam-block-container, .roam-block";
+      const selector = restrictToVisible
+        ? ".rm-block-main"
+        : ".rm-block-main, .roam-block-container, .roam-block";
       const nodes = rootEl.matches?.(selector)
         ? [rootEl]
         : Array.from(rootEl.querySelectorAll?.(selector) || []);
@@ -8297,7 +8590,7 @@ export default {
         }
       })();
       let decoratedThisPass = 0;
-      const MAX_DECORATIONS_PER_PASS = 300;
+      const MAX_DECORATIONS_PER_PASS = restrictToVisible ? 120 : 300;
       const seen = new Set();
       const set = S();
       const attrNames = set.attrNames;
@@ -8328,6 +8621,9 @@ export default {
             } catch (_) {
               // ignore viewport failures
             }
+          }
+          if (restrictToVisible && !viewport) {
+            continue;
           }
 
           const uid =
@@ -8366,10 +8662,7 @@ export default {
           const isBetterTask = isBetterTasksTask(meta);
           if (isBetterTask) enqueueDashboardNotifyBlockChange(uid);
           const metadataInfo = meta.metadata || parseRichMetadata(meta.childAttrMap || {}, attrNames);
-          if (typeof window !== "undefined") {
-            const metaCache = window.__btInlineMetaCache || (window.__btInlineMetaCache = new Map());
-            metaCache.set(uid, metadataInfo);
-          }
+          writeInlineMetaCache(uid, metadataInfo, now);
           const hasMetadataSignal =
             !!(
               metadataInfo?.project ||
@@ -8463,7 +8756,8 @@ export default {
           ];
           const signature = signatureParts.join("|");
           const existingPill = main.querySelector(".rt-pill-wrap");
-          const prevSig = pillSigCache.get(uid);
+          const prevEntry = pillSigCache.get(uid);
+          const prevSig = prevEntry && typeof prevEntry === "object" ? prevEntry.sig : prevEntry;
           if (prevSig === signature && existingPill) {
             continue;
           }
@@ -8638,18 +8932,39 @@ export default {
           menuBtn.className = "rt-pill-menu-btn";
           menuBtn.textContent = "⋯";
           menuBtn.title = "More task actions";
+          menuBtn.setAttribute("aria-label", "More task actions");
           menuBtn.dataset.btPillAction = "menu";
           pill.appendChild(menuBtn);
 
           pillWrap.appendChild(pill);
           pillWrap.dataset.btSig = signature;
-          pillSigCache.set(uid, signature);
+          pillSigCache.set(uid, { sig: signature, lastSeen: now });
           decoratedThisPass += 1;
 
           const check = main.querySelector?.(".check-container, .rm-checkbox") || main.firstElementChild;
           insertPillWrap(main, check, pillWrap);
         } catch (err) {
           console.warn("[RecurringTasks] decorate pill failed", err);
+        }
+      }
+      if (pillSigCache.size > PILL_SIG_CACHE_MAX) {
+        const entries = Array.from(pillSigCache.entries());
+        entries.sort((a, b) => {
+          const aSeen = a[1]?.lastSeen || 0;
+          const bSeen = b[1]?.lastSeen || 0;
+          return aSeen - bSeen;
+        });
+        const overflow = entries.length - PILL_SIG_CACHE_MAX;
+        for (let i = 0; i < overflow; i++) {
+          pillSigCache.delete(entries[i][0]);
+        }
+      }
+      if (PILL_SIG_CACHE_TTL_MS > 0) {
+        for (const [uid, entry] of pillSigCache.entries()) {
+          const lastSeen = entry?.lastSeen || 0;
+          if (lastSeen && now - lastSeen > PILL_SIG_CACHE_TTL_MS) {
+            pillSigCache.delete(uid);
+          }
         }
       }
     }
@@ -9028,13 +9343,9 @@ export default {
       const pmStrings = t("pillMenu", lang) || {};
       const metaStrings = t("metadata", lang) || {};
       const labelOr = (key, fallback) => escapeHtml(pmStrings[key] || fallback);
-      const pillMetaCache =
-        typeof window !== "undefined"
-          ? window.__btInlineMetaCache || (window.__btInlineMetaCache = new Map())
-          : new Map();
       let metadataInfo =
         metadata ||
-        pillMetaCache.get(uid) ||
+        readInlineMetaCache(uid) ||
         activeDashboardController?.getTaskMetadata?.(uid) ||
         null;
       metadataInfo = metadataInfo || {};
@@ -9133,6 +9444,7 @@ export default {
         message: html,
         position: "center",
         onOpening: (_instance, toastEl) => {
+          applyToastA11y(toastEl);
           const root = toastEl.querySelector(`#${menuId}`);
           if (!root) return;
           const cleanup = () => iziToast.hide({}, toastEl);
@@ -10798,8 +11110,7 @@ export default {
           metadata = meta?.metadata || parseRichMetadata(meta?.childAttrMap || {}, set.attrNames);
           isRecurring = !!meta?.repeat;
           if (typeof window !== "undefined") {
-            const metaCache = window.__btInlineMetaCache || (window.__btInlineMetaCache = new Map());
-            metaCache.set(uid, metadata || {});
+            writeInlineMetaCache(uid, metadata || {});
           }
         }
       } catch (_) {
@@ -11745,16 +12056,19 @@ export default {
             doneBtn.className = "bt-today-panel__icon-btn";
             doneBtn.textContent = "✓";
             doneBtn.title = todayStrings.complete || "Complete";
+            doneBtn.setAttribute("aria-label", doneBtn.title);
             const snoozeBtn = document.createElement("button");
             snoozeBtn.type = "button";
             snoozeBtn.className = "bt-today-panel__icon-btn";
             snoozeBtn.textContent = "⏱";
             snoozeBtn.title = todayStrings.snoozeShort || "Snooze +1d";
+            snoozeBtn.setAttribute("aria-label", snoozeBtn.title);
             const snoozeWeekBtn = document.createElement("button");
             snoozeWeekBtn.type = "button";
             snoozeWeekBtn.className = "bt-today-panel__icon-btn";
             snoozeWeekBtn.textContent = "⏱+7";
             snoozeWeekBtn.title = todayStrings.snoozeWeek || "Snooze +7d";
+            snoozeWeekBtn.setAttribute("aria-label", snoozeWeekBtn.title);
             const disableActions = () => {
               doneBtn.disabled = true;
               snoozeBtn.disabled = true;

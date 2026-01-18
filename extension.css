@@ -3327,6 +3327,28 @@ body.bt-theme-dark .bt-dashboard {
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
 }
 
+.bt-task-menu__trigger:focus-visible,
+.bt-task-menu__item:focus-visible,
+.bt-task-row__checkbox:focus-visible,
+.bt-today-panel__icon-btn:focus-visible,
+.rt-pill-menu-btn:focus-visible,
+.rt-project-inline-btn:focus-visible {
+    outline: 2px solid #2b6cb0;
+    outline-offset: 2px;
+}
+
+.bt-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 .rt-project-inline-row {
     display: flex;
     gap: 6px;
