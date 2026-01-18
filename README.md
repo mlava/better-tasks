@@ -161,7 +161,7 @@ Features:
 ### Full-page mode
 
 <p align="center">
-  <img src="images/dashboard-fullpage.png" width="900" alt="Full-page dashboard"/>
+  <img src="images/dashboard-fullpage.png" width="600" alt="Full-page dashboard"/>
 </p>
 
 ---
@@ -171,7 +171,7 @@ Features:
 ### Today widget (on today’s DNP)
 
 <p align="center">
-  <img src="images/today-widget.png" width="900" alt="Today widget on DNP"/>
+  <img src="images/today-widget.png" width="600" alt="Today widget on DNP"/>
 </p>
 
 ### Today badge (left sidebar)
@@ -185,7 +185,7 @@ Features:
 ## ⚙️ Settings (progressive disclosure)
 
 <p align="center">
-  <img src="images/settings-core.png" width="900" alt="Settings panel"/>
+  <img src="images/settings-core.png" width="600" alt="Settings panel"/>
 </p>
 
 Core settings:
