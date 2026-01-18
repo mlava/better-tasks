@@ -11,18 +11,15 @@ https://app.slack.com/client/TNEAEL9QW/
 
 ## What it looks like (start here)
 
-> **Add these images to `./images/`** (suggested filenames below).  
-> If you don’t have them yet, keep the placeholders — they make the README easier to scan.
-
 <p align="center">
-  <img src="images/hero-dashboard.png" width="900" alt="Better Tasks dashboard showing Today/Overdue triage"/>
+  <img src="images/hero-dashboard.png" width="800" alt="Better Tasks dashboard showing Today/Overdue triage"/>
 </p>
 
 **90-second tour (recommended to re-record as the “current” overview):**  
-https://www.loom.com/share/bb6ffd38ff35441ab2ed5138b5c2cb70
+
 
 **Repeat rules demo:**  
-https://www.loom.com/share/f8856114bfd14d40a228292e7bcff9ee
+
 
 ---
 
