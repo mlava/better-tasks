@@ -112,9 +112,6 @@ Priority / Energy cycles: **low → medium → high → none**
   <img src="images/pills-closeup.png" width="850" alt="Inline pill showing repeat and dates"/>
 </p>
 
-(Existing image:  
-https://raw.githubusercontent.com/mlava/better-tasks/main/images/image.png)
-
 - Pills hide when the task is expanded; reappear when collapsed
 - Completed tasks stay visually quiet until the next recurrence
 - Non-recurring tasks still show date pills
@@ -148,7 +145,7 @@ All actions support **Undo**.
 
 Open via Command Palette → **Toggle Better Tasks Dashboard**  
 or the top-bar icon  
-<img src="https://raw.githubusercontent.com/mlava/better-tasks/main/images/image-2.png" width="22">
+<img src="images/image-2.png" width="22" alt="Dashboard toggle icon">
 
 <p align="center">
   <img src="images/dashboard-floating.png" width="900" alt="Floating dashboard"/>
