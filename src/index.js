@@ -143,6 +143,8 @@ let teardownTodayPanelGlobal = null;
 let lastTodayAnchorUid = null;
 const todayInlineChildUids = new Set();
 const todayAnchorTextHistory = new Set();
+const MAX_TODAY_ANCHOR_TEXT_HISTORY = 200;
+const MAX_INVALID_PARSE_TOASTED = 1000;
 let pillRefreshTimer = null;
 let todayWidgetForceNext = false;
 let lastTodayRenderAt = 0;
@@ -1311,16 +1313,25 @@ export default {
         return;
       }
 
-      const pending = showPersistentToast("Parsing task with AI…");
+      const aiAbort = typeof AbortController !== "undefined" ? new AbortController() : null;
+      let suppressAiAbort = false;
+      const pending = showPersistentToast("Parsing task with AI…", {
+        onClosed: () => {
+          if (suppressAiAbort) return;
+          aiAbort?.abort();
+        },
+      });
       let aiResult = null;
       try {
-        aiResult = await parseTaskWithOpenAI(aiInput, aiSettings);
+        aiResult = await parseTaskWithOpenAI(aiInput, aiSettings, { signal: aiAbort?.signal });
       } catch (err) {
         console.warn("[BetterTasks] AI parsing threw unexpectedly", err);
         aiResult = { ok: false, error: err };
       } finally {
+        suppressAiAbort = true;
         hideToastInstance(pending);
       }
+      if (aiResult?.reason === "aborted") return;
       if (aiResult.ok) {
         const applied = await createTaskFromParsedJson(targetUid, aiResult.task, aiInput);
         if (applied) {
@@ -1628,11 +1639,12 @@ export default {
       return aiSettings?.mode === "Use my OpenAI key" && !!aiSettings.apiKey;
     }
 
-    async function parseTaskWithOpenAI(input, aiSettings) {
+    async function parseTaskWithOpenAI(input, aiSettings, options = {}) {
       if (!isAiEnabled(aiSettings)) return { ok: false, reason: "disabled" };
       const AI_RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
       const AI_RETRY_MAX = 2;
       const AI_RETRY_BASE_MS = 400;
+      const signal = options?.signal || null;
       const payload = {
         model: AI_MODEL,
         messages: [
@@ -1659,6 +1671,9 @@ export default {
       try {
         for (let attempt = 0; attempt <= AI_RETRY_MAX; attempt += 1) {
           try {
+            if (signal?.aborted) {
+              return { ok: false, reason: "aborted" };
+            }
             response = await fetch("https://api.openai.com/v1/chat/completions", {
               method: "POST",
               headers: {
@@ -1666,11 +1681,21 @@ export default {
                 Authorization: `Bearer ${aiSettings.apiKey}`,
               },
               body: JSON.stringify(payload),
+              signal: signal || undefined,
             });
           } catch (err) {
+            if (err?.name === "AbortError") {
+              return { ok: false, reason: "aborted" };
+            }
             lastError = err;
             if (attempt < AI_RETRY_MAX) {
-              await delay(AI_RETRY_BASE_MS * Math.pow(2, attempt));
+              try {
+                await delayWithSignal(AI_RETRY_BASE_MS * Math.pow(2, attempt), signal);
+              } catch (delayErr) {
+                if (delayErr?.name === "AbortError") {
+                  return { ok: false, reason: "aborted" };
+                }
+              }
               continue;
             }
             throw err;
@@ -1686,7 +1711,13 @@ export default {
             }
           }
           const jitterFactor = 0.8 + Math.random() * 0.4;
-          await delay(Math.round(retryDelayMs * jitterFactor));
+          try {
+            await delayWithSignal(Math.round(retryDelayMs * jitterFactor), signal);
+          } catch (delayErr) {
+            if (delayErr?.name === "AbortError") {
+              return { ok: false, reason: "aborted" };
+            }
+          }
         }
       } catch (err) {
         console.warn("[BetterTasks] OpenAI request failed", err);
@@ -1698,8 +1729,10 @@ export default {
       let responseBodyText = null;
       try {
         responseBodyText = await response.text();
-      } catch (_) {
-        // non-fatal
+      } catch (err) {
+        if (err?.name === "AbortError") {
+          return { ok: false, reason: "aborted" };
+        }
       }
       let parsedBody = null;
       try {
@@ -2630,7 +2663,7 @@ export default {
         childList: true,
         subtree: true,
       };
-      const callback = function (mutationsList, obs) {
+      const handleMutations = function (mutationsList) {
         const isBtPillMutationNode = (node) => {
           if (!(node instanceof HTMLElement)) return false;
           if (node.classList?.contains("rt-pill-wrap")) return true;
@@ -2739,7 +2772,26 @@ export default {
         sweepProcessed();
       };
 
-      observer = new MutationObserver(callback);
+      let mutationQueue = [];
+      let mutationScheduled = false;
+      const flushMutationQueue = () => {
+        if (!mutationQueue.length) {
+          mutationScheduled = false;
+          return;
+        }
+        const batch = mutationQueue;
+        mutationQueue = [];
+        mutationScheduled = false;
+        handleMutations(batch);
+      };
+
+      observer = new MutationObserver((mutationsList) => {
+        if (!mutationsList || !mutationsList.length) return;
+        mutationQueue.push(...mutationsList);
+        if (mutationScheduled) return;
+        mutationScheduled = true;
+        setTimeout(flushMutationQueue, 0);
+      });
       if (targetNode1) observer.observe(targetNode1, obsConfig);
       if (targetNode2) observer.observe(targetNode2, obsConfig);
       const surface = lastAttrSurface || enforceChildAttrSurface(extensionAPI);
@@ -2970,31 +3022,40 @@ export default {
 
     const BLOCK_CACHE_TTL_MS = 800;
     const BLOCK_CACHE_MAX = 5000;
-    const blockCache = new Map();
+    let blockCache = new Map();
+
+    function ensureBlockCache() {
+      if (!blockCache || typeof blockCache.get !== "function" || typeof blockCache.set !== "function") {
+        blockCache = new Map();
+      }
+      return blockCache;
+    }
 
     function invalidateBlockCache(uid) {
       if (!uid) return;
-      blockCache.delete(uid);
+      ensureBlockCache().delete(uid);
     }
 
     function pruneBlockCache(now) {
+      const cache = ensureBlockCache();
       if (blockCache.size <= BLOCK_CACHE_MAX) return;
-      const entries = Array.from(blockCache.entries());
+      const entries = Array.from(cache.entries());
       entries.sort((a, b) => (a[1]?.at || 0) - (b[1]?.at || 0));
       const overflow = entries.length - BLOCK_CACHE_MAX;
       for (let i = 0; i < overflow; i++) {
-        blockCache.delete(entries[i][0]);
+        cache.delete(entries[i][0]);
       }
     }
 
     async function getBlock(uid) {
       if (!uid) return null;
       const now = Date.now();
-      const cached = blockCache.get(uid);
+      const cache = ensureBlockCache();
+      const cached = cache.get(uid);
       if (cached && now - cached.at < BLOCK_CACHE_TTL_MS) {
         return cached.block || null;
       }
-      if (cached) blockCache.delete(uid);
+      if (cached) cache.delete(uid);
       const res = await window.roamAlphaAPI.q(`
         [:find
           (pull ?b [:block/uid :block/string :block/props :block/order :block/open
@@ -3004,7 +3065,7 @@ export default {
          :where [?b :block/uid "${uid}"]]`);
       const block = res?.[0]?.[0] || null;
       if (block) {
-        blockCache.set(uid, { block, at: now });
+        cache.set(uid, { block, at: now });
         pruneBlockCache(now);
       }
       return block;
@@ -3116,6 +3177,30 @@ export default {
 
     function delay(ms) {
       return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function delayWithSignal(ms, signal) {
+      if (!signal) return delay(ms);
+      return new Promise((resolve, reject) => {
+        if (signal.aborted) {
+          const err = new Error("Aborted");
+          err.name = "AbortError";
+          reject(err);
+          return;
+        }
+        const timer = setTimeout(() => {
+          signal.removeEventListener("abort", onAbort);
+          resolve();
+        }, ms);
+        const onAbort = () => {
+          clearTimeout(timer);
+          signal.removeEventListener("abort", onAbort);
+          const err = new Error("Aborted");
+          err.name = "AbortError";
+          reject(err);
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+      });
     }
 
     async function deleteBlock(uid) {
@@ -6027,7 +6112,7 @@ export default {
       });
     }
 
-    function showPersistentToast(msg) {
+    function showPersistentToast(msg, opts = {}) {
       const lang = getLanguageSetting();
       const message = typeof msg === "string" ? translateString(msg, lang) : msg;
       try {
@@ -6044,6 +6129,11 @@ export default {
           displayMode: 2,
           onOpening: (_instance, toastEl) => {
             applyToastA11y(toastEl);
+          },
+          onClosed: () => {
+            if (typeof opts.onClosed === "function") {
+              opts.onClosed();
+            }
           },
         });
       } catch (err) {
@@ -6075,9 +6165,19 @@ export default {
       }
     }
 
+    function pruneSetMax(set, maxSize) {
+      if (!set || maxSize <= 0) return;
+      while (set.size > maxSize) {
+        const oldest = set.values().next().value;
+        if (oldest === undefined) break;
+        set.delete(oldest);
+      }
+    }
+
     function noteRepeatParseFailure(uid) {
       if (!uid || invalidRepeatToasted.has(uid)) return;
       invalidRepeatToasted.add(uid);
+      pruneSetMax(invalidRepeatToasted, MAX_INVALID_PARSE_TOASTED);
       toast(t(["toasts", "couldNotParseRecurrence"], getLanguageSetting()) || "Could not parse the task recurrence pattern. Please check your task and review the README for supported patterns.");
     }
 
@@ -6089,6 +6189,7 @@ export default {
     function noteDueParseFailure(uid) {
       if (!uid || invalidDueToasted.has(uid)) return;
       invalidDueToasted.add(uid);
+      pruneSetMax(invalidDueToasted, MAX_INVALID_PARSE_TOASTED);
       toast(t(["toasts", "cannotParseDue"], getLanguageSetting()) || "Could not parse the task due date. Please ensure it uses Roam's standard date format (e.g. [[November 8th, 2025]]).");
     }
 
@@ -7568,6 +7669,9 @@ export default {
     }
 
     async function handleTodaySettingChange(settingId = null, value = undefined) {
+      const prevAnchorText =
+        settingId === TODAY_WIDGET_TITLE_SETTING ? getTodayAnchorText() : null;
+      const prevAnchorNormalized = prevAnchorText ? normalizeMatchText(prevAnchorText) : "";
       const normalizedValue = normalizeTodaySettingValue(value);
       if (settingId) {
         try {
@@ -7602,6 +7706,14 @@ export default {
         // Debounce title changes to avoid creating/moving anchors while the user types.
         todayTitleChangeDebounceTimer = setTimeout(() => {
           todayTitleChangeDebounceTimer = null;
+          const nextAnchorNormalized = normalizeMatchText(getTodayAnchorText());
+          if (prevAnchorNormalized && prevAnchorNormalized !== nextAnchorNormalized) {
+            todayAnchorTextHistory.delete(prevAnchorNormalized);
+            void removeAllTodayAnchorsByQuery({
+              includeHeading: false,
+              textsOverride: [prevAnchorNormalized],
+            });
+          }
           scheduleTodayWidgetRender(120, true);
           scheduleTodayBadgeRefresh(120, true);
         }, 450);
@@ -7996,13 +8108,18 @@ export default {
       return matches;
     }
 
-    async function removeAllTodayAnchorsByQuery({ includeHeading = false } = {}) {
+    async function removeAllTodayAnchorsByQuery({ includeHeading = false, textsOverride = null } = {}) {
       try {
         const cache = createTodayRenderCache();
         const dnpUid = await getOrCreatePageUidCached(toDnpTitle(todayLocal()), cache);
         const { headingUid } = await getTodayParentInfo(cache);
-        const texts = new Set([getTodayAnchorText(), ...TODAY_WIDGET_ANCHOR_TEXT_LEGACY].map((s) => normalizeMatchText(s || "")));
-        for (const t of todayAnchorTextHistory) texts.add(t);
+        const baseTexts = Array.isArray(textsOverride)
+          ? textsOverride
+          : [getTodayAnchorText(), ...TODAY_WIDGET_ANCHOR_TEXT_LEGACY];
+        const texts = new Set(baseTexts.map((s) => normalizeMatchText(s || "")));
+        if (!textsOverride) {
+          for (const t of todayAnchorTextHistory) texts.add(t);
+        }
         const ignoreUid = includeHeading ? null : headingUid || null;
         const uids = await collectAnchorsUnder(dnpUid, texts, ignoreUid, cache, 0, 4);
         for (const u of uids) {
@@ -8487,9 +8604,22 @@ export default {
         });
       const SLICE_BUDGET_MS = 12;
       let sliceStart = sliceNow();
-      const pillSigCache = typeof window !== "undefined"
-        ? window.__btPillSignatureCache || (window.__btPillSignatureCache = new Map())
-        : new Map();
+      let pillSigCache = (() => {
+        if (typeof window === "undefined") return new Map();
+        const existing = window.__btPillSignatureCache;
+        if (existing && typeof existing.get === "function" && typeof existing.set === "function") {
+          return existing;
+        }
+        const fresh = new Map();
+        window.__btPillSignatureCache = fresh;
+        return fresh;
+      })();
+      if (!pillSigCache || typeof pillSigCache.get !== "function" || typeof pillSigCache.set !== "function") {
+        pillSigCache = new Map();
+        if (typeof window !== "undefined") {
+          window.__btPillSignatureCache = pillSigCache;
+        }
+      }
       const PILL_SIG_CACHE_MAX = 5000;
       const PILL_SIG_CACHE_TTL_MS = 10 * 60 * 1000;
       if (!pillScrollHandlerAttached && typeof document !== "undefined") {
@@ -10389,15 +10519,26 @@ export default {
         const aiEnabled = isAiEnabled(aiSettings);
         let parsedTask = null;
         if (aiEnabled) {
-          const pending = showPersistentToast("Parsing task with AI\u2026");
+          const aiAbort = typeof AbortController !== "undefined" ? new AbortController() : null;
+          let suppressAiAbort = false;
+          const pending = showPersistentToast("Parsing task with AI\u2026", {
+            onClosed: () => {
+              if (suppressAiAbort) return;
+              aiAbort?.abort();
+            },
+          });
           let aiResult = null;
           try {
-            aiResult = await parseTaskWithOpenAI(trimmed, aiSettings);
+            aiResult = await parseTaskWithOpenAI(trimmed, aiSettings, { signal: aiAbort?.signal });
           } catch (err) {
             console.warn("[BetterTasks] AI parsing threw in quickAdd", err);
             aiResult = { ok: false, error: err };
           } finally {
+            suppressAiAbort = true;
             hideToastInstance(pending);
+          }
+          if (aiResult?.reason === "aborted") {
+            return;
           }
           if (aiResult?.ok) {
             parsedTask = aiResult.task;
@@ -11534,7 +11675,10 @@ export default {
 
     function noteTodayAnchorText(text = "") {
       const normalized = normalizeMatchText(text);
-      if (normalized) todayAnchorTextHistory.add(normalized);
+      if (normalized) {
+        todayAnchorTextHistory.add(normalized);
+        pruneSetMax(todayAnchorTextHistory, MAX_TODAY_ANCHOR_TEXT_HISTORY);
+      }
     }
 
     function matchesTodayAnchor(str = "") {

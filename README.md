@@ -16,7 +16,7 @@ https://app.slack.com/client/TNEAEL9QW/
 ## What it looks like (start here)
 
 <p align="center">
-  <img src="images/hero-dashboard.png" width="800" alt="Better Tasks dashboard showing Today/Overdue triage"/>
+  <img src="https://raw.githubusercontent.com/mlava/better-tasks/main/images/hero-dashboard.png" width="800" alt="Better Tasks dashboard showing Today/Overdue triage"/>
 </p>
 
 ---
@@ -116,7 +116,7 @@ Priority / Energy cycles: **low → medium → high → none**
 ## 💊 Inline pills
 
 <p align="center">
-  <img src="images/pills-closeup.png" width="850" alt="Inline pill showing repeat and dates"/>
+  <img src="https://raw.githubusercontent.com/mlava/better-tasks/main/images/pills-closeup.png" width="850" alt="Inline pill showing repeat and dates"/>
 </p>
 
 - Pills hide when the task is expanded; reappear when collapsed
@@ -150,10 +150,10 @@ All actions support **Undo**.
 
 ## 📊 Better Tasks dashboard
 
-Open via Command Palette → **Toggle Better Tasks Dashboard**  or the top-bar icon <img src="images/image-2.png" width="22" alt="Dashboard toggle icon">
+Open via Command Palette → **Toggle Better Tasks Dashboard**  or the top-bar icon <img src="https://raw.githubusercontent.com/mlava/better-tasks/main/images/image-2.png" width="22" alt="Dashboard toggle icon">
 
 <p align="center">
-  <img src="images/dashboard-floating.png" width="800" alt="Floating dashboard"/>
+  <img src="https://raw.githubusercontent.com/mlava/better-tasks/main/images/dashboard-floating.png" width="800" alt="Floating dashboard"/>
 </p>
 
 Features:
@@ -168,7 +168,7 @@ Features:
 ### Full-page mode
 
 <p align="center">
-  <img src="images/dashboard-fullpage.png" width="800" alt="Full-page dashboard"/>
+  <img src="https://raw.githubusercontent.com/mlava/better-tasks/main/images/dashboard-fullpage.png" width="800" alt="Full-page dashboard"/>
 </p>
 
 ---
@@ -178,13 +178,13 @@ Features:
 ### Today widget (on today’s DNP)
 
 <p align="center">
-  <img src="images/today-widget.jpg" width="600" alt="Today widget on DNP"/>
+  <img src="https://raw.githubusercontent.com/mlava/better-tasks/main/images/today-widget.jpg" width="600" alt="Today widget on DNP"/>
 </p>
 
 ### Today badge (left sidebar)
 
 <p align="center">
-  <img src="images/today-badge.png" width="420" alt="Today badge"/>
+  <img src="https://raw.githubusercontent.com/mlava/better-tasks/main/images/today-badge.png" width="420" alt="Today badge"/>
 </p>
 
 ---
@@ -192,7 +192,7 @@ Features:
 ## ⚙️ Settings (progressive disclosure)
 
 <p align="center">
-  <img src="images/settings-core.png" width="600" alt="Settings panel"/>
+  <img src="https://raw.githubusercontent.com/mlava/better-tasks/main/images/settings-core.png" width="600" alt="Settings panel"/>
 </p>
 
 Core settings:
