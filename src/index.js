@@ -10311,6 +10311,10 @@ export default {
       let fullPageWindowListenerAttached = false;
       let fullPageRafPending = false;
       let lastFullPageRect = null;
+      let didCloseLeftSidebarForMobile = false;
+      let leftSidebarMql = null;
+      let leftSidebarMqlListenerAttached = false;
+      let leftSidebarMqlHandler = null;
 
       const controller = {
         getSnapshot: () => state,
@@ -10716,12 +10720,93 @@ export default {
         else button.classList.remove("bt-dashboard-button--active");
       }
 
+      function isMobileDashboardLayout() {
+        if (typeof window === "undefined") return false;
+        if (window.roamAlphaAPI?.platform?.isMobileApp) return true;
+        if (typeof window.innerWidth === "number") {
+          if (window.innerWidth <= 639) return true;
+        }
+        if (typeof window.matchMedia === "function") {
+          return window.matchMedia("(max-width: 639px)").matches;
+        }
+        return false;
+      }
+
+      function isLeftSidebarOpen() {
+        if (typeof document === "undefined") return false;
+        if (document.querySelector(".bp3-button.bp3-minimal.bp3-icon-menu-closed")) return true;
+        try {
+          const sidebar =
+            document.querySelector(".roam-sidebar-content") ||
+            document.querySelector(".rm-left-sidebar") ||
+            document.querySelector(".rm-left-sidebar__inner");
+          if (!sidebar) return false;
+          const rect = sidebar.getBoundingClientRect?.();
+          return !!(rect && rect.width > 40);
+        } catch (_) {
+          return false;
+        }
+      }
+
+      function closeLeftSidebarIfNeeded() {
+        if (!isMobileDashboardLayout()) return;
+        if (!isLeftSidebarOpen()) return;
+        didCloseLeftSidebarForMobile = true;
+        try {
+          window.roamAlphaAPI?.ui?.leftSidebar?.close?.();
+        } catch (_) {
+          // ignore
+        }
+      }
+
+      function restoreLeftSidebarIfNeeded() {
+        if (!didCloseLeftSidebarForMobile) return;
+        didCloseLeftSidebarForMobile = false;
+        try {
+          window.roamAlphaAPI?.ui?.leftSidebar?.open?.();
+        } catch (_) {
+          // ignore
+        }
+      }
+
+      function attachLeftSidebarMqlWatcher() {
+        if (leftSidebarMqlListenerAttached || typeof window === "undefined") return;
+        if (typeof window.matchMedia !== "function") return;
+        leftSidebarMql = window.matchMedia("(max-width: 639px)");
+        leftSidebarMqlHandler = () => {
+          if (!root) return;
+          if (leftSidebarMql?.matches) {
+            closeLeftSidebarIfNeeded();
+          }
+        };
+        if (typeof leftSidebarMql.addEventListener === "function") {
+          leftSidebarMql.addEventListener("change", leftSidebarMqlHandler);
+        } else if (typeof leftSidebarMql.addListener === "function") {
+          leftSidebarMql.addListener(leftSidebarMqlHandler);
+        }
+        leftSidebarMqlListenerAttached = true;
+      }
+
+      function detachLeftSidebarMqlWatcher() {
+        if (!leftSidebarMqlListenerAttached || !leftSidebarMql) return;
+        if (typeof leftSidebarMql.removeEventListener === "function") {
+          leftSidebarMql.removeEventListener("change", leftSidebarMqlHandler);
+        } else if (typeof leftSidebarMql.removeListener === "function") {
+          leftSidebarMql.removeListener(leftSidebarMqlHandler);
+        }
+        leftSidebarMqlListenerAttached = false;
+        leftSidebarMql = null;
+        leftSidebarMqlHandler = null;
+      }
+
       function open() {
         if (dashboardWatchClearTimer) {
           clearTimeout(dashboardWatchClearTimer);
           dashboardWatchClearTimer = null;
         }
         ensureContainer();
+        closeLeftSidebarIfNeeded();
+        attachLeftSidebarMqlWatcher();
         root.render(
           <DashboardRoot
             controller={controller}
@@ -10759,6 +10844,8 @@ export default {
           disableFullPage({ restore: false });
         }
         setTopbarActive(false);
+        restoreLeftSidebarIfNeeded();
+        detachLeftSidebarMqlWatcher();
         if (dashboardWatchClearTimer) {
           clearTimeout(dashboardWatchClearTimer);
           dashboardWatchClearTimer = null;

@@ -164,12 +164,18 @@ Features:
 - Optional **full-page mode** with persistent filter sidebar
 - Metadata chips + filtering
 - Quick-add input (uses AI parsing if enabled)
+- Mobile-friendly layout (full-page with slide-in filters and sticky quick-add)
 
 ### Full-page mode
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/mlava/better-tasks/main/images/dashboard-fullpage.png" width="800" alt="Full-page dashboard"/>
 </p>
+
+Mobile note:
+- On small screens, the dashboard uses full-page layout by default
+- Filters live in a slide-in drawer (tap Filters to open)
+- Quick-add sticks to the bottom for easier reach
 
 ---
 

@@ -1187,6 +1187,16 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const initialViewAppliedRef = useRef(false);
   const defaultStatePersistTimerRef = useRef(null);
   const lastDefaultStateSigRef = useRef(null);
+  const [isNarrowLayout, setIsNarrowLayout] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+    return window.matchMedia("(max-width: 639px)").matches;
+  });
+  const isTouchDevice = !!window?.roamAlphaAPI?.platform?.isTouchDevice;
+  const isMobileApp = !!window?.roamAlphaAPI?.platform?.isMobileApp;
+  const isMobileLayout = isMobileApp || isNarrowLayout;
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const layoutChangeTimerRef = useRef(null);
+  const sidebarSwipeRef = useRef(null);
   const sortedViews = useMemo(() => {
     const views = Array.isArray(viewsStore?.views) ? viewsStore.views : [];
     const presetOrder = new Map(DASHBOARD_PRESET_IDS.map((id, idx) => [id, idx]));
@@ -1446,6 +1456,55 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
 
   const rows = useVirtualRows(groups, expandedGroups);
   const parentRef = useRef(null);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+    const mq = window.matchMedia("(max-width: 639px)");
+    const handleChange = (event) => {
+      if (layoutChangeTimerRef.current) {
+        clearTimeout(layoutChangeTimerRef.current);
+      }
+      layoutChangeTimerRef.current = setTimeout(() => {
+        layoutChangeTimerRef.current = null;
+        setIsNarrowLayout(!!event.matches);
+      }, 150);
+    };
+    setIsNarrowLayout(!!mq.matches);
+    if (typeof mq.addEventListener === "function") {
+      mq.addEventListener("change", handleChange);
+      return () => mq.removeEventListener("change", handleChange);
+    }
+    mq.addListener(handleChange);
+    return () => mq.removeListener(handleChange);
+  }, []);
+  useEffect(() => {
+    if (!layoutChangeTimerRef.current) return undefined;
+    return () => {
+      if (layoutChangeTimerRef.current) {
+        clearTimeout(layoutChangeTimerRef.current);
+        layoutChangeTimerRef.current = null;
+      }
+    };
+  }, []);
+  useEffect(() => {
+    if (!isMobileLayout) {
+      setSidebarOpen(false);
+      return;
+    }
+    if (!snapshot?.isFullPage) {
+      controller?.setDashboardFullPage?.(true);
+    }
+  }, [isMobileLayout, snapshot?.isFullPage, controller]);
+  useEffect(() => {
+    if (!isMobileLayout || !sidebarOpen) return undefined;
+    const handler = (event) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setSidebarOpen(false);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [isMobileLayout, sidebarOpen]);
   const estimateRowSize = useCallback(
     (index) => (rows[index]?.type === "group" ? 40 : 100),
     [rows]
@@ -1458,10 +1517,10 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       estimateSize: estimateRowSize,
       getItemKey: getRowKey,
       getScrollElement,
-      overscan: 8,
+      overscan: isMobileApp ? 4 : isTouchDevice ? 6 : 8,
       measureElement,
     }),
-    [rows.length, estimateRowSize, getRowKey, getScrollElement]
+    [rows.length, estimateRowSize, getRowKey, getScrollElement, isMobileApp, isTouchDevice]
   );
   const rowVirtualizer = useVirtualizer(virtualizerOptions);
 
@@ -1642,8 +1701,19 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   }, [completionOnlyIsCompleted, filters?.completedRange]);
 
   const handleRefresh = () => controller.refresh?.({ reason: "manual" });
-  const isFullPage = !!snapshot?.isFullPage;
-  const handleToggleFullPage = () => controller.toggleDashboardFullPage?.();
+  const isFullPage = !!snapshot?.isFullPage || isMobileLayout;
+  const handleToggleFullPage = useCallback(() => {
+    if (isMobileLayout) return;
+    controller.toggleDashboardFullPage?.();
+  }, [controller, isMobileLayout]);
+  const rootClasses = [
+    "bt-dashboard",
+    isTouchDevice ? "bt-touch" : "",
+    isMobileApp ? "bt-mobile-app" : "",
+    isMobileLayout ? "bt-mobile-layout" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const fullPageUiKey = useMemo(() => {
     let graphName = "default";
@@ -2062,10 +2132,46 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     );
   }
 
-  const fullPageFiltersSidebar = !sidebarCollapsed ? (
-    <aside className="bt-dashboard__sidebar" aria-label={ui.filtersLabel} style={{ width: `${sidebarWidth}px` }}>
+  const showFullPageSidebar = isMobileLayout ? sidebarOpen : !sidebarCollapsed;
+  const sidebarStyle = isMobileLayout ? undefined : { width: `${sidebarWidth}px` };
+  const handleSidebarTouchStart = (event) => {
+    if (!isMobileLayout) return;
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    sidebarSwipeRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+  const handleSidebarTouchEnd = (event) => {
+    if (!isMobileLayout || !sidebarSwipeRef.current) return;
+    const touch = event.changedTouches?.[0];
+    const start = sidebarSwipeRef.current;
+    sidebarSwipeRef.current = null;
+    if (!touch || !start) return;
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    if (deltaX < -60 && Math.abs(deltaY) < 80) {
+      setSidebarOpen(false);
+    }
+  };
+  const fullPageFiltersSidebar = showFullPageSidebar ? (
+    <aside
+      className={`bt-dashboard__sidebar${sidebarOpen ? " bt-dashboard__sidebar--open" : ""}`}
+      aria-label={ui.filtersLabel}
+      style={sidebarStyle}
+      onTouchStart={isMobileLayout ? handleSidebarTouchStart : undefined}
+      onTouchEnd={isMobileLayout ? handleSidebarTouchEnd : undefined}
+    >
       <div className="bt-sidebar__header">
         <span className="bt-sidebar__title">{ui.filtersLabel}</span>
+        {isMobileLayout ? (
+          <button
+            type="button"
+            className="bt-sidebar__close"
+            onClick={() => setSidebarOpen(false)}
+            aria-label={ui.close}
+          >
+            ✕
+          </button>
+        ) : null}
       </div>
 
       <FullPageFilterGroup groupKey="status" title={ui.filtersGroups.status}>
@@ -2202,16 +2308,18 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
 
   if (isFullPage) {
     return (
-      <div className="bt-dashboard">
+      <div className={rootClasses}>
         <header className="bt-dashboard__header" ref={headerRef}>
           <div>
             <h2>{ui.headerTitle}</h2>
             <p>{ui.headerSubtitle}</p>
           </div>
           <div className="bt-dashboard__header-actions">
-            <button type="button" className="bp3-button bp3-small" onClick={handleToggleFullPage}>
-              {isFullPage ? ui.fullPageExit : ui.fullPageEnter}
-            </button>
+            {!isMobileLayout ? (
+              <button type="button" className="bp3-button bp3-small" onClick={handleToggleFullPage}>
+                {snapshot?.isFullPage ? ui.fullPageExit : ui.fullPageEnter}
+              </button>
+            ) : null}
             <button type="button" className="bp3-button bp3-small" onClick={handleRefresh}>
               {ui.refresh}
             </button>
@@ -2287,8 +2395,21 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
         </div>
 
         <div className="bt-dashboard__main">
+          {isMobileLayout && sidebarOpen ? (
+            <div
+              className="bt-dashboard__sidebar-backdrop"
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+                setSidebarOpen(false);
+              }}
+              aria-hidden="true"
+            />
+          ) : null}
           {fullPageFiltersSidebar}
-          {!sidebarCollapsed ? (
+          {!isMobileLayout && !sidebarCollapsed ? (
             <div
               className="bt-dashboard__sidebar-resizer"
               role="separator"
@@ -2324,10 +2445,17 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                   <button
                     type="button"
                     className="bt-chip bt-chip--filters-toggle"
-                    onClick={toggleSidebarCollapsed}
+                    onClick={() => {
+                      if (isMobileLayout) {
+                        setSidebarOpen((prev) => !prev);
+                        return;
+                      }
+                      toggleSidebarCollapsed();
+                    }}
                     aria-label={ui.filtersLabel}
+                    aria-expanded={isMobileLayout ? sidebarOpen : !sidebarCollapsed}
                   >
-                    {sidebarCollapsed ? ui.filtersShow : ui.filtersHide}
+                    {isMobileLayout ? ui.filtersLabel : sidebarCollapsed ? ui.filtersShow : ui.filtersHide}
                   </button>
                 </div>
               </div>
@@ -2417,16 +2545,18 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   }
 
   return (
-    <div className="bt-dashboard">
+    <div className={rootClasses}>
       <header className="bt-dashboard__header" ref={headerRef}>
         <div>
           <h2>{ui.headerTitle}</h2>
           <p>{ui.headerSubtitle}</p>
         </div>
         <div className="bt-dashboard__header-actions">
-          <button type="button" className="bp3-button bp3-small" onClick={handleToggleFullPage}>
-            {isFullPage ? ui.fullPageExit : ui.fullPageEnter}
-          </button>
+          {!isMobileLayout ? (
+            <button type="button" className="bp3-button bp3-small" onClick={handleToggleFullPage}>
+              {snapshot?.isFullPage ? ui.fullPageExit : ui.fullPageEnter}
+            </button>
+          ) : null}
           <button type="button" className="bp3-button bp3-small" onClick={handleRefresh}>
             {ui.refresh}
           </button>
