@@ -412,22 +412,53 @@ function FilterChips({ sectionKey, label, chips, activeValues, onToggle, singleC
   );
 }
 
-function GroupHeader({ title, count, isExpanded, onToggle }) {
+function GroupHeader({
+  title,
+  count,
+  isExpanded,
+  onToggle,
+  selectionActive,
+  selectionState,
+  onToggleSelection,
+  strings,
+}) {
+  const checkboxIcon = selectionState === "all" ? "☑" : selectionState === "partial" ? "◪" : "☐";
+  const ariaChecked = selectionState === "partial" ? "mixed" : selectionState === "all";
+  const selectionLabel = selectionState === "all"
+    ? (strings?.bulk?.deselectGroup ? strings.bulk.deselectGroup(title) : `Deselect all in ${title}`)
+    : (strings?.bulk?.selectGroup ? strings.bulk.selectGroup(title) : `Select all in ${title}`);
   return (
-    <button
-      type="button"
-      className="bt-group-header"
-      onClick={onToggle}
-      aria-expanded={isExpanded}
-    >
-      <span className="bt-group-header__title">
-        <span className="bt-group-header__caret" aria-hidden="true">
-          {isExpanded ? "▾" : "▸"}
+    <div className="bt-group-header">
+      <button
+        type="button"
+        className="bt-group-header__toggle"
+        onClick={onToggle}
+        aria-expanded={isExpanded}
+      >
+        <span className="bt-group-header__title">
+          <span className="bt-group-header__caret" aria-hidden="true">
+            {isExpanded ? "▾" : "▸"}
+          </span>
+          {title}
         </span>
-        {title}
-      </span>
-      <span className="bt-group-header__count">{count}</span>
-    </button>
+      </button>
+      <div className="bt-group-header__actions">
+        {selectionActive ? (
+          <button
+            type="button"
+            className="bt-group-header__select"
+            onClick={onToggleSelection}
+            role="checkbox"
+            aria-checked={ariaChecked}
+            aria-label={selectionLabel}
+            title={selectionLabel}
+          >
+            {checkboxIcon}
+          </button>
+        ) : null}
+        <span className="bt-group-header__count">{count}</span>
+      </div>
+    </div>
   );
 }
 
@@ -985,11 +1016,14 @@ function SimpleActionsMenu({ actions, title, disabled = false }) {
   );
 }
 
-function TaskRow({ task, controller, strings }) {
+function TaskRow({ task, controller, strings, selectionActive, isSelected, onToggleSelect }) {
   const checkboxLabel = task.isCompleted
     ? strings?.markOpen || "Mark as open"
     : strings?.markDone || "Mark as done";
   const completedLabel = strings?.completedLabel || "Completed";
+  const selectLabel = isSelected
+    ? strings?.bulk?.deselectTask || "Deselect"
+    : strings?.bulk?.selectTask || "Select";
   const metaDescriptionId = useMemo(
     () => `bt-task-meta-${task.uid}`,
     [task.uid]
@@ -1035,19 +1069,40 @@ function TaskRow({ task, controller, strings }) {
       );
     }
   };
+  // When in selection mode, clicking checkbox toggles selection instead of completion
+  const handleCheckboxClick = (event) => {
+    if (selectionActive) {
+      event.stopPropagation();
+      onToggleSelect?.(task.uid, event);
+    } else {
+      controller.toggleTask(task.uid, task.isCompleted ? "undo" : "complete");
+    }
+  };
+  const rowClasses = [
+    "bt-task-row",
+    menuOpen ? "bt-task-row--menu-open" : "",
+    isSelected ? "bt-task-row--selected" : "",
+  ].filter(Boolean).join(" ");
+  // In selection mode: show selection state; otherwise show completion state
+  const checkboxIcon = selectionActive
+    ? (isSelected ? "☑" : "☐")
+    : (task.isCompleted ? "☑" : "☐");
+  const checkboxAriaLabel = selectionActive ? selectLabel : checkboxLabel;
+  const checkboxAriaChecked = selectionActive ? isSelected : task.isCompleted;
+  const checkboxClasses = selectionActive
+    ? `bt-task-row__checkbox${isSelected ? " bt-task-row__checkbox--selected" : ""}`
+    : `bt-task-row__checkbox${task.isCompleted ? " bt-task-row__checkbox--done" : ""}`;
   return (
-    <div className={`bt-task-row${menuOpen ? " bt-task-row--menu-open" : ""}`}>
+    <div className={rowClasses}>
       <button
-        className={`bt-task-row__checkbox${task.isCompleted ? " bt-task-row__checkbox--done" : ""}`}
-        onClick={() =>
-          controller.toggleTask(task.uid, task.isCompleted ? "undo" : "complete")
-        }
-        title={checkboxLabel}
-        aria-label={checkboxLabel}
+        className={checkboxClasses}
+        onClick={handleCheckboxClick}
+        title={checkboxAriaLabel}
+        aria-label={checkboxAriaLabel}
         role="checkbox"
-        aria-checked={task.isCompleted}
+        aria-checked={checkboxAriaChecked}
       >
-        {task.isCompleted ? "☑" : "☐"}
+        {checkboxIcon}
       </button>
       <div className="bt-task-row__body">
         <div className="bt-task-row__title" aria-describedby={metaDescriptionId}>
@@ -1070,7 +1125,9 @@ function TaskRow({ task, controller, strings }) {
                 </div>
               ))}
             </div>
-          <TaskActionsMenu task={task} controller={controller} onOpenChange={handleMenuOpenChange} strings={strings} />
+          {!selectionActive && (
+            <TaskActionsMenu task={task} controller={controller} onOpenChange={handleMenuOpenChange} strings={strings} />
+          )}
         </div>
         <div className="bt-task-row__context">
           {contextBits.map((bit, idx) => {
@@ -1104,43 +1161,307 @@ function TaskRow({ task, controller, strings }) {
           })}
         </div>
       </div>
-      <div className="bt-task-row__actions">
+      {!selectionActive && (
+        <div className="bt-task-row__actions">
+          <button
+            type="button"
+            className="bp3-button bp3-small"
+            onClick={() =>
+              controller.openBlock(task.uid, { skipCompletionToast: task.isCompleted })
+            }
+          >
+            {strings?.view || "View"}
+          </button>
+          {showSnooze ? (
+            <div className="bt-task-row__snooze">
+              <button
+                type="button"
+                className="bp3-button bp3-small"
+                onClick={() => controller.snoozeTask(task.uid, 1)}
+              >
+                {strings?.snoozePlus1 || "+1d"}
+              </button>
+              <button
+                type="button"
+                className="bp3-button bp3-small"
+                onClick={() => controller.snoozeTask(task.uid, 7)}
+              >
+                {strings?.snoozePlus7 || "+7d"}
+              </button>
+              <button
+                type="button"
+                className="bp3-button bp3-small"
+                onClick={() => controller.snoozeTask(task.uid, "pick")}
+              >
+                {strings?.snoozePick || "Pick"}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BulkActionBar({ selectedUids, tasks, controller, strings, onClearSelection, onCancel, isMobileLayout }) {
+  const [metaMenuOpen, setMetaMenuOpen] = useState(false);
+  const [activeSubmenu, setActiveSubmenu] = useState(null); // "priority" | "energy" | "gtd" | null
+  const metaMenuRef = useRef(null);
+
+  // Close menu when clicking outside - must be before any early returns
+  useEffect(() => {
+    if (!metaMenuOpen) return undefined;
+    const handleClick = (e) => {
+      if (metaMenuRef.current && !metaMenuRef.current.contains(e.target)) {
+        setMetaMenuOpen(false);
+        setActiveSubmenu(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [metaMenuOpen]);
+
+  if (selectedUids.size === 0) return null;
+  const count = selectedUids.size;
+  const uids = Array.from(selectedUids);
+  const bulk = strings?.bulk || {};
+  const fieldLabels = bulk.fieldLabels || {};
+  const metaValues = bulk.metaValues || {};
+
+  // Determine completion state of selected tasks
+  const selectedTasks = tasks.filter((t) => selectedUids.has(t.uid));
+  const allCompleted = selectedTasks.length > 0 && selectedTasks.every((t) => t.isCompleted);
+  const allOpen = selectedTasks.length > 0 && selectedTasks.every((t) => !t.isCompleted);
+
+  const handleBulkComplete = () => {
+    controller.bulkToggleTask?.(uids, "complete");
+    onClearSelection();
+  };
+
+  const handleBulkReopen = () => {
+    controller.bulkToggleTask?.(uids, "undo");
+    onClearSelection();
+  };
+
+  const handleBulkSnooze = (days) => {
+    controller.bulkSnoozeTask?.(uids, days);
+    onClearSelection();
+  };
+
+  const handleMetaAction = async (field) => {
+    setMetaMenuOpen(false);
+    setActiveSubmenu(null);
+    if (!controller.bulkUpdateMetadata) return;
+
+    let value = null;
+    if (field === "project") {
+      const result = await controller.promptProject?.({ initialValue: "" });
+      if (result === undefined || result === null) return;
+      value = result;
+    } else if (field === "waitingFor") {
+      const result = await controller.promptWaiting?.({ initialValue: "" });
+      if (result === undefined || result === null) return;
+      value = result;
+    } else if (field === "context") {
+      const result = await controller.promptContext?.({ initialValue: "" });
+      if (result === undefined || result === null) return;
+      value = Array.isArray(result) ? result : result ? [result] : [];
+    }
+
+    controller.bulkUpdateMetadata(uids, { [field]: value });
+    onClearSelection();
+  };
+
+  const handleMetaValueAction = (field, value) => {
+    setMetaMenuOpen(false);
+    setActiveSubmenu(null);
+    if (!controller.bulkUpdateMetadata) return;
+    controller.bulkUpdateMetadata(uids, { [field]: value });
+    onClearSelection();
+  };
+
+  const toggleSubmenu = (submenu) => {
+    setActiveSubmenu((prev) => (prev === submenu ? null : submenu));
+  };
+
+  // Submenu options
+  const priorityOptions = [
+    { value: "high", label: metaValues.priorityHigh || "High" },
+    { value: "medium", label: metaValues.priorityMedium || "Medium" },
+    { value: "low", label: metaValues.priorityLow || "Low" },
+    { value: null, label: metaValues.clear || "Clear" },
+  ];
+  const energyOptions = [
+    { value: "high", label: metaValues.energyHigh || "High" },
+    { value: "medium", label: metaValues.energyMedium || "Medium" },
+    { value: "low", label: metaValues.energyLow || "Low" },
+    { value: null, label: metaValues.clear || "Clear" },
+  ];
+  const gtdOptions = [
+    { value: "next", label: metaValues.gtdNext || "Next action" },
+    { value: "waiting", label: metaValues.gtdDelegated || "Delegated" },
+    { value: "deferred", label: metaValues.gtdDeferred || "Deferred" },
+    { value: "someday", label: metaValues.gtdSomeday || "Someday" },
+    { value: null, label: metaValues.clear || "Clear" },
+  ];
+
+  return createPortal(
+    <div className={`bt-bulk-action-bar${isMobileLayout ? " bt-bulk-action-bar--mobile" : ""}`}>
+      <span className="bt-bulk-action-bar__count">
+        {typeof bulk.selected === "function" ? bulk.selected(count) : `${count} selected`}
+      </span>
+      {!allCompleted && (
         <button
           type="button"
           className="bp3-button bp3-small"
-          onClick={() =>
-            controller.openBlock(task.uid, { skipCompletionToast: task.isCompleted })
-          }
+          onClick={handleBulkComplete}
         >
-          {strings?.view || "View"}
+          {bulk.complete || "Complete"}
         </button>
-        {showSnooze ? (
-          <div className="bt-task-row__snooze">
-            <button
-              type="button"
-              className="bp3-button bp3-small"
-              onClick={() => controller.snoozeTask(task.uid, 1)}
-            >
-              {strings?.snoozePlus1 || "+1d"}
+      )}
+      {!allOpen && (
+        <button
+          type="button"
+          className="bp3-button bp3-small"
+          onClick={handleBulkReopen}
+        >
+          {bulk.reopen || "Reopen"}
+        </button>
+      )}
+      {!allCompleted && (
+        <>
+          <button
+            type="button"
+            className="bp3-button bp3-small"
+            onClick={() => handleBulkSnooze(1)}
+          >
+            {bulk.snooze1d || "+1d"}
+          </button>
+          <button
+            type="button"
+            className="bp3-button bp3-small"
+            onClick={() => handleBulkSnooze(7)}
+          >
+            {bulk.snooze7d || "+7d"}
+          </button>
+        </>
+      )}
+      <div className="bt-bulk-action-bar__meta-wrapper" ref={metaMenuRef}>
+        <button
+          type="button"
+          className="bp3-button bp3-small"
+          onClick={() => {
+            setMetaMenuOpen((prev) => !prev);
+            setActiveSubmenu(null);
+          }}
+          aria-expanded={metaMenuOpen}
+          aria-haspopup="menu"
+        >
+          {bulk.setMetadata || "Set..."}
+        </button>
+        {metaMenuOpen && (
+          <div className="bt-bulk-meta-menu" role="menu">
+            <button type="button" role="menuitem" onClick={() => handleMetaAction("project")}>
+              {fieldLabels.project || "Project"}
             </button>
-            <button
-              type="button"
-              className="bp3-button bp3-small"
-              onClick={() => controller.snoozeTask(task.uid, 7)}
-            >
-              {strings?.snoozePlus7 || "+7d"}
+            <button type="button" role="menuitem" onClick={() => handleMetaAction("waitingFor")}>
+              {fieldLabels.waitingFor || "Waiting for"}
             </button>
-            <button
-              type="button"
-              className="bp3-button bp3-small"
-              onClick={() => controller.snoozeTask(task.uid, "pick")}
-            >
-              {strings?.snoozePick || "Pick"}
+            <button type="button" role="menuitem" onClick={() => handleMetaAction("context")}>
+              {fieldLabels.context || "Context"}
             </button>
+            <div className="bt-bulk-meta-menu__item-with-submenu">
+              <button
+                type="button"
+                role="menuitem"
+                aria-expanded={activeSubmenu === "priority"}
+                aria-haspopup="menu"
+                onClick={() => toggleSubmenu("priority")}
+              >
+                {fieldLabels.priority || "Priority"}
+                <span className="bt-bulk-meta-menu__arrow">›</span>
+              </button>
+              {activeSubmenu === "priority" && (
+                <div className="bt-bulk-meta-submenu" role="menu">
+                  {priorityOptions.map((opt) => (
+                    <button
+                      key={opt.value ?? "clear"}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => handleMetaValueAction("priority", opt.value)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="bt-bulk-meta-menu__item-with-submenu">
+              <button
+                type="button"
+                role="menuitem"
+                aria-expanded={activeSubmenu === "energy"}
+                aria-haspopup="menu"
+                onClick={() => toggleSubmenu("energy")}
+              >
+                {fieldLabels.energy || "Energy"}
+                <span className="bt-bulk-meta-menu__arrow">›</span>
+              </button>
+              {activeSubmenu === "energy" && (
+                <div className="bt-bulk-meta-submenu" role="menu">
+                  {energyOptions.map((opt) => (
+                    <button
+                      key={opt.value ?? "clear"}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => handleMetaValueAction("energy", opt.value)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="bt-bulk-meta-menu__item-with-submenu">
+              <button
+                type="button"
+                role="menuitem"
+                aria-expanded={activeSubmenu === "gtd"}
+                aria-haspopup="menu"
+                onClick={() => toggleSubmenu("gtd")}
+              >
+                {fieldLabels.gtd || "GTD"}
+                <span className="bt-bulk-meta-menu__arrow">›</span>
+              </button>
+              {activeSubmenu === "gtd" && (
+                <div className="bt-bulk-meta-submenu" role="menu">
+                  {gtdOptions.map((opt) => (
+                    <button
+                      key={opt.value ?? "clear"}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => handleMetaValueAction("gtd", opt.value)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        ) : null}
+        )}
       </div>
-    </div>
+      <button
+        type="button"
+        className="bp3-button bp3-small bp3-minimal"
+        onClick={onCancel}
+        aria-label={bulk.cancel || "Cancel"}
+        title={bulk.cancel || "Cancel"}
+      >
+        ✕
+      </button>
+    </div>,
+    document.body
   );
 }
 
@@ -1197,6 +1518,10 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const layoutChangeTimerRef = useRef(null);
   const sidebarSwipeRef = useRef(null);
+  // Bulk selection state
+  const [selectedUids, setSelectedUids] = useState(() => new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const lastSelectedUidRef = useRef(null);
   const sortedViews = useMemo(() => {
     const views = Array.isArray(viewsStore?.views) ? viewsStore.views : [];
     const presetOrder = new Map(DASHBOARD_PRESET_IDS.map((id, idx) => [id, idx]));
@@ -1523,6 +1848,69 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     [rows.length, estimateRowSize, getRowKey, getScrollElement, isMobileApp, isTouchDevice]
   );
   const rowVirtualizer = useVirtualizer(virtualizerOptions);
+
+  // Bulk selection helpers
+  const selectionActive = selectionMode || selectedUids.size > 0;
+  const toggleSelection = useCallback((uid) => {
+    setSelectedUids((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+  }, []);
+  const handleToggleSelect = useCallback(
+    (uid, event) => {
+      if (event?.shiftKey && lastSelectedUidRef.current) {
+        const taskUids = rows.filter((r) => r.type === "task").map((r) => r.task.uid);
+        const startIdx = taskUids.indexOf(lastSelectedUidRef.current);
+        const endIdx = taskUids.indexOf(uid);
+        if (startIdx !== -1 && endIdx !== -1) {
+          const [from, to] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
+          const rangeUids = taskUids.slice(from, to + 1);
+          setSelectedUids((prev) => {
+            const next = new Set(prev);
+            rangeUids.forEach((u) => next.add(u));
+            return next;
+          });
+        }
+      } else {
+        toggleSelection(uid);
+      }
+      lastSelectedUidRef.current = uid;
+    },
+    [rows, toggleSelection]
+  );
+  const selectAllVisible = useCallback(() => {
+    const visibleUids = rows.filter((r) => r.type === "task").map((r) => r.task.uid);
+    setSelectedUids(new Set(visibleUids));
+  }, [rows]);
+  const selectNone = useCallback(() => {
+    setSelectedUids(new Set());
+    // Keep selection mode active - user can continue selecting
+  }, []);
+  const cancelSelection = useCallback(() => {
+    setSelectedUids(new Set());
+    setSelectionMode(false);
+  }, []);
+  const selectGroup = useCallback((groupTasks) => {
+    if (!Array.isArray(groupTasks) || !groupTasks.length) return;
+    setSelectedUids((prev) => {
+      const next = new Set(prev);
+      const allSelected = groupTasks.every((task) => next.has(task.uid));
+      if (allSelected) {
+        groupTasks.forEach((task) => next.delete(task.uid));
+      } else {
+        groupTasks.forEach((task) => next.add(task.uid));
+      }
+      return next;
+    });
+  }, []);
+  // Clear selection when filters, grouping, query, or view changes
+  useEffect(() => {
+    setSelectedUids(new Set());
+    lastSelectedUidRef.current = null;
+  }, [filters, grouping, query, viewsStore?.activeViewId]);
 
   const handleFilterToggle = (section, value, singleChoice = false) => {
     dispatchFilters({ type: singleChoice ? "toggleSingle" : "toggle", section, value });
@@ -2457,6 +2845,32 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                   >
                     {isMobileLayout ? ui.filtersLabel : sidebarCollapsed ? ui.filtersShow : ui.filtersHide}
                   </button>
+                  <span className="bt-toolbar-divider" aria-hidden="true" />
+                  <button
+                    type="button"
+                    className={`bt-chip${selectionMode ? " bt-chip--active" : ""}`}
+                    onClick={() => {
+                      if (selectionMode) {
+                        setSelectionMode(false);
+                        setSelectedUids(new Set());
+                      } else {
+                        setSelectionMode(true);
+                      }
+                    }}
+                    aria-pressed={selectionMode}
+                  >
+                    {ui.bulk?.select || "Bulk"}
+                  </button>
+                  {selectionActive ? (
+                    <>
+                      <button type="button" className="bt-chip" onClick={selectAllVisible}>
+                        {ui.bulk?.selectAll || "All"}
+                      </button>
+                      <button type="button" className="bt-chip" onClick={selectNone}>
+                        {ui.bulk?.selectNone || "Clear"}
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -2507,6 +2921,16 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                   };
                   if (row.type === "group") {
                     const expanded = expandedGroups[row.group.id] !== false;
+                    const groupTasks = row.group.items || [];
+                    const selectedCount = groupTasks.reduce(
+                      (acc, task) => (selectedUids.has(task.uid) ? acc + 1 : acc),
+                      0
+                    );
+                    const selectionState = selectedCount === 0
+                      ? "none"
+                      : selectedCount === groupTasks.length
+                        ? "all"
+                        : "partial";
                     return (
                       <div style={style} key={row.key} data-index={virtualRow.index} ref={rowVirtualizer.measureElement}>
                         <GroupHeader
@@ -2519,13 +2943,24 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                               [row.group.id]: !expanded,
                             }))
                           }
+                          selectionActive={selectionActive}
+                          selectionState={selectionState}
+                          onToggleSelection={() => selectGroup(groupTasks)}
+                          strings={ui}
                         />
                       </div>
                     );
                   }
                   return (
                     <div style={style} key={row.key} data-index={virtualRow.index} ref={rowVirtualizer.measureElement}>
-                      <TaskRow task={row.task} controller={controller} strings={ui} />
+                      <TaskRow
+                        task={row.task}
+                        controller={controller}
+                        strings={ui}
+                        selectionActive={selectionActive}
+                        isSelected={selectedUids.has(row.task.uid)}
+                        onToggleSelect={handleToggleSelect}
+                      />
                     </div>
                   );
                 })}
@@ -2540,6 +2975,15 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             <footer className="bt-dashboard__footer"></footer>
           </div>
         </div>
+        <BulkActionBar
+          selectedUids={selectedUids}
+          tasks={snapshot.tasks}
+          controller={controller}
+          strings={ui}
+          onClearSelection={selectNone}
+          onCancel={cancelSelection}
+          isMobileLayout={isMobileLayout}
+        />
       </div>
     );
   }
@@ -2645,17 +3089,21 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             onChange={(e) => setQuery(e.target.value)}
           />
           <div className="bt-grouping">
-            <span className="bt-grouping__label">{ui.groupByLabel}</span>
-            {ui.groupingOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={`bt-chip${grouping === option.value ? " bt-chip--active" : ""}`}
-                onClick={() => setGrouping(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
+            {!selectionActive && (
+              <>
+                <span className="bt-grouping__label">{ui.groupByLabel}</span>
+                {ui.groupingOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`bt-chip${grouping === option.value ? " bt-chip--active" : ""}`}
+                    onClick={() => setGrouping(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </>
+            )}
             <button
               type="button"
               className={`bt-chip${filtersOpen ? " bt-chip--active" : ""}`}
@@ -2665,6 +3113,32 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             >
               <span className="bp3-icon bp3-icon-filter" aria-hidden="true" />
             </button>
+            <span className="bt-toolbar-divider" aria-hidden="true" />
+            <button
+              type="button"
+              className={`bt-chip${selectionMode ? " bt-chip--active" : ""}`}
+              onClick={() => {
+                if (selectionMode) {
+                  setSelectionMode(false);
+                  setSelectedUids(new Set());
+                } else {
+                  setSelectionMode(true);
+                }
+              }}
+              aria-pressed={selectionMode}
+            >
+              {ui.bulk?.select || "Bulk"}
+            </button>
+            {selectionActive ? (
+              <>
+                <button type="button" className="bt-chip" onClick={selectAllVisible}>
+                  {ui.bulk?.selectAll || "All"}
+                </button>
+                <button type="button" className="bt-chip" onClick={selectNone}>
+                  {ui.bulk?.selectNone || "Clear"}
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
@@ -2842,6 +3316,16 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             };
             if (row.type === "group") {
               const expanded = expandedGroups[row.group.id] !== false;
+              const groupTasks = row.group.items || [];
+              const selectedCount = groupTasks.reduce(
+                (acc, task) => (selectedUids.has(task.uid) ? acc + 1 : acc),
+                0
+              );
+              const selectionState = selectedCount === 0
+                ? "none"
+                : selectedCount === groupTasks.length
+                  ? "all"
+                  : "partial";
               return (
                 <div
                   style={style}
@@ -2859,6 +3343,10 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                         [row.group.id]: !expanded,
                       }))
                     }
+                    selectionActive={selectionActive}
+                    selectionState={selectionState}
+                    onToggleSelection={() => selectGroup(groupTasks)}
+                    strings={ui}
                   />
                 </div>
               );
@@ -2870,7 +3358,14 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                 data-index={virtualRow.index}
                 ref={rowVirtualizer.measureElement}
               >
-                <TaskRow task={row.task} controller={controller} strings={ui} />
+                <TaskRow
+                  task={row.task}
+                  controller={controller}
+                  strings={ui}
+                  selectionActive={selectionActive}
+                  isSelected={selectedUids.has(row.task.uid)}
+                  onToggleSelect={handleToggleSelect}
+                />
               </div>
             );
           })}
@@ -2885,6 +3380,15 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       <footer className="bt-dashboard__footer">
 
       </footer>
+      <BulkActionBar
+        selectedUids={selectedUids}
+        tasks={snapshot.tasks}
+        controller={controller}
+        strings={ui}
+        onClearSelection={selectNone}
+        onCancel={cancelSelection}
+        isMobileLayout={isMobileLayout}
+      />
     </div>
   );
 }

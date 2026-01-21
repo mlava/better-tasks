@@ -160,8 +160,11 @@ const MAX_BLOCKS_FOR_PILLS = 1500;
 const pillSkipDecorate = new Set();
 const INLINE_META_CACHE_TTL_MS = 10 * 60 * 1000;
 const INLINE_META_CACHE_MAX = 5000;
-const TODAY_WIDGET_ENABLED = true; // temporary kill switch 
+const TODAY_WIDGET_ENABLED = true; // temporary kill switch
 const DEBUG_BT_PERF = false;
+let bulkOperationInProgress = false; // Suppress individual toasts during bulk operations
+let bulkOperationCooldownTimer = null; // Keep toast suppression active briefly after bulk op ends
+const BULK_OPERATION_COOLDOWN_MS = 1500; // Time to keep suppressing toasts after bulk op
 const DASHBOARD_NOTIFY_BATCH_SIZE = 25;
 const DASHBOARD_NOTIFY_DEBOUNCE_MS = 250;
 let dashboardNotifyQueue = new Set();
@@ -3657,11 +3660,13 @@ export default {
         if (!text) continue;
         const m = text.match(ATTR_RE);
         if (m) {
-          const key = m[1].trim().toLowerCase();
+          const originalKey = m[1].trim();
+          const key = originalKey.toLowerCase();
           if (!(key in out)) {
             out[key] = {
               value: m[2].trim(),
               uid: child?.uid || null,
+              originalKey: originalKey,
             };
           }
           if (repeatAliases.has(key) && out.repeat == null) {
@@ -7283,6 +7288,13 @@ export default {
     async function ensureAdvancePreference(uid, block, meta, set, checkbox) {
       const existing = normalizeAdvanceValue(meta.advanceFrom);
       if (existing) return existing;
+      // In bulk mode, default to "due" without prompting to avoid multiple dialogs
+      if (bulkOperationInProgress) {
+        const defaultChoice = "due";
+        await ensureAdvanceChildAttr(uid, defaultChoice, meta, set.attrNames);
+        meta.advanceFrom = defaultChoice;
+        return defaultChoice;
+      }
       const choice = await promptAdvanceModeSelection(meta, set);
       if (!choice) {
         await revertBlockCompletion(block);
@@ -9661,7 +9673,9 @@ export default {
       if (!isValidDateValue(meta.start)) {
         await relocateBlockForPlacement(block, meta, set);
       }
-      toast(options.toastMessage || `Snoozed to [[${formatRoamDateTitle(targetDate)}]]`);
+      if (!bulkOperationInProgress) {
+        toast(options.toastMessage || `Snoozed to [[${formatRoamDateTitle(targetDate)}]]`);
+      }
       void syncPillsForSurface(lastAttrSurface);
     }
 
@@ -9847,7 +9861,9 @@ export default {
           ? applyOffsetToDate(nextDue, meta.defer.getTime() - meta.due.getTime())
           : null;
       const anchor = pickPlacementDate({ start: nextStart, defer: nextDefer, due: nextDue }) || nextDue;
-      toast(`Next occurrence created (${formatRoamDateTitle(anchor)})`);
+      if (!bulkOperationInProgress) {
+        toast(`Next occurrence created (${formatRoamDateTitle(anchor)})`);
+      }
       void syncPillsForSurface(lastAttrSurface);
       return newUid;
     }
@@ -10328,6 +10344,9 @@ export default {
         quickAdd,
         toggleTask,
         snoozeTask,
+        bulkToggleTask,
+        bulkSnoozeTask,
+        bulkUpdateMetadata,
         openBlock,
         openPage,
         notifyBlockChange,
@@ -10965,6 +10984,399 @@ export default {
         requestTodayWidgetRenderOnDnp(120, true);
       }
 
+      // ────────────────────────────────────────────────────────────────────────
+      // Bulk Operations
+      // ────────────────────────────────────────────────────────────────────────
+
+      async function readTaskMetadataFromBlock(uid, set) {
+        const block = await getBlock(uid);
+        if (!block) return null;
+        const children = block.children || [];
+        const childAttrMap = parseAttrsFromChildBlocks(children);
+        const attrNames = set.attrNames;
+        // Read defer date (capture both value and original key for case preservation)
+        const deferChild = pickChildAttr(childAttrMap, attrNames.deferAliases, { allowFallback: false });
+        const deferText = deferChild?.value || null;
+        const deferOriginalKey = deferChild?.originalKey || null;
+        // Read due date (capture both value and original key for case preservation)
+        const dueChild = pickChildAttr(childAttrMap, attrNames.dueAliases, { allowFallback: false });
+        const dueText = dueChild?.value || null;
+        const dueOriginalKey = dueChild?.originalKey || null;
+        // Read rich metadata
+        const richMeta = parseRichMetadata(childAttrMap, attrNames);
+        return {
+          deferText,
+          deferOriginalKey,
+          dueText,
+          dueOriginalKey,
+          project: richMeta.project,
+          waitingFor: richMeta.waitingFor,
+          context: richMeta.context,
+          priority: richMeta.priority,
+          energy: richMeta.energy,
+          gtd: richMeta.gtd,
+        };
+      }
+
+      async function bulkToggleTask(uids, action) {
+        if (!Array.isArray(uids) || !uids.length) return;
+        // Clear any prior cooldown to prevent race with consecutive bulk ops
+        if (bulkOperationCooldownTimer) {
+          clearTimeout(bulkOperationCooldownTimer);
+          bulkOperationCooldownTimer = null;
+        }
+        bulkOperationInProgress = true;
+        try {
+          const previousStates = [];
+          // Capture previous states for undo
+          for (const uid of uids) {
+            try {
+              const block = await getBlock(uid);
+              const wasCompleted = isBlockCompleted(block);
+              previousStates.push({ uid, wasCompleted });
+            } catch (err) {
+              previousStates.push({ uid, wasCompleted: false });
+            }
+          }
+          // Apply action
+          const errors = [];
+          for (const uid of uids) {
+            try {
+              if (action === "complete") {
+                await setTaskTodoState(uid, "DONE");
+              } else {
+                await setTaskTodoState(uid, "TODO");
+                await undoTaskCompletion(uid);
+              }
+            } catch (err) {
+              errors.push({ uid, err });
+            }
+          }
+          // Show undo toast
+          const successCount = uids.length - errors.length;
+          const lang = getLanguageSetting();
+          const bulkStrings = t(["dashboard", "bulk"], lang) || {};
+          const msg = action === "complete"
+            ? (typeof bulkStrings.completedCount === "function"
+                ? bulkStrings.completedCount(successCount)
+                : `Completed ${successCount} task${successCount === 1 ? "" : "s"}`)
+            : (typeof bulkStrings.reopenedCount === "function"
+                ? bulkStrings.reopenedCount(successCount)
+                : `Reopened ${successCount} task${successCount === 1 ? "" : "s"}`);
+          showBulkUndoToast({
+            message: msg,
+            undo: async () => {
+              // Clear any prior cooldown to prevent race
+              if (bulkOperationCooldownTimer) {
+                clearTimeout(bulkOperationCooldownTimer);
+                bulkOperationCooldownTimer = null;
+              }
+              bulkOperationInProgress = true;
+              try {
+                for (const { uid, wasCompleted } of previousStates) {
+                  try {
+                    if (wasCompleted) {
+                      await setTaskTodoState(uid, "DONE");
+                    } else {
+                      await setTaskTodoState(uid, "TODO");
+                      await undoTaskCompletion(uid);
+                    }
+                  } catch (err) {
+                    console.warn("[BetterTasks] bulk undo item failed", uid, err);
+                  }
+                }
+                await refresh({ reason: "force" });
+                requestTodayWidgetRenderOnDnp(120, true);
+              } finally {
+                // Keep suppression active briefly to catch async pull watch callbacks
+                if (bulkOperationCooldownTimer) clearTimeout(bulkOperationCooldownTimer);
+                bulkOperationCooldownTimer = setTimeout(() => {
+                  bulkOperationInProgress = false;
+                  bulkOperationCooldownTimer = null;
+                }, BULK_OPERATION_COOLDOWN_MS);
+              }
+            },
+          });
+          await refresh({ reason: "force" });
+          requestTodayWidgetRenderOnDnp(120, true);
+        } finally {
+          // Keep toast suppression active briefly to catch async completion handlers
+          if (bulkOperationCooldownTimer) clearTimeout(bulkOperationCooldownTimer);
+          bulkOperationCooldownTimer = setTimeout(() => {
+            bulkOperationInProgress = false;
+            bulkOperationCooldownTimer = null;
+          }, BULK_OPERATION_COOLDOWN_MS);
+        }
+      }
+
+      async function bulkSnoozeTask(uids, days) {
+        if (!Array.isArray(uids) || !uids.length) return;
+        if (typeof days !== "number") return;
+        // Clear any prior cooldown to prevent race with consecutive bulk ops
+        if (bulkOperationCooldownTimer) {
+          clearTimeout(bulkOperationCooldownTimer);
+          bulkOperationCooldownTimer = null;
+        }
+        bulkOperationInProgress = true;
+        try {
+          const set = S();
+          const attrNames = set.attrNames;
+          const previousStates = [];
+          // Capture previous defer and due dates for undo (snooze can shift both when they're equal)
+          // Also capture original keys to preserve case (e.g., BT_attrDefer vs bt_attrdefer)
+          for (const uid of uids) {
+            try {
+              const meta = await readTaskMetadataFromBlock(uid, set);
+              previousStates.push({
+                uid,
+                previousDefer: meta?.deferText || null,
+                deferKey: meta?.deferOriginalKey || attrNames.deferKey,
+                previousDue: meta?.dueText || null,
+                dueKey: meta?.dueOriginalKey || attrNames.dueKey,
+              });
+            } catch (err) {
+              previousStates.push({
+                uid,
+                previousDefer: null,
+                deferKey: attrNames.deferKey,
+                previousDue: null,
+                dueKey: attrNames.dueKey,
+              });
+            }
+          }
+          // Apply snooze
+          const errors = [];
+          for (const uid of uids) {
+            try {
+              await snoozeDeferByDays(uid, set, days);
+            } catch (err) {
+              errors.push({ uid, err });
+            }
+          }
+          // Show undo toast
+          const successCount = uids.length - errors.length;
+          const lang = getLanguageSetting();
+          const bulkStrings = t(["dashboard", "bulk"], lang) || {};
+          const msg = typeof bulkStrings.snoozedCount === "function"
+            ? bulkStrings.snoozedCount(successCount, days)
+            : `Snoozed ${successCount} task${successCount === 1 ? "" : "s"} by ${days} day${days === 1 ? "" : "s"}`;
+          showBulkUndoToast({
+            message: msg,
+            undo: async () => {
+              // Clear any prior cooldown to prevent race
+              if (bulkOperationCooldownTimer) {
+                clearTimeout(bulkOperationCooldownTimer);
+                bulkOperationCooldownTimer = null;
+              }
+              bulkOperationInProgress = true;
+              try {
+                for (const { uid, previousDefer, deferKey, previousDue, dueKey } of previousStates) {
+                  try {
+                    // Restore defer date using original key to preserve case
+                    if (previousDefer) {
+                      await ensureChildAttr(uid, deferKey, previousDefer);
+                    } else {
+                      // Remove defer using all known aliases to catch any casing variant
+                      await removeChildAttrsForType(uid, "defer", attrNames);
+                    }
+                    // Restore due date using original key to preserve case (snooze may have shifted it)
+                    if (previousDue) {
+                      await ensureChildAttr(uid, dueKey, previousDue);
+                    }
+                    // Note: we don't remove due if it was null before, since snooze only shifts existing due dates
+                  } catch (err) {
+                    console.warn("[BetterTasks] bulk snooze undo item failed", uid, err);
+                  }
+                }
+                await refresh({ reason: "force" });
+                requestTodayWidgetRenderOnDnp(120, true);
+              } finally {
+                // Keep suppression active briefly to catch async pull watch callbacks
+                if (bulkOperationCooldownTimer) clearTimeout(bulkOperationCooldownTimer);
+                bulkOperationCooldownTimer = setTimeout(() => {
+                  bulkOperationInProgress = false;
+                  bulkOperationCooldownTimer = null;
+                }, BULK_OPERATION_COOLDOWN_MS);
+              }
+            },
+          });
+          await refresh({ reason: "force" });
+          requestTodayWidgetRenderOnDnp(120, true);
+        } finally {
+          // Keep toast suppression active briefly to catch async handlers
+          if (bulkOperationCooldownTimer) clearTimeout(bulkOperationCooldownTimer);
+          bulkOperationCooldownTimer = setTimeout(() => {
+            bulkOperationInProgress = false;
+            bulkOperationCooldownTimer = null;
+          }, BULK_OPERATION_COOLDOWN_MS);
+        }
+      }
+
+      async function bulkUpdateMetadata(uids, patch) {
+        if (!Array.isArray(uids) || !uids.length || !patch) return;
+        // Clear any prior cooldown to prevent race with consecutive bulk ops
+        if (bulkOperationCooldownTimer) {
+          clearTimeout(bulkOperationCooldownTimer);
+          bulkOperationCooldownTimer = null;
+        }
+        bulkOperationInProgress = true;
+        try {
+          const set = S();
+          const attrNames = set.attrNames;
+          const field = Object.keys(patch)[0];
+          if (!field) return;
+          const previousStates = [];
+          // Capture previous values for undo
+          for (const uid of uids) {
+            try {
+              const meta = await readTaskMetadataFromBlock(uid, set);
+              previousStates.push({ uid, previousValue: meta?.[field] || null });
+            } catch (err) {
+              previousStates.push({ uid, previousValue: null });
+            }
+          }
+          // Apply patch
+          const errors = [];
+          for (const uid of uids) {
+            try {
+              if (field === "project") {
+                await setRichAttribute(uid, "project", patch.project, attrNames);
+              } else if (field === "waitingFor") {
+                await setRichAttribute(uid, "waitingFor", patch.waitingFor, attrNames);
+              } else if (field === "context") {
+                const ctxArr = Array.isArray(patch.context) ? patch.context : [];
+                await setRichAttribute(uid, "context", ctxArr, attrNames);
+              } else if (field === "priority") {
+                await setRichAttribute(uid, "priority", patch.priority, attrNames);
+              } else if (field === "energy") {
+                await setRichAttribute(uid, "energy", patch.energy, attrNames);
+              } else if (field === "gtd") {
+                await setRichAttribute(uid, "gtd", patch.gtd, attrNames);
+              }
+            } catch (err) {
+              errors.push({ uid, err });
+            }
+          }
+          // Show undo toast
+          const successCount = uids.length - errors.length;
+          const lang = getLanguageSetting();
+          const bulkStrings = t(["dashboard", "bulk"], lang) || {};
+          const fieldLabel = bulkStrings.fieldLabels?.[field] || field;
+          const msg = typeof bulkStrings.updatedCount === "function"
+            ? bulkStrings.updatedCount(fieldLabel, successCount)
+            : `Updated ${fieldLabel} on ${successCount} task${successCount === 1 ? "" : "s"}`;
+          showBulkUndoToast({
+            message: msg,
+            undo: async () => {
+              // Clear any prior cooldown to prevent race
+              if (bulkOperationCooldownTimer) {
+                clearTimeout(bulkOperationCooldownTimer);
+                bulkOperationCooldownTimer = null;
+              }
+              bulkOperationInProgress = true;
+              try {
+                for (const { uid, previousValue } of previousStates) {
+                  try {
+                    if (field === "project") {
+                      await setRichAttribute(uid, "project", previousValue, attrNames);
+                    } else if (field === "waitingFor") {
+                      await setRichAttribute(uid, "waitingFor", previousValue, attrNames);
+                    } else if (field === "context") {
+                      const ctxArr = Array.isArray(previousValue) ? previousValue : [];
+                      await setRichAttribute(uid, "context", ctxArr, attrNames);
+                    } else if (field === "priority") {
+                      await setRichAttribute(uid, "priority", previousValue, attrNames);
+                    } else if (field === "energy") {
+                      await setRichAttribute(uid, "energy", previousValue, attrNames);
+                    } else if (field === "gtd") {
+                      await setRichAttribute(uid, "gtd", previousValue, attrNames);
+                    }
+                  } catch (err) {
+                    console.warn("[BetterTasks] bulk metadata undo item failed", uid, err);
+                  }
+                }
+                await refresh({ reason: "force" });
+                requestTodayWidgetRenderOnDnp(120, true);
+              } finally {
+                // Keep suppression active briefly to catch async pull watch callbacks
+                if (bulkOperationCooldownTimer) clearTimeout(bulkOperationCooldownTimer);
+                bulkOperationCooldownTimer = setTimeout(() => {
+                  bulkOperationInProgress = false;
+                  bulkOperationCooldownTimer = null;
+                }, BULK_OPERATION_COOLDOWN_MS);
+              }
+            },
+          });
+          await refresh({ reason: "force" });
+          requestTodayWidgetRenderOnDnp(120, true);
+        } finally {
+          // Keep toast suppression active briefly to catch async handlers
+          if (bulkOperationCooldownTimer) clearTimeout(bulkOperationCooldownTimer);
+          bulkOperationCooldownTimer = setTimeout(() => {
+            bulkOperationInProgress = false;
+            bulkOperationCooldownTimer = null;
+          }, BULK_OPERATION_COOLDOWN_MS);
+        }
+      }
+
+      function showBulkUndoToast({ message, undo }) {
+        const lang = getLanguageSetting();
+        const bulkStrings = t(["dashboard", "bulk"], lang) || {};
+        iziToast.show({
+          theme: "light",
+          color: "black",
+          class: "betterTasks bt-toast-undo",
+          position: "center",
+          message: message,
+          timeout: 6000,
+          close: true,
+          closeOnClick: false,
+          buttons: [
+            [
+              `<button>${escapeHtml(bulkStrings.undo || "Undo")}</button>`,
+              async (instance, toastEl) => {
+                instance.hide({ transitionOut: "fadeOut" }, toastEl, "button");
+                try {
+                  await undo();
+                  iziToast.show({
+                    theme: "light",
+                    color: "black",
+                    class: "betterTasks bt-toast-info",
+                    message: bulkStrings.undoSuccess || "Changes undone",
+                    position: "center",
+                    timeout: 2000,
+                    close: false,
+                    closeOnClick: true,
+                    onOpening: (_instance, toastEl) => {
+                      applyToastA11y(toastEl);
+                    },
+                  });
+                } catch (err) {
+                  console.error("[BetterTasks] bulk undo failed", err);
+                  iziToast.show({
+                    theme: "light",
+                    color: "black",
+                    class: "betterTasks bt-toast-info",
+                    message: bulkStrings.undoFailed || "Undo failed",
+                    position: "center",
+                    timeout: 3000,
+                    close: false,
+                    closeOnClick: true,
+                    onOpening: (_instance, toastEl) => {
+                      applyToastA11y(toastEl);
+                    },
+                  });
+                }
+              },
+              true,
+            ],
+          ],
+          onOpening: (_instance, toastEl) => {
+            applyToastA11y(toastEl);
+          },
+        });
+      }
+
       function removeTask(uid) {
         if (!uid) return;
         removeDashboardWatch(uid);
@@ -11017,6 +11429,9 @@ export default {
 
       async function notifyBlockChange(uid, options = {}) {
         if (!uid) return;
+        // Skip individual block change notifications during bulk operations
+        // to avoid stale intermediate states from Roam's pull watchers
+        if (bulkOperationInProgress) return;
         try {
           const set = S();
           const block = await getBlock(uid);

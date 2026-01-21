@@ -29,13 +29,15 @@ If you use TODOs in Roam, Better Tasks gives you:
 - **Start / Defer / Due** dates for scheduled one-off tasks
 - **Inline pills** for fast editing, snoozing, and jumping to DNPs
 - A **dashboard** for review & triage, **saved views**, and **weekly review presets**
-- Optional **Today widget** (on today’s DNP) and **Today badge** (left sidebar)
+- **Bulk operations** to complete, snooze, or update metadata across multiple tasks
+- Optional **Today widget** (on today's DNP) and **Today badge** (left sidebar)
 - Optional metadata: **Project, Context, Waiting-for, GTD, Priority, Energy**
 
 ---
 
 ## ✅ Recent updates
 
+- **Bulk operations:** multi-select tasks in the dashboard for batch complete, snooze, and metadata updates
 - Faster and safer rendering: pill throttling, block caching, and picklist refresh optimisations
 - More resilient storage: filter versioning, cache TTLs, and attribute alias fallbacks
 - Better UX: improved focus styles, ARIA labels, and toast announcements
@@ -176,6 +178,39 @@ Mobile note:
 - On small screens, the dashboard uses full-page layout by default
 - Filters live in a slide-in drawer (tap Filters to open)
 - Quick-add sticks to the bottom for easier reach
+
+### Bulk operations
+
+Apply changes to multiple tasks at once from the dashboard.
+
+**Entering bulk mode:**
+- Click the **Bulk** button in the toolbar to enter selection mode
+- Individual task action buttons hide to provide a focused selection experience
+- In floating mode, grouping controls temporarily hide to save toolbar space
+
+**Selecting tasks:**
+- Click checkboxes to select individual tasks
+- **Shift+Click** to select a range (click one task, then Shift+Click another to select all between)
+- Use the group header checkbox to select or clear all tasks in that group
+- Use **Select All** to select all visible tasks, or **Clear** to deselect
+
+**Available actions:**
+| Action | Description |
+|------|-------------|
+| Complete | Mark all selected tasks as done |
+| Reopen | Revert completed tasks to open |
+| Snooze +1d | Defer task 1 day |
+| Snooze +7d | Defer task 7 days |
+| Project | Set project from picklist |
+| Waiting For | Set waiting-for from picklist |
+| Context | Set context from picklist |
+| Priority | Set to low / medium / high / clear |
+| Energy | Set to low / medium / high / clear |
+| GTD | Set to Next Action / Delegated / Deferred / Someday / clear |
+
+All bulk actions support **Undo** via the toast notification.
+
+**Tip:** Set up your view first (filters, grouping) before entering bulk mode — this lets you target exactly the tasks you want to update.
 
 ---
 

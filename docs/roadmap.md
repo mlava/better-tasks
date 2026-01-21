@@ -134,7 +134,7 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - Optional auto-complete parent when all children done
 - Dashboard expand/collapse for subtask trees
 
-### Bulk Operations
+### Bulk Operations - Complete
 - Multi-select in dashboard (checkboxes, shift-click)
 - Bulk complete/snooze/edit metadata
 - "Select all visible" / "Select all in group"
@@ -185,6 +185,7 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - c to complete, s to snooze
 - / to search
 - Customizable bindings
+- Bulk action bar/menu navigation (including metadata submenus)
 
 ### Task Templates
 - Save task configurations as templates
