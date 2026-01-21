@@ -41,7 +41,7 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - First-day-of-week setting
 - Add/remove attributes from dashboard menu
 - Saved views (create/update/rename/delete custom filter combinations)
-- 5 preset views (Next Actions, Waiting For, Completed Last 7 Days, Someday/Maybe, All Open)
+- Preset views (Next Actions, Waiting For, Completed Last 7 Days, Upcoming Next 7 Days, Overdue, Someday/Maybe, All Open)
 - AI-assisted quick capture (experimental, BYO OpenAI key)
   - Phase 4 provides AI-assisted capture (optional); Phase 8 introduces local-first parsing so capture works without AI.
 - Adaptive light/dark theming
@@ -112,6 +112,8 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 #### Reviews
 - Guided Weekly Review workflow
 - Preset views for GTD workflows (Next Actions, Waiting For, Someday/Maybe)
+- Additional review presets (Completed Last 7 Days, Upcoming Next 7 Days, Overdue)
+- Weekly Review step toggles (fixed order, per-step enable/disable)
 
 ---
 
@@ -168,10 +170,10 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 
 ### Expanded Reviews
 - Daily review: What's due today? Yesterday's completions
-- Weekly review: Process inbox, review projects, plan week
 - Monthly review: Archive completed, review someday/maybe
 - Review history and completion stats
 - "Stalled tasks" detection and preset view
+- Project sweep (per-project review flow)
 
 ### Notes & Activity Log
 - `notes::` attribute or dedicated child blocks

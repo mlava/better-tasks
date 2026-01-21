@@ -7780,14 +7780,28 @@ export default {
     }
 
     function getLanguageSetting(override = null) {
-      const candidates = [
-        override,
-        currentLanguage,
-        extensionAPI?.settings?.get?.(LANGUAGE_SETTING),
-      ];
+      const normalizeLanguageValue = (raw) => {
+        let val = normalizeTodaySettingValue(raw);
+        if (val && typeof val === "object" && "value" in val) {
+          val = val.value;
+        }
+        if (typeof val !== "string") return null;
+        const cleaned = val.trim();
+        if (!cleaned) return null;
+        const lower = cleaned.toLowerCase();
+        if (lower === "zh-hant" || lower === "zh_hant" || lower === "zh-tw" || lower === "zh-hk") {
+          return "zhHant";
+        }
+        if (lower === "zh-hans" || lower === "zh_hans" || lower === "zh-cn") {
+          return "zh";
+        }
+        return cleaned;
+      };
+      const candidates = [override, extensionAPI?.settings?.get?.(LANGUAGE_SETTING), currentLanguage];
       for (const raw of candidates) {
-        if ((typeof raw === "string" && SUPPORTED_LANGUAGES.includes(raw)) || SUPPORTED_LANGUAGES.includes(raw)) {
-          currentLanguage = raw;
+        const normalized = normalizeLanguageValue(raw);
+        if (normalized && SUPPORTED_LANGUAGES.includes(normalized)) {
+          currentLanguage = normalized;
           return currentLanguage;
         }
       }
@@ -7997,8 +8011,12 @@ export default {
     }
 
     function handleLanguageChange(nextValue = null) {
-      if (typeof nextValue === "string" && SUPPORTED_LANGUAGES.includes(nextValue)) {
-        currentLanguage = nextValue;
+      const raw =
+        nextValue?.value ??
+        nextValue?.target?.value ??
+        nextValue;
+      if (typeof raw === "string" && SUPPORTED_LANGUAGES.includes(raw)) {
+        currentLanguage = raw;
       } else {
         currentLanguage = getLanguageSetting();
       }
