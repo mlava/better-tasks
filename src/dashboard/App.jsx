@@ -19,6 +19,7 @@ import {
   setActiveView,
   setLastDefaultState,
   DASHBOARD_PRESET_IDS,
+  DASHBOARD_REVIEW_PRESET_IDS,
 } from "./viewsStore";
 
 function resolvePath(obj, parts = []) {
@@ -238,7 +239,7 @@ function applyFilters(tasks, filters, query) {
   const deferFilter = new Set(filters.Defer || filters.defer || []);
   const dueFilter = new Set(filters.Due || filters.due || []);
   const dueArr = Array.from(dueFilter);
-  const upcomingOnly = dueArr.length === 1 && dueArr[0] === "upcoming";
+  const dueIncludesUpcoming = dueArr.includes("upcoming");
   const completionFilter = new Set(filters.Completion || filters.completion || []);
   const completionArr = Array.from(completionFilter);
   const completedOnly = completionArr.length === 1 && completionArr[0] === "completed";
@@ -291,7 +292,7 @@ function applyFilters(tasks, filters, query) {
     if (startFilter.size && !startFilter.has(task.startBucket)) return false;
     if (deferFilter.size && !deferFilter.has(task.deferBucket)) return false;
     if (dueFilter.size && !dueFilter.has(task.dueBucket)) return false;
-    if (upcomingOnly && upcomingRange !== "any") {
+    if (dueIncludesUpcoming && upcomingRange !== "any" && task.dueBucket === "upcoming") {
       if (!isWithinUpcomingRange(task.dueAt, upcomingRange)) return false;
     }
     const meta = task.metadata || {};
@@ -1569,7 +1570,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     return (viewsStore?.views || []).find((v) => v.id === id) || null;
   }, [viewsStore]);
   const effectiveReviewIds = useMemo(() => {
-    const ids = Array.isArray(DASHBOARD_PRESET_IDS) ? DASHBOARD_PRESET_IDS : [];
+    const ids = Array.isArray(DASHBOARD_REVIEW_PRESET_IDS) ? DASHBOARD_REVIEW_PRESET_IDS : [];
     const existing = new Set((viewsStore?.views || []).map((v) => v.id));
     return ids.filter((id) => existing.has(id));
   }, [viewsStore]);
@@ -2107,9 +2108,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     const list = Array.isArray(filters?.Completion) ? filters.Completion : [];
     return list.length === 1 && list[0] === "completed";
   }, [filters]);
-  const upcomingOnlyIsUpcoming = useMemo(() => {
+  const dueIncludesUpcomingMemo = useMemo(() => {
     const list = Array.isArray(filters?.Due) ? filters.Due : [];
-    return list.length === 1 && list[0] === "upcoming";
+    return list.includes("upcoming");
   }, [filters]);
 
   useEffect(() => {
@@ -2118,10 +2119,10 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     dispatchFilters({ type: "setText", section: "completedRange", value: "any" });
   }, [completionOnlyIsCompleted, filters?.completedRange]);
   useEffect(() => {
-    if (upcomingOnlyIsUpcoming) return;
+    if (dueIncludesUpcomingMemo) return;
     if ((filters?.upcomingRange || "any") === "any") return;
     dispatchFilters({ type: "setText", section: "upcomingRange", value: "any" });
-  }, [upcomingOnlyIsUpcoming, filters?.upcomingRange]);
+  }, [dueIncludesUpcomingMemo, filters?.upcomingRange]);
 
   const handleRefresh = () => controller.refresh?.({ reason: "manual" });
   const isFullPage = !!snapshot?.isFullPage || isMobileLayout;
@@ -2656,7 +2657,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           activeValues={filters["Due"]}
           onToggle={handleFilterToggle}
         />
-        {upcomingOnlyIsUpcoming ? (
+        {dueIncludesUpcomingMemo ? (
           <label className="bt-filter-text">
             <span>{ui.upcomingWithinLabel}</span>
             <select
@@ -3294,10 +3295,10 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                     ) : null}
                   </select>
                 </label>
-                {upcomingOnlyIsUpcoming ? (
-                  <label className="bt-filter-text">
-                    <span>{ui.upcomingWithinLabel}</span>
-                    <select
+        {dueIncludesUpcomingMemo ? (
+          <label className="bt-filter-text">
+            <span>{ui.upcomingWithinLabel}</span>
+            <select
                       value={filters.upcomingRange || "any"}
                       onChange={(e) =>
                         dispatchFilters({

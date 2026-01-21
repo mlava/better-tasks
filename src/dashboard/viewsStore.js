@@ -9,8 +9,18 @@ export const DASHBOARD_PRESET_IDS = [
   "bt_preset_waiting_for",
   "bt_preset_completed_7d",
   "bt_preset_upcoming_7d",
+  "bt_preset_overdue",
   "bt_preset_someday",
   "bt_preset_all_open",
+];
+
+export const DASHBOARD_REVIEW_PRESET_IDS = [
+  "bt_preset_next_actions",
+  "bt_preset_waiting_for",
+  "bt_preset_completed_7d",
+  "bt_preset_upcoming_7d",
+  "bt_preset_overdue",
+  "bt_preset_someday",
 ];
 
 function nowMs() {
@@ -197,6 +207,23 @@ export function buildPresetViews({ getName } = {}) {
           Due: ["upcoming"],
           completedRange: "any",
           upcomingRange: "7d",
+        },
+        grouping: "time",
+        query: "",
+      },
+    },
+    {
+      id: "bt_preset_overdue",
+      name: nameFor("overdue", "Overdue"),
+      createdAt: t,
+      updatedAt: t,
+      schema: VIEW_SCHEMA,
+      state: {
+        filters: {
+          Completion: ["open"],
+          Due: ["overdue"],
+          completedRange: "any",
+          upcomingRange: "any",
         },
         grouping: "time",
         query: "",

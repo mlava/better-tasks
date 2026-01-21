@@ -173,10 +173,17 @@ Preset views (seeded, in order):
 - Waiting For
 - Completed (Last 7 Days)
 - Upcoming (Next 7 Days)
+- Overdue
 - Someday / Maybe
 - All Open Tasks
 
-The guided Weekly Review flow uses the same order.
+Weekly Review order:
+- Next Actions
+- Waiting For
+- Completed (Last 7 Days)
+- Upcoming (Next 7 Days)
+- Overdue
+- Someday / Maybe
 
 ### Full-page mode
 
