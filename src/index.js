@@ -90,6 +90,13 @@ const TODAY_BADGE_OVERDUE_SETTING = "bt-today-badge-include-overdue";
 const TODAY_BADGE_BG_SETTING = "bt-today-badge-bg";
 const TODAY_BADGE_FG_SETTING = "bt-today-badge-fg";
 const LANGUAGE_SETTING = "bt-language";
+const ADV_DASH_OPTIONS_SETTING = "bt-advanced-dashboard-options";
+const REVIEW_STEP_NEXT_ACTIONS_SETTING = "bt-review-step-next-actions";
+const REVIEW_STEP_WAITING_FOR_SETTING = "bt-review-step-waiting-for";
+const REVIEW_STEP_COMPLETED_7D_SETTING = "bt-review-step-completed-7d";
+const REVIEW_STEP_UPCOMING_7D_SETTING = "bt-review-step-upcoming-7d";
+const REVIEW_STEP_OVERDUE_SETTING = "bt-review-step-overdue";
+const REVIEW_STEP_SOMEDAY_SETTING = "bt-review-step-someday";
 const TODAY_WIDGET_ANCHOR_TEXT_DEFAULT = "Better Tasks - Today";
 const TODAY_WIDGET_ANCHOR_TEXT_LEGACY = ["BetterTasks Today Widget", "Better Tasks - Today"];
 const TODAY_WIDGET_PANEL_CHILD_TEXT = "";
@@ -378,6 +385,10 @@ export default {
         overrides.advancedAttrNamesEnabled !== undefined
           ? normalizeBooleanSetting(overrides.advancedAttrNamesEnabled)
           : normalizeBooleanSetting(extensionAPI?.settings?.get?.(ADV_ATTR_NAMES_SETTING));
+      const advancedDashboardEnabled =
+        overrides.advancedDashboardEnabled !== undefined
+          ? normalizeBooleanSetting(overrides.advancedDashboardEnabled)
+          : normalizeBooleanSetting(extensionAPI?.settings?.get?.(ADV_DASH_OPTIONS_SETTING));
       const destination =
         overrides.destination !== undefined
           ? overrides.destination
@@ -390,14 +401,20 @@ export default {
       const shouldShowAiKey = aiMode === AI_MODE_USE_KEY;
 
       // Helper to set + rebuild (keeps handlers consistent)
-      const setAndRebuild = (id, value, nextUiOverrides = null) => {
+      const setAndRebuild = (id, value, nextUiOverrides = null, options = {}) => {
         try {
           extensionAPI?.settings?.set?.(id, value);
         } catch (_) {
           // ignore
         }
-        // Rebuild so conditional blocks appear/disappear immediately
-        rebuildSettingsPanel(null, null, null, null, nextUiOverrides);
+        // Rebuild so conditional blocks appear/disappear immediately.
+        // Delay slightly so the settings panel handler updates are visible.
+        setTimeout(() => {
+          rebuildSettingsPanel(null, null, null, null, nextUiOverrides);
+          if (options.notifyReviewSteps && activeDashboardController?.notifyReviewStepSettingsChanged) {
+            activeDashboardController.notifyReviewStepSettingsChanged();
+          }
+        }, 30);
       };
 
       const coreSettings = [
@@ -459,8 +476,85 @@ export default {
           action: { type: "input", placeholder: DEFAULT_PILL_THRESHOLD.toString() },
         },
       ];
+      const reviewStepDescription = tr(
+        "settings.reviewStepDescription",
+        "Include this step in the Weekly Review flow (order is fixed)."
+      );
+      const weeklyReviewSettings = [
+        {
+          id: REVIEW_STEP_NEXT_ACTIONS_SETTING,
+          name: tr("settings.reviewStepNextActions", "Weekly Review: Next Actions"),
+          description: reviewStepDescription,
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(REVIEW_STEP_NEXT_ACTIONS_SETTING, normalized, null, { notifyReviewSteps: true });
+            },
+          },
+        },
+        {
+          id: REVIEW_STEP_WAITING_FOR_SETTING,
+          name: tr("settings.reviewStepWaitingFor", "Weekly Review: Waiting For"),
+          description: reviewStepDescription,
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(REVIEW_STEP_WAITING_FOR_SETTING, normalized, null, { notifyReviewSteps: true });
+            },
+          },
+        },
+        {
+          id: REVIEW_STEP_COMPLETED_7D_SETTING,
+          name: tr("settings.reviewStepCompleted7d", "Weekly Review: Completed (Last 7 Days)"),
+          description: reviewStepDescription,
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(REVIEW_STEP_COMPLETED_7D_SETTING, normalized, null, { notifyReviewSteps: true });
+            },
+          },
+        },
+        {
+          id: REVIEW_STEP_UPCOMING_7D_SETTING,
+          name: tr("settings.reviewStepUpcoming7d", "Weekly Review: Upcoming (Next 7 Days)"),
+          description: reviewStepDescription,
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(REVIEW_STEP_UPCOMING_7D_SETTING, normalized, null, { notifyReviewSteps: true });
+            },
+          },
+        },
+        {
+          id: REVIEW_STEP_OVERDUE_SETTING,
+          name: tr("settings.reviewStepOverdue", "Weekly Review: Overdue"),
+          description: reviewStepDescription,
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(REVIEW_STEP_OVERDUE_SETTING, normalized, null, { notifyReviewSteps: true });
+            },
+          },
+        },
+        {
+          id: REVIEW_STEP_SOMEDAY_SETTING,
+          name: tr("settings.reviewStepSomeday", "Weekly Review: Someday / Maybe"),
+          description: reviewStepDescription,
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(REVIEW_STEP_SOMEDAY_SETTING, normalized, null, { notifyReviewSteps: true });
+            },
+          },
+        },
+      ];
 
-      // NEW: Attribute names behind a toggle
       const attributeSettingsToggle = [
         {
           id: ADV_ATTR_NAMES_SETTING,
@@ -548,6 +642,28 @@ export default {
         },
       ];
 
+      const dashboardAdvancedToggle = [
+        {
+          id: ADV_DASH_OPTIONS_SETTING,
+          name: tr("settings.advancedDashboard", "Advanced Dashboard options"),
+          description: tr(
+            "settings.advancedDashboardDescription",
+            "Show settings for Weekly Review steps."
+          ),
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(
+                ADV_DASH_OPTIONS_SETTING,
+                normalized,
+                { advancedDashboardEnabled: normalized },
+                { notifyReviewSteps: true }
+              );
+            },
+          },
+        },
+      ];
       const picklistAdvanced = [
         {
           id: PICKLIST_EXCLUDE_ENABLED_SETTING,
@@ -736,14 +852,18 @@ export default {
       // 2) Today Badge
       // 3) Today Widget
       // 4) AI
-      // 5) Picklist advanced
-      // 6) Attribute names (advanced) toggle + fields
+      // 5) Advanced Dashboard toggle
+      // 6) Weekly Review steps (advanced)
+      // 7) Picklist advanced
+      // 8) Attribute names (advanced) toggle + fields
       const settings = [
         ...coreSettings,
         ...todayBadgeSettings,
         ...todayWidgetSettings,
         ...(todayEnabledValue ? todayWidgetDetails : []),
         ...aiSettings,
+        ...dashboardAdvancedToggle,
+        ...(advancedDashboardEnabled ? weeklyReviewSettings : []),
         ...picklistAdvanced,
         ...attributeSettingsToggle,
         ...(advancedAttrNamesEnabled ? attributeSettings : []),
@@ -813,6 +933,27 @@ export default {
     }
     if (extensionAPI.settings.get(PICKLIST_EXCLUDE_PAGES_SETTING) == null) {
       extensionAPI.settings.set(PICKLIST_EXCLUDE_PAGES_SETTING, "");
+    }
+    if (extensionAPI.settings.get(ADV_DASH_OPTIONS_SETTING) == null) {
+      extensionAPI.settings.set(ADV_DASH_OPTIONS_SETTING, false);
+    }
+    if (extensionAPI.settings.get(REVIEW_STEP_NEXT_ACTIONS_SETTING) == null) {
+      extensionAPI.settings.set(REVIEW_STEP_NEXT_ACTIONS_SETTING, true);
+    }
+    if (extensionAPI.settings.get(REVIEW_STEP_WAITING_FOR_SETTING) == null) {
+      extensionAPI.settings.set(REVIEW_STEP_WAITING_FOR_SETTING, true);
+    }
+    if (extensionAPI.settings.get(REVIEW_STEP_COMPLETED_7D_SETTING) == null) {
+      extensionAPI.settings.set(REVIEW_STEP_COMPLETED_7D_SETTING, true);
+    }
+    if (extensionAPI.settings.get(REVIEW_STEP_UPCOMING_7D_SETTING) == null) {
+      extensionAPI.settings.set(REVIEW_STEP_UPCOMING_7D_SETTING, true);
+    }
+    if (extensionAPI.settings.get(REVIEW_STEP_OVERDUE_SETTING) == null) {
+      extensionAPI.settings.set(REVIEW_STEP_OVERDUE_SETTING, true);
+    }
+    if (extensionAPI.settings.get(REVIEW_STEP_SOMEDAY_SETTING) == null) {
+      extensionAPI.settings.set(REVIEW_STEP_SOMEDAY_SETTING, true);
     }
     lastAttrNames = resolveAttributeNames();
 
@@ -10305,6 +10446,14 @@ export default {
 
     function createDashboardController(extensionAPI) {
       const DASHBOARD_FULLPAGE_KEY_BASE = "betterTasks.dashboard.fullPage";
+      const reviewStepSettingMap = [
+        { viewId: "bt_preset_next_actions", settingId: REVIEW_STEP_NEXT_ACTIONS_SETTING },
+        { viewId: "bt_preset_waiting_for", settingId: REVIEW_STEP_WAITING_FOR_SETTING },
+        { viewId: "bt_preset_completed_7d", settingId: REVIEW_STEP_COMPLETED_7D_SETTING },
+        { viewId: "bt_preset_upcoming_7d", settingId: REVIEW_STEP_UPCOMING_7D_SETTING },
+        { viewId: "bt_preset_overdue", settingId: REVIEW_STEP_OVERDUE_SETTING },
+        { viewId: "bt_preset_someday", settingId: REVIEW_STEP_SOMEDAY_SETTING },
+      ];
       const getDashboardFullPageKey = () => {
         if (typeof window === "undefined") return DASHBOARD_FULLPAGE_KEY_BASE;
         let graphName = "default";
@@ -10342,6 +10491,14 @@ export default {
           // ignore
         }
       };
+      const getReviewStepSettings = () => {
+        const out = {};
+        reviewStepSettingMap.forEach(({ viewId, settingId }) => {
+          const raw = extensionAPI?.settings?.get?.(settingId);
+          out[viewId] = raw == null ? true : normalizeBooleanSetting(raw);
+        });
+        return out;
+      };
 
       let isFullPage = typeof window !== "undefined" ? readDashboardFullPageSetting() : false;
       const initialState = {
@@ -10356,6 +10513,7 @@ export default {
       const dashViewRequestSubscribers = new Set();
       const dashViewsStoreSubscribers = new Set();
       const dashReviewRequestSubscribers = new Set();
+      const reviewStepSettingsSubscribers = new Set();
       let dashReviewStartPending = false;
       let lastDashViewState = null;
       let container = null;
@@ -10431,7 +10589,10 @@ export default {
         notifyDashViewsStoreChanged,
         reportDashViewState,
         getDashViewState,
+        getReviewStepSettings,
         subscribeDashReviewRequests,
+        subscribeReviewStepSettings,
+        notifyReviewStepSettingsChanged,
         requestStartDashReview,
         isDashboardFullPage: () => !!isFullPage,
         setDashboardFullPage,
@@ -10517,6 +10678,19 @@ export default {
           }
         }
         return () => dashReviewRequestSubscribers.delete(listener);
+      }
+      function subscribeReviewStepSettings(listener) {
+        if (typeof listener === "function") reviewStepSettingsSubscribers.add(listener);
+        return () => reviewStepSettingsSubscribers.delete(listener);
+      }
+      function notifyReviewStepSettingsChanged() {
+        reviewStepSettingsSubscribers.forEach((listener) => {
+          try {
+            listener();
+          } catch (err) {
+            console.warn("[BetterTasks] review step settings subscriber failed", err);
+          }
+        });
       }
 
       function requestStartDashReview() {

@@ -1569,17 +1569,70 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     if (!id) return null;
     return (viewsStore?.views || []).find((v) => v.id === id) || null;
   }, [viewsStore]);
+  const [reviewStepSettings, setReviewStepSettings] = useState(() => {
+    const settings = controller?.getReviewStepSettings?.();
+    return settings && typeof settings === "object" ? settings : {};
+  });
+  useEffect(() => {
+    if (!controller?.subscribeReviewStepSettings) return undefined;
+    const sync = () => {
+      const next = controller?.getReviewStepSettings?.();
+      setReviewStepSettings(next && typeof next === "object" ? next : {});
+    };
+    const unsub = controller.subscribeReviewStepSettings(sync);
+    sync();
+    return unsub;
+  }, [controller]);
   const effectiveReviewIds = useMemo(() => {
     const ids = Array.isArray(DASHBOARD_REVIEW_PRESET_IDS) ? DASHBOARD_REVIEW_PRESET_IDS : [];
     const existing = new Set((viewsStore?.views || []).map((v) => v.id));
-    return ids.filter((id) => existing.has(id));
-  }, [viewsStore]);
+    return ids.filter((id) => existing.has(id) && reviewStepSettings[id] !== false);
+  }, [viewsStore, reviewStepSettings]);
   const activeReviewView = useMemo(() => {
     if (!reviewState.active) return null;
     const id = effectiveReviewIds[reviewState.index] || null;
     if (!id) return null;
     return (viewsStore?.views || []).find((v) => v.id === id) || null;
   }, [reviewState.active, reviewState.index, effectiveReviewIds, viewsStore]);
+  useEffect(() => {
+    if (!reviewState.active) return;
+    if (!effectiveReviewIds.length) {
+      const message = ui?.reviewNoPresetsToast || "No review presets found.";
+      notifyToast(message);
+      exitReview();
+      return;
+    }
+    let nextIndex = Math.min(reviewState.index, effectiveReviewIds.length - 1);
+    const currentId = effectiveReviewIds[reviewState.index];
+    if (!currentId || reviewStepSettings[currentId] === false) {
+      const forwardIndex = effectiveReviewIds.findIndex((_, idx) => idx > reviewState.index);
+      if (forwardIndex !== -1) {
+        nextIndex = forwardIndex;
+      } else {
+        const backwardIndex = [...effectiveReviewIds]
+          .reverse()
+          .findIndex((_, idx) => effectiveReviewIds.length - 1 - idx < reviewState.index);
+        nextIndex = backwardIndex !== -1 ? effectiveReviewIds.length - 1 - backwardIndex : nextIndex;
+      }
+    }
+    if (nextIndex !== reviewState.index) {
+      setReviewState((prev) => ({ ...prev, index: nextIndex }));
+    }
+    const nextId = effectiveReviewIds[nextIndex];
+    if (nextId && viewsStore?.activeViewId !== nextId) {
+      applySavedViewById(nextId);
+    }
+  }, [
+    reviewState.active,
+    reviewState.index,
+    effectiveReviewIds,
+    viewsStore?.activeViewId,
+    applySavedViewById,
+    exitReview,
+    notifyToast,
+    ui,
+    reviewStepSettings,
+  ]);
   const lang = I18N_MAP[language] ? language : "en";
   const tt = useCallback(
     (path, fallback) => {
