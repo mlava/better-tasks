@@ -261,6 +261,9 @@ Core settings:
 - Inline pill checkbox threshold (performance guard)
 
 Additional sections appear only when enabled.
+- **Advanced Dashboard options** unlock the Weekly Review step toggles (on/off per step; order is fixed).
+- **Advanced Project/Context/Waiting options** let you exclude specific pages from picklists.
+- **Customise attribute names (advanced)** exposes settings to rename Better Tasks attribute labels/keys.
 
 ---
 
