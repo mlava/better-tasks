@@ -8,6 +8,7 @@ export const DASHBOARD_PRESET_IDS = [
   "bt_preset_next_actions",
   "bt_preset_waiting_for",
   "bt_preset_completed_7d",
+  "bt_preset_upcoming_7d",
   "bt_preset_someday",
   "bt_preset_all_open",
 ];
@@ -185,6 +186,23 @@ export function buildPresetViews({ getName } = {}) {
       },
     },
     {
+      id: "bt_preset_upcoming_7d",
+      name: nameFor("upcoming7d", "Upcoming (Next 7 Days)"),
+      createdAt: t,
+      updatedAt: t,
+      schema: VIEW_SCHEMA,
+      state: {
+        filters: {
+          Completion: ["open"],
+          Due: ["upcoming"],
+          completedRange: "any",
+          upcomingRange: "7d",
+        },
+        grouping: "time",
+        query: "",
+      },
+    },
+    {
       id: "bt_preset_someday",
       name: nameFor("someday", "Someday / Maybe"),
       createdAt: t,
@@ -224,8 +242,12 @@ export function installPresetDashboardViews(
     seedsInstalled = false;
   }
 
+  const presets = buildPresetViews({ getName }).map(normalizeView).filter(Boolean);
+  const existingById = new Set((store.views || []).map((v) => v.id));
+  const existingNames = new Set((store.views || []).map((v) => normalizeNameForCompare(v.name)));
+  const missingPresetIds = presets.filter((preset) => !existingById.has(preset.id)).map((preset) => preset.id);
   const shouldSeedInitial = !force && !seedsInstalled && (store.views?.length || 0) === 0;
-  const shouldAttempt = force || shouldSeedInitial;
+  const shouldAttempt = force || shouldSeedInitial || missingPresetIds.length > 0;
   if (!shouldAttempt) {
     return {
       store,
@@ -235,10 +257,6 @@ export function installPresetDashboardViews(
       didSave: false,
     };
   }
-
-  const presets = buildPresetViews({ getName }).map(normalizeView).filter(Boolean);
-  const existingById = new Set((store.views || []).map((v) => v.id));
-  const existingNames = new Set((store.views || []).map((v) => normalizeNameForCompare(v.name)));
   const toAdd = [];
   const skippedNameCollisions = [];
   const skippedExistingIds = [];

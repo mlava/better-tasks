@@ -74,6 +74,7 @@ const DEFAULT_FILTERS = {
   Due: [],
   Completion: ["open"],
   completedRange: "any",
+  upcomingRange: "any",
   Priority: [],
   Energy: [],
   GTD: [],
@@ -236,6 +237,8 @@ function applyFilters(tasks, filters, query) {
   const startFilter = new Set(filters.Start || filters.start || []);
   const deferFilter = new Set(filters.Defer || filters.defer || []);
   const dueFilter = new Set(filters.Due || filters.due || []);
+  const dueArr = Array.from(dueFilter);
+  const upcomingOnly = dueArr.length === 1 && dueArr[0] === "upcoming";
   const completionFilter = new Set(filters.Completion || filters.completion || []);
   const completionArr = Array.from(completionFilter);
   const completedOnly = completionArr.length === 1 && completionArr[0] === "completed";
@@ -243,6 +246,7 @@ function applyFilters(tasks, filters, query) {
   const energyFilter = new Set(filters.Energy || filters.energy || []);
   const gtdFilter = new Set(filters.GTD || filters.gtd || []);
   const completedRange = typeof filters.completedRange === "string" ? filters.completedRange : "any";
+  const upcomingRange = typeof filters.upcomingRange === "string" ? filters.upcomingRange : "any";
   const projectText = (filters.projectText || "").trim();
   const waitingText = (filters.waitingText || "").trim().toLowerCase();
   const contextText = (filters.contextText || "").trim().toLowerCase();
@@ -260,6 +264,20 @@ function applyFilters(tasks, filters, query) {
     const threshold = new Date(startOfToday.getTime() - (days - 1) * dayMs);
     return date >= threshold;
   };
+  const isWithinUpcomingRange = (date, range) => {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return false;
+    if (range === "any") return true;
+    const now = new Date();
+    const startOfToday = new Date(now.getTime());
+    startOfToday.setHours(0, 0, 0, 0);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const days =
+      range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 90 : null;
+    if (!days) return true;
+    if (date < startOfToday) return false;
+    const end = new Date(startOfToday.getTime() + days * dayMs - 1);
+    return date <= end;
+  };
 
   return tasks.filter((task) => {
     if (completionFilter.size) {
@@ -273,6 +291,9 @@ function applyFilters(tasks, filters, query) {
     if (startFilter.size && !startFilter.has(task.startBucket)) return false;
     if (deferFilter.size && !deferFilter.has(task.deferBucket)) return false;
     if (dueFilter.size && !dueFilter.has(task.dueBucket)) return false;
+    if (upcomingOnly && upcomingRange !== "any") {
+      if (!isWithinUpcomingRange(task.dueAt, upcomingRange)) return false;
+    }
     const meta = task.metadata || {};
     if (priorityFilter.size && !priorityFilter.has(meta.priority || "")) return false;
     if (energyFilter.size && !energyFilter.has(meta.energy || "")) return false;
@@ -1717,6 +1738,11 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       completedWithin7d: tt(["dashboard", "completedWithinOptions", "7d"], "Last 7 days"),
       completedWithin30d: tt(["dashboard", "completedWithinOptions", "30d"], "Last 30 days"),
       completedWithin90d: tt(["dashboard", "completedWithinOptions", "90d"], "Last 90 days"),
+      upcomingWithinLabel: tt(["dashboard", "upcomingWithinLabel"], "Upcoming within"),
+      upcomingWithinAny: tt(["dashboard", "upcomingWithinOptions", "any"], "Any time"),
+      upcomingWithin7d: tt(["dashboard", "upcomingWithinOptions", "7d"], "Next 7 days"),
+      upcomingWithin30d: tt(["dashboard", "upcomingWithinOptions", "30d"], "Next 30 days"),
+      upcomingWithin90d: tt(["dashboard", "upcomingWithinOptions", "90d"], "Next 90 days"),
       reviewButton: tt(["dashboard", "review", "button"], "Weekly Review"),
       reviewLabel: tt(["dashboard", "review", "label"], "Weekly Review"),
       reviewOf: tt(["dashboard", "review", "of"], "of"),
@@ -2081,12 +2107,21 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     const list = Array.isArray(filters?.Completion) ? filters.Completion : [];
     return list.length === 1 && list[0] === "completed";
   }, [filters]);
+  const upcomingOnlyIsUpcoming = useMemo(() => {
+    const list = Array.isArray(filters?.Due) ? filters.Due : [];
+    return list.length === 1 && list[0] === "upcoming";
+  }, [filters]);
 
   useEffect(() => {
     if (completionOnlyIsCompleted) return;
     if ((filters?.completedRange || "any") === "any") return;
     dispatchFilters({ type: "setText", section: "completedRange", value: "any" });
   }, [completionOnlyIsCompleted, filters?.completedRange]);
+  useEffect(() => {
+    if (upcomingOnlyIsUpcoming) return;
+    if ((filters?.upcomingRange || "any") === "any") return;
+    dispatchFilters({ type: "setText", section: "upcomingRange", value: "any" });
+  }, [upcomingOnlyIsUpcoming, filters?.upcomingRange]);
 
   const handleRefresh = () => controller.refresh?.({ reason: "manual" });
   const isFullPage = !!snapshot?.isFullPage || isMobileLayout;
@@ -2621,6 +2656,26 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           activeValues={filters["Due"]}
           onToggle={handleFilterToggle}
         />
+        {upcomingOnlyIsUpcoming ? (
+          <label className="bt-filter-text">
+            <span>{ui.upcomingWithinLabel}</span>
+            <select
+              value={filters.upcomingRange || "any"}
+              onChange={(e) =>
+                dispatchFilters({
+                  type: "setText",
+                  section: "upcomingRange",
+                  value: e.target.value,
+                })
+              }
+            >
+              <option value="any">{ui.upcomingWithinAny}</option>
+              <option value="7d">{ui.upcomingWithin7d}</option>
+              <option value="30d">{ui.upcomingWithin30d}</option>
+              <option value="90d">{ui.upcomingWithin90d}</option>
+            </select>
+          </label>
+        ) : null}
       </FullPageFilterGroup>
 
       <FullPageFilterGroup groupKey="gtd" title={ui.filtersGroups.gtd}>
@@ -3239,6 +3294,26 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                     ) : null}
                   </select>
                 </label>
+                {upcomingOnlyIsUpcoming ? (
+                  <label className="bt-filter-text">
+                    <span>{ui.upcomingWithinLabel}</span>
+                    <select
+                      value={filters.upcomingRange || "any"}
+                      onChange={(e) =>
+                        dispatchFilters({
+                          type: "setText",
+                          section: "upcomingRange",
+                          value: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="any">{ui.upcomingWithinAny}</option>
+                      <option value="7d">{ui.upcomingWithin7d}</option>
+                      <option value="30d">{ui.upcomingWithin30d}</option>
+                      <option value="90d">{ui.upcomingWithin90d}</option>
+                    </select>
+                  </label>
+                ) : null}
                 {completionOnlyIsCompleted ? (
                   <label className="bt-filter-text">
                     <span>{ui.completedWithinLabel}</span>

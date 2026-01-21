@@ -168,6 +168,16 @@ Features:
 - Quick-add input (uses AI parsing if enabled)
 - Mobile-friendly layout (full-page with slide-in filters and sticky quick-add)
 
+Preset views (seeded, in order):
+- Next Actions
+- Waiting For
+- Completed (Last 7 Days)
+- Upcoming (Next 7 Days)
+- Someday / Maybe
+- All Open Tasks
+
+The guided Weekly Review flow uses the same order.
+
 ### Full-page mode
 
 <p align="center">

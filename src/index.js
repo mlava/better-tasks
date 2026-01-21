@@ -1243,13 +1243,8 @@ export default {
       await applyMetadataFromPrompt(fuid, promptResult, attrNamesForWrite, { initial: existingMeta });
 
       repeatOverrides.delete(fuid);
-      toast(
-        hasRepeat
-          ? "Created recurring TODO"
-          : hasTimingInput
-            ? "Created scheduled TODO"
-            : "Added metadata"
-      );
+      const createdMsg = t(["toasts", "createdRecurring"], getLanguageSetting()) || "Created your Better Task";
+      toast(hasRepeat || hasTimingInput ? createdMsg : "Added metadata");
       scheduleSurfaceSync(set.attributeSurface);
       perfLog(perfConvert);
     }
@@ -1360,7 +1355,10 @@ export default {
         const focused = await window.roamAlphaAPI.ui.getFocusedBlock();
         const fuid = focused && focused["block-uid"];
         if (fuid == null || fuid == undefined) {
-          toast(t(["toasts", "placeCursorTodo"], getLanguageSetting()) || "Place the cursor in the block where you wish to create the TODO.");
+          toast(
+            t(["toasts", "placeCursorTodo"], getLanguageSetting()) ||
+              "Place the cursor in the block where you wish to create the Better Task."
+          );
           return;
         }
       }
@@ -1463,8 +1461,19 @@ export default {
 
       const hasRepeat = !!normalizedRepeat;
       const hasTimingInput = !!(dueStr || startStr || deferStr);
-      if (!hasRepeat && !hasTimingInput) {
-        toast(t(["toasts", "addRepeatOrDate"], getLanguageSetting()) || "Add a repeat rule or at least one start/defer/due date.");
+      const hasMetadataInput = !!(
+        (promptResult.project || "").trim() ||
+        (promptResult.waitingFor || "").trim() ||
+        (promptResult.context || "").trim() ||
+        (promptResult.priority || "").trim() ||
+        (promptResult.energy || "").trim() ||
+        (promptResult.gtd || "").trim()
+      );
+      if (!hasRepeat && !hasTimingInput && !hasMetadataInput) {
+        toast(
+          t(["toasts", "addRepeatDateOrMetadata"], getLanguageSetting()) ||
+            "Add a repeat rule, a date, or metadata."
+        );
         return;
       }
 
@@ -1494,9 +1503,13 @@ export default {
       else await removeChildAttrsForType(fuid, "start", set.attrNames);
       if (deferStr) await ensureChildAttrForType(fuid, "defer", deferStr, set.attrNames);
       else await removeChildAttrsForType(fuid, "defer", set.attrNames);
+      if (hasMetadataInput) {
+        await applyMetadataFromPrompt(fuid, promptResult, set.attrNames);
+      }
 
       repeatOverrides.delete(fuid);
-      toast(hasRepeat ? "Created your recurring TODO" : "Created your scheduled TODO");
+      const createdMsg = t(["toasts", "createdRecurring"], getLanguageSetting()) || "Created your Better Task";
+      toast(createdMsg);
       scheduleSurfaceSync(set.attributeSurface);
     }
 
@@ -1564,6 +1577,24 @@ export default {
       else await removeChildAttrsForType(blockUid, "start", set.attrNames);
       if (deferStr) await ensureChildAttrForType(blockUid, "defer", deferStr, set.attrNames);
       else await removeChildAttrsForType(blockUid, "defer", set.attrNames);
+      const hasAiMeta = !!(
+        (parsed.project || "").trim() ||
+        (parsed.context || "").trim() ||
+        (parsed.priority || "").trim() ||
+        (parsed.energy || "").trim()
+      );
+      if (hasAiMeta) {
+        await applyMetadataFromPrompt(
+          blockUid,
+          {
+            project: parsed.project || "",
+            context: parsed.context || "",
+            priority: parsed.priority || "",
+            energy: parsed.energy || "",
+          },
+          set.attrNames
+        );
+      }
 
       repeatOverrides.delete(blockUid);
       scheduleSurfaceSync(set.attributeSurface);
@@ -4989,6 +5020,24 @@ export default {
       else await removeChildAttrsForType(newUid, "start", set.attrNames);
       if (deferInfo.text) await ensureChildAttrForType(newUid, "defer", deferInfo.text, set.attrNames);
       else await removeChildAttrsForType(newUid, "defer", set.attrNames);
+      const hasAiMeta = !!(
+        (parsed.project || "").trim() ||
+        (parsed.context || "").trim() ||
+        (parsed.priority || "").trim() ||
+        (parsed.energy || "").trim()
+      );
+      if (hasAiMeta) {
+        await applyMetadataFromPrompt(
+          newUid,
+          {
+            project: parsed.project || "",
+            context: parsed.context || "",
+            priority: parsed.priority || "",
+            energy: parsed.energy || "",
+          },
+          set.attrNames
+        );
+      }
 
       scheduleSurfaceSync(set.attributeSurface);
       activeDashboardController?.notifyBlockChange?.(newUid, { bypassFilters: true });
