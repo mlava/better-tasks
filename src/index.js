@@ -6679,6 +6679,9 @@ export default {
       },
     };
 
+    // Track the currently open secondary picker modal to prevent multiple modals
+    let activePickerState = { type: null, element: null };
+
     async function promptForAttribute(type = "project", { initialValue = "", allowMulti = false } = {}) {
       const cfg = ATTR_PICKER_CONFIG[type] || ATTR_PICKER_CONFIG.project;
       await cfg.refresh?.(true);
@@ -6692,6 +6695,22 @@ export default {
       const inputClass = `rt-attr-input-${Date.now()}`;
       const listId = `rt-attr-list-${Date.now()}`;
       ensureProjectPickerStyles();
+
+      // If the same picker type is already open, ignore this request
+      if (activePickerState.type === type && activePickerState.element) {
+        return null;
+      }
+
+      // Close any existing secondary picker modal of a different type
+      if (activePickerState.element) {
+        try {
+          iziToast.hide({}, activePickerState.element);
+        } catch (e) {
+          console.warn("[BetterTasks] Failed to close existing picker", e);
+        }
+        activePickerState = { type: null, element: null };
+      }
+
       const normalize = cfg.normalize || ((v) => (typeof v === "string" ? v.trim() : ""));
       const initialList = allowMulti
         ? Array.isArray(initialValue)
@@ -6709,6 +6728,9 @@ export default {
         const hideToast = () => {
           if (toastElement) {
             iziToast.hide({}, toastElement);
+          }
+          if (activePickerState.element === toastElement) {
+            activePickerState = { type: null, element: null };
           }
         };
         const finish = (value) => {
@@ -6799,6 +6821,7 @@ export default {
           ],
           onOpening: (_instance, toastEl) => {
             toastElement = toastEl;
+            activePickerState = { type, element: toastEl };
             applyToastA11y(toastEl);
             const input = toastEl.querySelector(`.${inputClass}`);
             const list = toastEl.querySelector(`#${listId}`);
@@ -6811,9 +6834,7 @@ export default {
                 finish(next);
                 hideToast();
               } else {
-                if (toastElement) {
-                  iziToast.hide({}, toastElement);
-                }
+                hideToast();
                 finish(val);
               }
             };
@@ -6834,7 +6855,12 @@ export default {
               input.setSelectionRange(input.value.length, input.value.length);
             }
           },
-          onClosed: () => finish(null),
+          onClosed: () => {
+            if (activePickerState.element === toastElement) {
+              activePickerState = { type: null, element: null };
+            }
+            finish(null);
+          },
         });
       });
     }
