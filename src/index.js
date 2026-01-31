@@ -3337,8 +3337,9 @@ export default {
           attrCompletedLabel: attrSnapshot.completedAttr,
         };
       }
+      const safeUid = escapeDatalogString(uid);
       const current = await window.roamAlphaAPI.q(
-        `[:find ?p :where [?b :block/uid "${uid}"] [?b :block/props ?p]]`
+        `[:find ?p :where [?b :block/uid "${safeUid}"] [?b :block/props ?p]]`
       );
       const props = parseProps(current?.[0]?.[0]);
       const next = { ...props, ...enrichedMerge };
@@ -3463,9 +3464,10 @@ export default {
     }
 
     async function getOrCreateChildUnderHeading(parentUid, headingText) {
+      const safeParentUid = escapeDatalogString(parentUid);
       const children = await window.roamAlphaAPI.q(`
         [:find (pull ?c [:block/uid :block/string])
-         :where [?p :block/uid "${parentUid}"] [?c :block/parents ?p]]`);
+         :where [?p :block/uid "${safeParentUid}"] [?c :block/parents ?p]]`);
       const hit = children?.map((r) => r[0]).find((c) => (c.string || "").trim() === headingText.trim());
       if (hit) return hit.uid;
       const uid = window.roamAlphaAPI.util.generateUID();
@@ -8378,8 +8380,9 @@ export default {
     async function deleteBlockAndDescendants(uid, depth = 0, maxDepth = 12) {
       if (!uid || depth > maxDepth) return;
       try {
+        const safeUid = escapeDatalogString(uid);
         const children = await window.roamAlphaAPI.q(
-          `[:find ?c :where [?c :block/parents ?p] [?p :block/uid "${uid}"]]`
+          `[:find ?c :where [?c :block/parents ?p] [?p :block/uid "${safeUid}"]]`
         );
         const childUids = Array.isArray(children) ? children.map((r) => r?.[0]).filter(Boolean) : [];
         for (const child of childUids) {
@@ -10462,10 +10465,11 @@ export default {
     }
 
     async function getParentUid(childUid) {
+      const safeChildUid = escapeDatalogString(childUid);
       const res = await window.roamAlphaAPI.q(`
         [:find ?puid
          :where
-         [?c :block/uid "${childUid}"]
+         [?c :block/uid "${safeChildUid}"]
          [?c :block/parents ?p]
          [?p :block/uid ?puid]]`);
       return res?.[0]?.[0] || null;
@@ -12232,11 +12236,12 @@ export default {
         {:block/children [:block/uid :block/string]}
         {:block/page [:block/uid :node/title]}
         {:block/parents [:block/uid]}]`;
+      const safeTitle = escapeDatalogString(title);
       const query = `
         [:find (pull ?b ${pull})
          :where
            [?b :block/refs ?ref]
-           [?ref :node/title "${title}"]]`;
+           [?ref :node/title "${safeTitle}"]]`;
       try {
         return (await window.roamAlphaAPI.q(query)) || [];
       } catch (err) {
@@ -13320,6 +13325,26 @@ export default {
       }
     }
     dashboardRefreshTimer = null;
+    if (completionQueueTimer) {
+      clearTimeout(completionQueueTimer);
+      completionQueueTimer = null;
+    }
+    if (pillRefreshTimer) {
+      clearTimeout(pillRefreshTimer);
+      pillRefreshTimer = null;
+    }
+    if (todayTitleChangeDebounceTimer) {
+      clearTimeout(todayTitleChangeDebounceTimer);
+      todayTitleChangeDebounceTimer = null;
+    }
+    if (childEditDebounce && typeof childEditDebounce.forEach === "function") {
+      childEditDebounce.forEach((timer) => clearTimeout(timer));
+      childEditDebounce.clear();
+    }
+    if (bulkOperationCooldownTimer) {
+      clearTimeout(bulkOperationCooldownTimer);
+      bulkOperationCooldownTimer = null;
+    }
     dashboardNotifyQueue.clear();
     try {
       detachTodayNavigationListenerGlobal?.();
