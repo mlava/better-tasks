@@ -1,6 +1,6 @@
 # 🌀 Better Tasks for Roam Research
 
-**The missing task layer for Roam.**  
+**The missing task layer for Roam**  
 
 Turn native TODOs into **scheduled and recurring tasks** with **inline pills**, a **powerful dashboard**, and optional **Today widget/badge** — all stored as plain Roam blocks.
 <BR><BR>
@@ -138,15 +138,20 @@ Common actions:
 
 | Action | Description |
 |------|-------------|
-| Snooze +1 day | Push start date forward 1 day |
-| Snooze +3 days | Push start date forward 3 days |
-| Snooze to next Monday | Move start to next Monday |
-| Snooze (pick date) | Choose a custom date |
+| Snooze +1 day | Shift all existing dates (start/defer/due) forward 1 day |
+| Snooze +3 days | Shift all existing dates (start/defer/due) forward 3 days |
+| Snooze to next Monday | Shift all existing dates to align with next Monday |
+| Snooze (pick date) | Shift all existing dates to align with the picked date |
 | Skip this occurrence | Jump to next repeat |
 | Generate next now | Create next task immediately |
 | End recurrence | Stop repeating |
 
 All actions support **Undo**.
+
+Snooze logic details:
+- If a task has any of `start::`, `defer::`, or `due::`, snooze shifts only the dates that exist and preserves spacing between them.
+- If a task has no dates, snooze creates `defer::` at today + N.
+- To avoid “still overdue” results, each shifted date is clamped to at least today + N.
 
 ---
 

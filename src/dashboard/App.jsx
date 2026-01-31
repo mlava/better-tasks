@@ -2388,6 +2388,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           message: String(message),
           timeout: 2400,
           close: true,
+          closeOnEscape: true,
           onOpening: (_instance, toastEl) => {
             applyToastA11y(toastEl);
           },

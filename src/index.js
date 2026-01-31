@@ -157,6 +157,8 @@ let todayWidgetForceNext = false;
 let lastTodayRenderAt = 0;
 let lastPillDecorateRun = 0;
 let dashboardRefreshTimer = null;
+let dashboardRefreshLogAt = 0;
+const DASHBOARD_REFRESH_LOG_INTERVAL_MS = 5 * 60 * 1000;
 let dashboardWatchClearTimer = null;
 let pillScrollHandlerAttached = false;
 let pillScrollHandler = null;
@@ -168,6 +170,7 @@ const pillSkipDecorate = new Set();
 const INLINE_META_CACHE_TTL_MS = 10 * 60 * 1000;
 const INLINE_META_CACHE_MAX = 5000;
 const TODAY_WIDGET_ENABLED = true; // temporary kill switch
+const DEBUG_BT = false;
 const DEBUG_BT_PERF = false;
 let bulkOperationInProgress = false; // Suppress individual toasts during bulk operations
 let bulkOperationCooldownTimer = null; // Keep toast suppression active briefly after bulk op ends
@@ -235,7 +238,8 @@ function enqueueDashboardNotifyBlockChange(uid) {
   if (!uid) return;
   try {
     if (!activeDashboardController?.isOpen?.()) return;
-  } catch (_) {
+  } catch (err) {
+    debugLog("dashboard notify isOpen check failed", err);
     return;
   }
   dashboardNotifyQueue.add(uid);
@@ -251,7 +255,8 @@ async function flushDashboardNotifyQueue() {
   let isOpen = false;
   try {
     isOpen = !!activeDashboardController?.isOpen?.();
-  } catch (_) {
+  } catch (err) {
+    debugLog("dashboard notify isOpen check failed", err);
     isOpen = false;
   }
   if (!isOpen) {
@@ -265,8 +270,8 @@ async function flushDashboardNotifyQueue() {
   for (const id of batch) {
     try {
       await activeDashboardController?.notifyBlockChange?.(id);
-    } catch (_) {
-      // ignore notify errors
+    } catch (err) {
+      debugLog("dashboard notifyBlockChange failed", err);
     }
   }
   if (remainder.length) {
@@ -1186,10 +1191,17 @@ export default {
       dashboardRefreshTimer = window.setInterval(() => {
         try {
           if (!activeDashboardController?.isOpen?.()) {
+            if (window.__btDebugRefreshTimer) {
+              const now = Date.now();
+              if (now - dashboardRefreshLogAt >= DASHBOARD_REFRESH_LOG_INTERVAL_MS) {
+                dashboardRefreshLogAt = now;
+                console.debug("[BetterTasks] dashboard refresh tick");
+              }
+            }
             activeDashboardController?.refresh?.({ reason: "background" });
           }
-        } catch (_) {
-          // ignore background refresh errors
+        } catch (err) {
+          debugLog("dashboard refresh tick failed", err);
         }
       }, 90_000);
     }
@@ -1494,7 +1506,7 @@ export default {
     async function createRecurringTODO(fuid) {
       if (!fuid) {
         const focused = await window.roamAlphaAPI.ui.getFocusedBlock();
-        const fuid = focused && focused["block-uid"];
+        fuid = focused && focused["block-uid"];
         if (fuid == null || fuid == undefined) {
           toast(
             t(["toasts", "placeCursorTodo"], getLanguageSetting()) ||
@@ -2134,6 +2146,7 @@ export default {
         iconText: "✓",
         iconColor: "#1f7a34",
         close: true,
+        closeOnEscape: true,
         closeOnClick: false,
         message: translateString(payload.message || "Due updated", getLanguageSetting()),
         buttons: [
@@ -3231,13 +3244,14 @@ export default {
         return cached.block || null;
       }
       if (cached) cache.delete(uid);
+      const safeUid = escapeDatalogString(uid);
       const res = await window.roamAlphaAPI.q(`
         [:find
           (pull ?b [:block/uid :block/string :block/props :block/order :block/open
                     {:block/children [:block/uid :block/string]}
                     {:block/page [:block/uid :node/title]}
                     {:block/parents [:block/uid]}])
-         :where [?b :block/uid "${uid}"]]`);
+         :where [?b :block/uid "${safeUid}"]]`);
       const block = res?.[0]?.[0] || null;
       if (block) {
         cache.set(uid, { block, at: now });
@@ -3406,7 +3420,8 @@ export default {
           `[:find ?u :where [?p :node/title "${safeTitle}"] [?p :block/uid ?u]]`
         );
         return found?.[0]?.[0] || null;
-      } catch (_) {
+      } catch (err) {
+        debugLog("getPageUidByTitle failed", err);
         return null;
       }
     }
@@ -4857,6 +4872,7 @@ export default {
         message,
         timeout: 5000,
         close: true,
+        closeOnEscape: true,
         closeOnClick: false,
         buttons: [
           [
@@ -6250,6 +6266,7 @@ export default {
           drag: false,
           timeout: false,
           close: true,
+          closeOnEscape: true,
           overlay: true,
           icon: "icon-check",
           iconText: "✓",
@@ -6298,6 +6315,7 @@ export default {
         class: className,
         position: 'center',
         close: false,
+        closeOnEscape: true,
         timeout: timer,
         closeOnClick: true,
         displayMode: 2,
@@ -6319,6 +6337,7 @@ export default {
           position: "center",
           id: "betterTasks-ai-pending",
           close: true,
+          closeOnEscape: true,
           timeout: false,
           closeOnClick: true,
           displayMode: 2,
@@ -6430,6 +6449,7 @@ export default {
           drag: false,
           timeout: false,
           close: true,
+          closeOnEscape: true,
           overlay: true,
           icon: "icon-check",
           iconText: "✓",
@@ -6607,6 +6627,7 @@ export default {
           drag: false,
           timeout: false,
           close: true,
+          closeOnEscape: true,
           overlay: true,
           icon: "icon-check",
           iconText: "✓",
@@ -6758,6 +6779,7 @@ export default {
           drag: false,
           timeout: false,
           close: true,
+          closeOnEscape: true,
           overlay: true,
           icon: "icon-check",
           iconText: "✓",
@@ -6870,6 +6892,7 @@ export default {
           drag: false,
           timeout: false,
           close: true,
+          closeOnEscape: true,
           overlay: true,
           icon: "icon-check",
           iconText: "✓",
@@ -7534,6 +7557,7 @@ export default {
           drag: false,
           timeout: false,
           close: true,
+          closeOnEscape: true,
           overlay: true,
           icon: "icon-check",
           iconText: "✓",
@@ -8529,6 +8553,27 @@ export default {
     let pillDelegationLastClickAt = 0;
     let pillDelegationLastClickKey = "";
     const PILL_DELEGATION_GLOBAL_KEY = "__btPillDelegationV1";
+    const PILL_DELEGATION_CLICK_GATE_KEY = "__btPillDelegationClickGateV1";
+    const activeDatePrompts = new Set();
+
+    function getGlobalPillClickGate() {
+      if (typeof window === "undefined") return null;
+      if (!window[PILL_DELEGATION_CLICK_GATE_KEY]) {
+        window[PILL_DELEGATION_CLICK_GATE_KEY] = { lastKey: "", lastAt: 0 };
+      }
+      return window[PILL_DELEGATION_CLICK_GATE_KEY];
+    }
+
+    async function runDatePromptOnce(key, fn) {
+      if (!key || typeof fn !== "function") return null;
+      if (activeDatePrompts.has(key)) return null;
+      activeDatePrompts.add(key);
+      try {
+        return await fn();
+      } finally {
+        activeDatePrompts.delete(key);
+      }
+    }
 
     function getInlineMetaCache() {
       if (typeof window === "undefined") return null;
@@ -8618,11 +8663,19 @@ export default {
           // Keyed by UID + action so different pill targets can still be clicked rapidly.
           const clickKey = `${uid}|${action || "menu"}`;
           const now = Date.now();
+          const globalGate = getGlobalPillClickGate();
+          if (globalGate && clickKey === globalGate.lastKey && now - globalGate.lastAt < 350) {
+            return;
+          }
           if (clickKey === pillDelegationLastClickKey && now - pillDelegationLastClickAt < 350) {
             return;
           }
           pillDelegationLastClickKey = clickKey;
           pillDelegationLastClickAt = now;
+          if (globalGate) {
+            globalGate.lastKey = clickKey;
+            globalGate.lastAt = now;
+          }
 
           const set = S();
           const attrNames = set.attrNames;
@@ -9466,11 +9519,14 @@ export default {
       const shouldPrompt = forcePrompt || !hasDate || event.altKey || event.metaKey || event.ctrlKey;
       if (shouldPrompt) {
         const existing = hasDate ? formatIsoDate(currentDate, set) : "";
-        const nextIso = await promptForDate({
-          title: translateString(`Edit ${label} Date`, getLanguageSetting()),
-          message: translateString(`Select the ${label.toLowerCase()} date`, getLanguageSetting()),
-          initial: existing,
-        });
+        const promptKey = `datePrompt:${uid}:${type}`;
+        const nextIso = await runDatePromptOnce(promptKey, () =>
+          promptForDate({
+            title: translateString(`Edit ${label} Date`, getLanguageSetting()),
+            message: translateString(`Select the ${label.toLowerCase()} date`, getLanguageSetting()),
+            initial: existing,
+          })
+        );
         if (!nextIso) return;
         const parsed = parseRoamDate(nextIso);
         if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) {
@@ -9532,11 +9588,14 @@ export default {
       const shouldPrompt = forcePrompt || !hasDue || event.altKey || event.metaKey || event.ctrlKey;
       if (shouldPrompt) {
         const existing = hasDue ? formatIsoDate(due, set) : "";
-        const nextIso = await promptForDate({
-          title: "Edit Due Date",
-          message: "Select the next due date",
-          initial: existing,
-        });
+        const promptKey = `datePrompt:${uid}:due`;
+        const nextIso = await runDatePromptOnce(promptKey, () =>
+          promptForDate({
+            title: "Edit Due Date",
+            message: "Select the next due date",
+            initial: existing,
+          })
+        );
         if (!nextIso) return;
         const parsed = parseRoamDate(nextIso);
         if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) {
@@ -9787,6 +9846,7 @@ export default {
         overlay: true,
         timeout: false,
         close: true,
+        closeOnEscape: true,
         drag: false,
         icon: "icon-check",
         iconText: "✓",
@@ -9863,6 +9923,25 @@ export default {
       });
     }
 
+    async function updateStartDate(uid, set, targetDate, options = {}) {
+      if (!(targetDate instanceof Date) || Number.isNaN(targetDate.getTime())) return;
+      const block = options.block || (await getBlock(uid));
+      if (!block) return;
+      const meta = options.meta || (await readRecurringMeta(block, set));
+      const attrNames = set.attrNames;
+      const nextStr = formatDate(targetDate, set);
+      await updateBlockProps(uid, { start: nextStr });
+      const startChildInfo = await ensureChildAttrForType(uid, "start", nextStr, attrNames);
+      meta.childAttrMap = meta.childAttrMap || {};
+      const existingEntry = getMetaChildAttr(meta, "start", attrNames, { allowFallback: false });
+      const storedUid = startChildInfo?.uid || existingEntry?.uid || null;
+      setMetaChildAttr(meta, "start", { value: nextStr, uid: storedUid }, attrNames);
+      await ensureInlineAttrForType(block, "start", nextStr, attrNames);
+      meta.start = targetDate;
+      await relocateBlockForPlacement(block, meta, set);
+      void syncPillsForSurface(lastAttrSurface);
+    }
+
     async function updateDeferDate(uid, set, targetDate, options = {}) {
       if (!(targetDate instanceof Date) || Number.isNaN(targetDate.getTime())) return;
       const block = options.block || (await getBlock(uid));
@@ -9887,6 +9966,36 @@ export default {
       void syncPillsForSurface(lastAttrSurface);
     }
 
+    function diffDaysLocal(a, b) {
+      if (!(a instanceof Date) || !(b instanceof Date)) return 0;
+      const aStart = startOfDayLocal(a).getTime();
+      const bStart = startOfDayLocal(b).getTime();
+      return Math.round((aStart - bStart) / (24 * 60 * 60 * 1000));
+    }
+
+    async function shiftExistingDatesByDays(uid, set, days, options = {}) {
+      if (typeof days !== "number" || !Number.isFinite(days)) return;
+      const block = options.block || (await getBlock(uid));
+      if (!block) return;
+      const meta = options.meta || (await readRecurringMeta(block, set));
+      const hasStart = meta.start instanceof Date && !Number.isNaN(meta.start.getTime());
+      const hasDefer = meta.defer instanceof Date && !Number.isNaN(meta.defer.getTime());
+      const hasDue = meta.due instanceof Date && !Number.isNaN(meta.due.getTime());
+      if (!hasStart && !hasDefer && !hasDue) {
+        const next = addDaysLocal(todayLocal(), days);
+        await updateDeferDate(uid, set, next, { block, meta });
+        return;
+      }
+      const minTarget = addDaysLocal(todayLocal(), days);
+      const clampToMin = (date) => {
+        const shifted = addDaysLocal(date, days);
+        return shifted.getTime() < minTarget.getTime() ? minTarget : shifted;
+      };
+      if (hasStart) await updateStartDate(uid, set, clampToMin(meta.start), { block, meta });
+      if (hasDefer) await updateDeferDate(uid, set, clampToMin(meta.defer), { block, meta });
+      if (hasDue) await updateDueDate(uid, set, clampToMin(meta.due), { block, meta });
+    }
+
     async function updateDueDate(uid, set, targetDate, options = {}) {
       if (!(targetDate instanceof Date) || Number.isNaN(targetDate.getTime())) return;
       const block = options.block || (await getBlock(uid));
@@ -9909,31 +10018,26 @@ export default {
       const block = await getBlock(uid);
       if (!block) return;
       const meta = await readRecurringMeta(block, set);
-      const originalDefer = meta.defer instanceof Date && !Number.isNaN(meta.defer.getTime()) ? meta.defer : null;
-      const originalDue = meta.due instanceof Date && !Number.isNaN(meta.due.getTime()) ? meta.due : null;
-      const base = meta.defer || todayLocal();
-      const next = addDaysLocal(base, days);
-      await updateDeferDate(uid, set, next, { block, meta });
-      const shouldShiftDue =
-        originalDue &&
-        originalDefer &&
-        isSameDay(originalDue, originalDefer);
-      if (shouldShiftDue) {
-        const nextDue = addDaysLocal(originalDue, days);
-        await updateDueDate(uid, set, nextDue, { block, meta });
-      }
+      await shiftExistingDatesByDays(uid, set, days, { block, meta });
     }
 
     async function snoozeDeferToNextMonday(uid, set) {
       const block = await getBlock(uid);
       if (!block) return;
       const meta = await readRecurringMeta(block, set);
-      let cursor = meta.defer || todayLocal();
+      const anchor =
+        pickPlacementDate({ start: meta.start, defer: meta.defer, due: meta.due }) ||
+        meta.due ||
+        meta.defer ||
+        meta.start ||
+        todayLocal();
+      let cursor = anchor;
       for (let i = 0; i < 7; i++) {
         cursor = addDaysLocal(cursor, 1);
         if (cursor.getDay() === 1) break;
       }
-      await updateDeferDate(uid, set, cursor, { block, meta });
+      const days = diffDaysLocal(cursor, anchor);
+      await shiftExistingDatesByDays(uid, set, days, { block, meta });
     }
 
     async function snoozePickDeferDate(uid, set) {
@@ -9952,7 +10056,18 @@ export default {
         toast("Couldn't parse that date.");
         return;
       }
-      await updateDeferDate(uid, set, parsed, { block, meta });
+      const anchor =
+        pickPlacementDate({ start: meta.start, defer: meta.defer, due: meta.due }) ||
+        meta.due ||
+        meta.defer ||
+        meta.start ||
+        null;
+      if (!anchor) {
+        await updateDeferDate(uid, set, parsed, { block, meta });
+        return;
+      }
+      const days = diffDaysLocal(parsed, anchor);
+      await shiftExistingDatesByDays(uid, set, days, { block, meta });
     }
 
     async function skipOccurrence(uid, set) {
@@ -11235,6 +11350,10 @@ export default {
         const children = block.children || [];
         const childAttrMap = parseAttrsFromChildBlocks(children);
         const attrNames = set.attrNames;
+        // Read start date (capture both value and original key for case preservation)
+        const startChild = pickChildAttr(childAttrMap, attrNames.startAliases, { allowFallback: false });
+        const startText = startChild?.value || null;
+        const startOriginalKey = startChild?.originalKey || null;
         // Read defer date (capture both value and original key for case preservation)
         const deferChild = pickChildAttr(childAttrMap, attrNames.deferAliases, { allowFallback: false });
         const deferText = deferChild?.value || null;
@@ -11246,6 +11365,8 @@ export default {
         // Read rich metadata
         const richMeta = parseRichMetadata(childAttrMap, attrNames);
         return {
+          startText,
+          startOriginalKey,
           deferText,
           deferOriginalKey,
           dueText,
@@ -11363,13 +11484,15 @@ export default {
           const set = S();
           const attrNames = set.attrNames;
           const previousStates = [];
-          // Capture previous defer and due dates for undo (snooze can shift both when they're equal)
+          // Capture previous start/defer/due dates for undo (snooze can shift all existing dates)
           // Also capture original keys to preserve case (e.g., BT_attrDefer vs bt_attrdefer)
           for (const uid of uids) {
             try {
               const meta = await readTaskMetadataFromBlock(uid, set);
               previousStates.push({
                 uid,
+                previousStart: meta?.startText || null,
+                startKey: meta?.startOriginalKey || attrNames.startKey,
                 previousDefer: meta?.deferText || null,
                 deferKey: meta?.deferOriginalKey || attrNames.deferKey,
                 previousDue: meta?.dueText || null,
@@ -11378,6 +11501,8 @@ export default {
             } catch (err) {
               previousStates.push({
                 uid,
+                previousStart: null,
+                startKey: attrNames.startKey,
                 previousDefer: null,
                 deferKey: attrNames.deferKey,
                 previousDue: null,
@@ -11411,8 +11536,14 @@ export default {
               }
               bulkOperationInProgress = true;
               try {
-                for (const { uid, previousDefer, deferKey, previousDue, dueKey } of previousStates) {
+                for (const { uid, previousStart, startKey, previousDefer, deferKey, previousDue, dueKey } of previousStates) {
                   try {
+                    // Restore start date using original key to preserve case
+                    if (previousStart) {
+                      await ensureChildAttr(uid, startKey, previousStart);
+                    } else {
+                      await removeChildAttrsForType(uid, "start", attrNames);
+                    }
                     // Restore defer date using original key to preserve case
                     if (previousDefer) {
                       await ensureChildAttr(uid, deferKey, previousDefer);
@@ -11571,6 +11702,7 @@ export default {
           message: message,
           timeout: 6000,
           close: true,
+          closeOnEscape: true,
           closeOnClick: false,
           buttons: [
             [
@@ -11587,6 +11719,7 @@ export default {
                     position: "center",
                     timeout: 2000,
                     close: false,
+                    closeOnEscape: true,
                     closeOnClick: true,
                     onOpening: (_instance, toastEl) => {
                       applyToastA11y(toastEl);
@@ -11602,6 +11735,7 @@ export default {
                     position: "center",
                     timeout: 3000,
                     close: false,
+                    closeOnEscape: true,
                     closeOnClick: true,
                     onOpening: (_instance, toastEl) => {
                       applyToastA11y(toastEl);
@@ -13179,6 +13313,13 @@ export default {
     todayWidgetRefreshForcePending = false;
     if (dashboardNotifyTimer) clearTimeout(dashboardNotifyTimer);
     dashboardNotifyTimer = null;
+    if (dashboardRefreshTimer) {
+      clearInterval(dashboardRefreshTimer);
+      if (window.__btDebugRefreshTimer) {
+        console.debug("[BetterTasks] dashboard refresh timer cleared");
+      }
+    }
+    dashboardRefreshTimer = null;
     dashboardNotifyQueue.clear();
     try {
       detachTodayNavigationListenerGlobal?.();
@@ -13254,6 +13395,17 @@ function tGlobal(path, lang = currentLanguage || "en") {
     if (fallback !== undefined) return fallback;
   }
   return undefined;
+}
+
+function debugLog(message, err) {
+  if (typeof window !== "undefined" && window.__btDebug) {
+    if (err) console.debug("[BetterTasks]", message, err);
+    else console.debug("[BetterTasks]", message);
+    return;
+  }
+  if (!DEBUG_BT) return;
+  if (err) console.debug("[BetterTasks]", message, err);
+  else console.debug("[BetterTasks]", message);
 }
 
 function perfMark(label) {
