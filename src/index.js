@@ -435,7 +435,7 @@ export default {
           description: tr("settings.destNextTaskDescription", "Where to create the next occurrence"),
           action: {
             type: "select",
-            items: tr("settings.destinationOptions", ["DNP", "Same Page", "DNP under heading"]) || ["DNP", "Same Page", "DNP under heading"],
+            items: tr("settings.destinationOptions", ["DNP", "Same Page", "DNP under heading", "Project Page"]) || ["DNP", "Same Page", "DNP under heading", "Project Page"],
             onChange: (v) => {
               // Save destination then rebuild so rt-dnp-heading can show/hide
               const next = v?.value ?? v?.target?.value ?? v;
@@ -5036,7 +5036,8 @@ export default {
 
       const placementDate =
         pickPlacementDate({ start: nextStartDate, defer: nextDeferDate, due: nextDueDate }) || nextDueDate;
-      let targetPageUid = await chooseTargetPageUid(placementDate, prevBlock, set);
+      const projectValue = meta?.metadata?.project || null;
+      let targetPageUid = await chooseTargetPageUid(placementDate, prevBlock, set, projectValue);
       let parentBlock = await getBlock(targetPageUid);
       if (!parentBlock) {
         await new Promise((resolve) => setTimeout(resolve, 80));
@@ -5047,6 +5048,9 @@ export default {
           const dnpTitle = toDnpTitle(placementDate);
           const dnpUid = await getOrCreatePageUid(dnpTitle);
           targetPageUid = await getOrCreateChildUnderHeading(dnpUid, set.dnpHeading);
+          parentBlock = await getBlock(targetPageUid);
+        } else if (set.destination === "Project Page" && projectValue) {
+          targetPageUid = await chooseTargetPageUid(placementDate, prevBlock, set, projectValue);
           parentBlock = await getBlock(targetPageUid);
         } else if (set.destination === "Same Page") {
           const parent = prevBlock.page?.uid || (await getOrCreatePageUid("Misc"));
@@ -5096,10 +5100,16 @@ export default {
     }
 
     // ========================= Destination helpers =========================
-    async function chooseTargetPageUid(anchorDate, prevBlock, set) {
+    async function chooseTargetPageUid(anchorDate, prevBlock, set, projectValue) {
       if (set.destination === "Same Page") {
         return prevBlock.page?.uid || (await getOrCreatePageUid("Misc"));
       }
+      const projectPageName =
+        typeof projectValue === "string" ? projectValue.replace(/^\[\[|\]\]$/g, "").trim() : "";
+      if (set.destination === "Project Page" && projectPageName) {
+        return await getOrCreatePageUid(projectPageName);
+      }
+      // "Project Page" without a project value falls through to DNP
       const targetDate = anchorDate instanceof Date && !Number.isNaN(anchorDate.getTime()) ? anchorDate : todayLocal();
       const dnpTitle = toDnpTitle(targetDate);
       const dnpUid = await getOrCreatePageUid(dnpTitle);
