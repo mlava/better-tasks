@@ -2303,10 +2303,10 @@ export default {
       return null;
     }
 
-    async function ensureTargetReady(anchorDate, prevBlock, set) {
+    async function ensureTargetReady(anchorDate, prevBlock, set, projectValue) {
       let uid = null;
       try {
-        uid = await chooseTargetPageUid(anchorDate, prevBlock, set);
+        uid = await chooseTargetPageUid(anchorDate, prevBlock, set, projectValue);
       } catch (err) {
         console.warn("[RecurringTasks] choose target failed (initial)", err);
       }
@@ -2323,6 +2323,9 @@ export default {
           const dnpTitle = toDnpTitle(anchorDate);
           const dnpUid = await getOrCreatePageUid(dnpTitle);
           uid = await getOrCreateChildUnderHeading(dnpUid, set.dnpHeading);
+        } else if (set.destination === "Project Page" && projectValue) {
+          const projectPageName = typeof projectValue === "string" ? stripLinkOrTag(projectValue) : "";
+          if (projectPageName) uid = await getOrCreatePageUid(projectPageName);
         } else if (set.destination !== "Same Page") {
           const dnpTitle = toDnpTitle(anchorDate);
           uid = await getOrCreatePageUid(dnpTitle);
@@ -2346,7 +2349,8 @@ export default {
       if (!anchorDate) return result;
       let targetUid = locationBefore.parentUid;
       if (set.destination !== "Same Page") {
-        targetUid = await ensureTargetReady(anchorDate, block, set);
+        const projectValue = candidates?.metadata?.project || null;
+        targetUid = await ensureTargetReady(anchorDate, block, set, projectValue);
       }
       if (targetUid) result.targetUid = targetUid;
       if (targetUid && targetUid !== locationBefore.parentUid) {
@@ -5049,9 +5053,6 @@ export default {
           const dnpUid = await getOrCreatePageUid(dnpTitle);
           targetPageUid = await getOrCreateChildUnderHeading(dnpUid, set.dnpHeading);
           parentBlock = await getBlock(targetPageUid);
-        } else if (set.destination === "Project Page" && projectValue) {
-          targetPageUid = await chooseTargetPageUid(placementDate, prevBlock, set, projectValue);
-          parentBlock = await getBlock(targetPageUid);
         } else if (set.destination === "Same Page") {
           const parent = prevBlock.page?.uid || (await getOrCreatePageUid("Misc"));
           targetPageUid = parent;
@@ -5105,7 +5106,7 @@ export default {
         return prevBlock.page?.uid || (await getOrCreatePageUid("Misc"));
       }
       const projectPageName =
-        typeof projectValue === "string" ? projectValue.replace(/^\[\[|\]\]$/g, "").trim() : "";
+        typeof projectValue === "string" ? stripLinkOrTag(projectValue) : "";
       if (set.destination === "Project Page" && projectPageName) {
         return await getOrCreatePageUid(projectPageName);
       }
