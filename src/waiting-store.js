@@ -9,6 +9,7 @@ import {
 let extensionAPI = null;
 let lastRefreshed = 0;
 let refreshPromise = null;
+let initRetryTimer = null;
 let values = [];
 const subscribers = new Set();
 
@@ -180,7 +181,7 @@ async function refreshWaitingOptions(force = false) {
   queryWaitingFromGraph({ includeRegex: false }).then((list) => {
     if (!list.length) return;
     setValues(list);
-  });
+  }).catch(() => {});
   refreshPromise = queryWaitingFromGraph({ includeRegex: true })
     .then((list) => {
       lastRefreshed = Date.now();
@@ -202,11 +203,25 @@ function subscribeToWaitingOptions(cb) {
 function initWaitingStore(api) {
   extensionAPI = api || null;
   void refreshWaitingOptions(true);
-  setTimeout(() => void refreshWaitingOptions(true), 500);
+  // Skip the retry if the first refresh already completed (lastRefreshed > 0).
+  initRetryTimer = setTimeout(() => {
+    initRetryTimer = null;
+    if (!lastRefreshed) void refreshWaitingOptions(true);
+  }, 500);
+}
+
+function resetWaitingStore() {
+  if (initRetryTimer) { clearTimeout(initRetryTimer); initRetryTimer = null; }
+  subscribers.clear();
+  values = [];
+  lastRefreshed = 0;
+  refreshPromise = null;
+  extensionAPI = null;
 }
 
 export {
   initWaitingStore,
+  resetWaitingStore,
   getWaitingAttrName,
   refreshWaitingOptions,
   getWaitingOptions,

@@ -9,6 +9,7 @@ import {
 let extensionAPI = null;
 let lastRefreshed = 0;
 let refreshPromise = null;
+let initRetryTimer = null;
 let values = [];
 const subscribers = new Set();
 
@@ -185,7 +186,7 @@ async function refreshContextOptions(force = false) {
   queryContextFromGraph({ includeRegex: false }).then((list) => {
     if (!list.length) return;
     setValues(list);
-  });
+  }).catch(() => {});
   refreshPromise = queryContextFromGraph({ includeRegex: true })
     .then((list) => {
       lastRefreshed = Date.now();
@@ -207,11 +208,25 @@ function subscribeToContextOptions(cb) {
 function initContextStore(api) {
   extensionAPI = api || null;
   void refreshContextOptions(true);
-  setTimeout(() => void refreshContextOptions(true), 500);
+  // Skip the retry if the first refresh already completed (lastRefreshed > 0).
+  initRetryTimer = setTimeout(() => {
+    initRetryTimer = null;
+    if (!lastRefreshed) void refreshContextOptions(true);
+  }, 500);
+}
+
+function resetContextStore() {
+  if (initRetryTimer) { clearTimeout(initRetryTimer); initRetryTimer = null; }
+  subscribers.clear();
+  values = [];
+  lastRefreshed = 0;
+  refreshPromise = null;
+  extensionAPI = null;
 }
 
 export {
   initContextStore,
+  resetContextStore,
   getContextAttrName,
   refreshContextOptions,
   getContextOptions,

@@ -421,4 +421,39 @@ Natural-language recurrence parsing is intentionally English-only for now.
 
 ---
 
+## Extension Tools API
+
+Better Tasks registers tools on `window.RoamExtensionTools["better-tasks"]` so other extensions (e.g. Chief of Staff) can query and manage tasks programmatically.
+
+### Available tools
+
+| Tool | Description |
+|------|-------------|
+| `bt_get_projects` | List projects with derived status and optional task counts |
+| `bt_get_waiting_for` | List waiting-for values with optional counts |
+| `bt_get_context` | List context values with optional counts |
+| `bt_get_attributes` | Get configured attribute schema (names, types, allowed values) |
+| `bt_search` | Search tasks by status, due, project, assignee, or free text |
+| `bt_create` | Create a new task (defaults to today's daily page) |
+| `bt_modify` | Update an existing task's status, text, or attributes |
+
+### `bt_search` due filter values
+
+| Value | Meaning |
+|-------|---------|
+| `overdue` | TODO tasks past their due date |
+| `today` | Tasks due today |
+| `this-week` | Tasks due **after today** through 7 days from now (use `today` for today's tasks) |
+| `upcoming` | Tasks due in the future (not overdue or today) |
+| `none` | Tasks with no due date |
+| ISO date (e.g. `2026-02-20`) | Tasks due on that specific date |
+
+### Project status derivation
+
+`bt_get_projects` derives status from task counts rather than a stored field:
+- **active** — has at least one TODO task, or has no tasks at all
+- **completed** — has tasks and all are DONE
+
+---
+
 Enjoy Better Task management directly inside Roam Research!

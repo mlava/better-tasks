@@ -3,6 +3,7 @@ import DashboardApp from "./dashboard/App";
 import { i18n as I18N_MAP } from "./i18n";
 import {
   initProjectStore,
+  resetProjectStore,
   refreshProjectOptions,
   getProjectOptions,
   addProjectOption,
@@ -12,6 +13,7 @@ import {
 } from "./project-store";
 import {
   initWaitingStore,
+  resetWaitingStore,
   refreshWaitingOptions,
   getWaitingOptions,
   addWaitingOption,
@@ -21,6 +23,7 @@ import {
 } from "./waiting-store";
 import {
   initContextStore,
+  resetContextStore,
   refreshContextOptions,
   getContextOptions,
   addContextOption,
@@ -48,6 +51,9 @@ const DEFAULT_CONTEXT_ATTR = "BT_attrContext";
 const DEFAULT_PRIORITY_ATTR = "BT_attrPriority";
 const DEFAULT_ENERGY_ATTR = "BT_attrEnergy";
 const DEFAULT_GTD_ATTR = "BT_attrGTD";
+const ATTR_NAMES_PUBLIC_KEY_PREFIX = "betterTasks.attributeNames";
+const ATTR_NAMES_PUBLIC_VERSION = 1;
+const EXTENSION_TOOLS_ID = "better-tasks";
 const ADVANCE_ATTR = "BT_attrAdvance";
 const INSTALL_TOAST_KEY = "rt-intro-toast";
 const AI_MODE_SETTING = "bt-ai-mode";
@@ -84,6 +90,7 @@ const TODAY_WIDGET_PLACEMENT_SETTING = "bt-today-widget-placement";
 const TODAY_WIDGET_HEADING_SETTING = "bt-today-widget-heading";
 const TODAY_WIDGET_TITLE_SETTING = "bt-today-widget-title";
 const TODAY_WIDGET_ENABLE_SETTING = "bt-today-widget-enabled";
+const TODAY_ANCHOR_UIDS_SETTING = "bt-today-anchor-uids";
 const TODAY_BADGE_ENABLE_SETTING = "bt-today-badge-enabled";
 const TODAY_BADGE_LABEL_SETTING = "bt-today-badge-label";
 const TODAY_BADGE_OVERDUE_SETTING = "bt-today-badge-include-overdue";
@@ -188,13 +195,22 @@ let pillDomCountsCache = { at: 0, blockCount: null, checkboxCount: null };
 
 let lastAttrNames = null;
 let activeDashboardController = null;
+let dashboardEverOpened = false;
 const dashboardWatchers = new Map();
 let topbarButtonObserver = null;
 let themeObserver = null;
 let themeSyncTimer = null;
 let lastThemeSample = null;
 let roamStudioToggleObserver = null;
+let roamStudioToggleRetryTimer = null;
+let themeToggleClickHandler = null;
 let btPendingRoamStudioTheme = false;
+let themeMediaQueryHandler = null;
+let registeredBlockCtxConvertLabel = null;
+let registeredBlockCtxCreateLabel = null;
+let registeredSlashCreateLabel = null;
+let registeredSlashConvertLabel = null;
+const MAX_DASHBOARD_WATCHERS = 200;
 const ReactDOMGlobal = typeof window !== "undefined" ? window.ReactDOM || null : null;
 const ReactGlobal = typeof window !== "undefined" ? window.React || null : null;
 
@@ -961,6 +977,7 @@ export default {
       extensionAPI.settings.set(REVIEW_STEP_SOMEDAY_SETTING, true);
     }
     lastAttrNames = resolveAttributeNames();
+    syncPublicAttrNames(lastAttrNames);
 
     const introSeen = extensionAPI.settings.get(INSTALL_TOAST_KEY);
     if (!introSeen) {
@@ -977,6 +994,7 @@ export default {
     currentLanguage = getLanguageSetting();
 
     const cmdConvert = translateString("Convert TODO to Better Task", getLanguageSetting());
+    registeredBlockCtxConvertLabel = cmdConvert;
     extensionAPI.ui.commandPalette.addCommand({
       label: cmdConvert,
       callback: () => convertTODO(null),
@@ -986,6 +1004,7 @@ export default {
       callback: (e) => convertTODO(e),
     });
     const cmdCreate = translateString("Create a Better Task", getLanguageSetting());
+    registeredBlockCtxCreateLabel = cmdCreate;
     extensionAPI.ui.commandPalette.addCommand({
       label: cmdCreate,
       callback: () => createBetterTaskEntryPoint(),
@@ -998,6 +1017,8 @@ export default {
     if (slashCommandAPI) {
       const slashCreate = translateString("Create a Better Task", getLanguageSetting());
       const slashConvert = translateString("Convert TODO to Better Task", getLanguageSetting());
+      registeredSlashCreateLabel = slashCreate;
+      registeredSlashConvertLabel = slashConvert;
       slashCommandAPI.addCommand({
         label: slashCreate,
         callback: (args) => {
@@ -1017,6 +1038,7 @@ export default {
     }
 
     activeDashboardController = createDashboardController(extensionAPI);
+    registerExtensionToolsAPI();
 
     try {
       installPresetDashboardViews(extensionAPI, {
@@ -1190,6 +1212,7 @@ export default {
     if (!dashboardRefreshTimer && typeof window !== "undefined") {
       dashboardRefreshTimer = window.setInterval(() => {
         try {
+          if (!dashboardEverOpened) return;
           if (!activeDashboardController?.isOpen?.()) {
             if (window.__btDebugRefreshTimer) {
               const now = Date.now();
@@ -1510,7 +1533,7 @@ export default {
         if (fuid == null || fuid == undefined) {
           toast(
             t(["toasts", "placeCursorTodo"], getLanguageSetting()) ||
-              "Place the cursor in the block where you wish to create the Better Task."
+            "Place the cursor in the block where you wish to create the Better Task."
           );
           return;
         }
@@ -1625,7 +1648,7 @@ export default {
       if (!hasRepeat && !hasTimingInput && !hasMetadataInput) {
         toast(
           t(["toasts", "addRepeatDateOrMetadata"], getLanguageSetting()) ||
-            "Add a repeat rule, a date, or metadata."
+          "Add a repeat rule, a date, or metadata."
         );
         return;
       }
@@ -2474,13 +2497,17 @@ export default {
         return { input, checkboxHost };
       };
 
+      let cmdEnterResolved = false;
+
       const attemptEnqueue = (tries = 0) => {
+        if (cmdEnterResolved) return;
         const found = findCheckbox();
         const checkboxHost = found?.checkboxHost || null;
         const input = found?.input || null;
         const isChecked = input?.checked === true;
         const isDoneClass = checkboxHost?.classList?.contains("rm-done");
         if ((isChecked || isDoneClass) && !initialIsDone) {
+          cmdEnterResolved = true;
           noteTodoRemoval(uid);
           enqueueCompletion(uid, { checkbox: input, userInitiated: true, detectedAt: Date.now() });
           return;
@@ -2495,11 +2522,13 @@ export default {
 
       // Fallback: poll the block text for DONE macro in case no checkbox renders (edit mode).
       const pollForDoneMacro = async (tries = 0) => {
+        if (cmdEnterResolved) return;
         try {
           const block = await getBlock(uid);
           const text = block?.string || "";
           const toggledToDone = /\{\{\s*\[\[done\]\]\s*\}\}/i.test(text);
           if (toggledToDone && !initialIsDone) {
+            cmdEnterResolved = true;
             noteTodoRemoval(uid);
             enqueueCompletion(uid, { checkbox: null, userInitiated: true, detectedAt: Date.now() });
             return;
@@ -2802,6 +2831,11 @@ export default {
       }
       window.__RecurringTasksCleanup = () => {
         window.removeEventListener("hashchange", handleHashChange);
+        if (completionQueueTimer) {
+          clearTimeout(completionQueueTimer);
+          completionQueueTimer = null;
+        }
+        completionQueue.clear();
         if (observerReinitTimer) {
           clearTimeout(observerReinitTimer);
           observerReinitTimer = null;
@@ -2814,6 +2848,10 @@ export default {
           clearTimeout(timer);
         }
         pendingPillTimers.clear();
+        if (childEditDebounce && typeof childEditDebounce.forEach === "function") {
+          childEditDebounce.forEach((timer) => clearTimeout(timer));
+          childEditDebounce.clear();
+        }
         // remove child->props listeners
         document.removeEventListener("input", _handleAnyEdit, true);
         document.removeEventListener("blur", _handleAnyEdit, true);
@@ -4124,6 +4162,69 @@ export default {
       });
     }
 
+    function buildPublicAttrNamesPayload(attrNames = resolveAttributeNames()) {
+      return {
+        v: ATTR_NAMES_PUBLIC_VERSION,
+        updatedAt: Date.now(),
+        names: {
+          repeat: attrNames.repeatAttr,
+          start: attrNames.startAttr,
+          defer: attrNames.deferAttr,
+          due: attrNames.dueAttr,
+          completed: attrNames.completedAttr,
+          project: attrNames.projectAttr,
+          gtd: attrNames.gtdAttr,
+          waitingFor: attrNames.waitingForAttr,
+          context: attrNames.contextAttr,
+          priority: attrNames.priorityAttr,
+          energy: attrNames.energyAttr,
+        },
+      };
+    }
+
+    function getGraphNameFromHash() {
+      if (typeof window === "undefined") return "";
+      const hash = String(window.location?.hash || "");
+      const match = hash.match(/^#\/app\/([^/?#]+)/i);
+      if (!match?.[1]) return "";
+      try {
+        return decodeURIComponent(match[1]);
+      } catch (_) {
+        return match[1];
+      }
+    }
+
+    function getPublicAttrNamesStorageKey() {
+      let graphName = "";
+      try {
+        if (typeof window !== "undefined") {
+          graphName = String(window.roamAlphaAPI?.graph?.name?.() || "").trim();
+        }
+      } catch (_) {
+        // ignore
+      }
+      if (!graphName) graphName = getGraphNameFromHash();
+      if (!graphName) graphName = "default";
+      return `${ATTR_NAMES_PUBLIC_KEY_PREFIX}.${encodeURIComponent(String(graphName))}`;
+    }
+
+    function syncPublicAttrNames(attrNames = resolveAttributeNames()) {
+      if (typeof window === "undefined") return;
+      try {
+        const payload = buildPublicAttrNamesPayload(attrNames);
+        const key = getPublicAttrNamesStorageKey();
+        const defaultKey = `${ATTR_NAMES_PUBLIC_KEY_PREFIX}.default`;
+        // Cleanup legacy unscoped key from earlier builds.
+        window.localStorage?.removeItem("betterTasks.attributeNames");
+        if (key !== defaultKey) {
+          window.localStorage?.removeItem(defaultKey);
+        }
+        window.localStorage?.setItem(key, JSON.stringify(payload));
+      } catch (_) {
+        // ignore storage errors
+      }
+    }
+
     function isChildrenVisible(el) {
       if (!el) return false;
       if (el.childElementCount === 0) return false;
@@ -4222,6 +4323,995 @@ export default {
         energyRemovalKeys: energy.removalKeys,
         attrByType,
       };
+    }
+
+    function registerExtensionToolsAPI() {
+      if (typeof window === "undefined") return;
+      const registry = (window.RoamExtensionTools = window.RoamExtensionTools || {});
+      registry[EXTENSION_TOOLS_ID] = {
+        name: "Better Tasks",
+        version: "1.1",
+        tools: [
+          {
+            name: "bt_get_projects",
+            description: "List projects tracked by Better Tasks.",
+            parameters: {
+              type: "object",
+              properties: {
+                status: { type: "string", enum: ["active", "completed"], description: "Filter by derived status. Active = has open tasks or no tasks; completed = all tasks DONE." },
+                include_tasks: { type: "boolean" },
+                query: { type: "string" },
+                max_results: { type: "number" },
+              },
+            },
+            execute: async (args = {}) => runToolSafely("bt_get_projects", args, () => executeToolGetProjects(args)),
+          },
+          {
+            name: "bt_get_waiting_for",
+            description: "List waiting-for values tracked by Better Tasks.",
+            parameters: {
+              type: "object",
+              properties: {
+                include_counts: { type: "boolean" },
+                query: { type: "string" },
+                max_results: { type: "number" },
+              },
+            },
+            execute: async (args = {}) => runToolSafely("bt_get_waiting_for", args, () => executeToolGetWaitingFor(args)),
+          },
+          {
+            name: "bt_get_context",
+            description: "List context values tracked by Better Tasks.",
+            parameters: {
+              type: "object",
+              properties: {
+                include_counts: { type: "boolean" },
+                query: { type: "string" },
+                max_results: { type: "number" },
+              },
+            },
+            execute: async (args = {}) => runToolSafely("bt_get_context", args, () => executeToolGetContext(args)),
+          },
+          {
+            name: "bt_get_attributes",
+            description: "Get Better Tasks attribute schema and configured labels.",
+            parameters: { type: "object", properties: {} },
+            execute: async (args = {}) => runToolSafely("bt_get_attributes", args, () => executeToolGetAttributes()),
+          },
+          {
+            name: "bt_search",
+            description: "Search Better Tasks tasks by status, due, project, assignee, or free text.",
+            parameters: {
+              type: "object",
+              properties: {
+                status: { type: "string", enum: ["TODO", "DONE"], description: "Filter by task state." },
+                query: { type: "string", description: "Free text search." },
+                due: { type: "string", description: "Due date filter. Accepts: 'overdue', 'today', 'upcoming', 'this-week', 'none', ISO date, or range 'YYYY-MM-DD..YYYY-MM-DD'." },
+                completed: { type: "string", description: "Completed date filter. Accepts: 'today', 'this-week', 'last-7-days', or an ISO date (YYYY-MM-DD), or a range 'YYYY-MM-DD..YYYY-MM-DD'." },
+                project: { type: "string", description: "Filter by project name." },
+                assignee: { type: "string", description: "Filter by assignee." },
+                max_results: { type: "number", description: "Max tasks to return. Default 20." },
+              },
+            },
+            execute: async (args = {}) => runToolSafely("bt_search", args, () => executeToolSearch(args)),
+          },
+          {
+            name: "bt_create",
+            description: "Create a new Better Tasks task. Use attributes object for due, project, defer, start, priority, energy, gtd, waitingFor, context. Top-level attribute keys also accepted.",
+            parameters: {
+              type: "object",
+              properties: {
+                text: { type: "string" },
+                status: { type: "string", enum: ["TODO", "DONE"] },
+                parent_uid: { type: "string" },
+                attributes: { type: "object" },
+              },
+              required: ["text"],
+            },
+            execute: async (args = {}) => runToolSafely("bt_create", args, () => executeToolCreate(sweepAttributeArgs(args))),
+          },
+          {
+            name: "bt_modify",
+            description: "Modify an existing Better Tasks task. Use attributes object for due, project, defer, start, priority, energy, gtd, waitingFor, context. Top-level attribute keys also accepted.",
+            parameters: {
+              type: "object",
+              properties: {
+                uid: { type: "string" },
+                text: { type: "string" },
+                status: { type: "string", enum: ["TODO", "DONE"] },
+                attributes: { type: "object" },
+              },
+              required: ["uid"],
+            },
+            execute: async (args = {}) => runToolSafely("bt_modify", args, () => executeToolModify(sweepAttributeArgs(args))),
+          },
+          {
+            name: "bt_bulk_modify",
+            description: "Modify multiple tasks in a single operation. Each item supports text, status, and attributes. Top-level attribute keys also accepted per item.",
+            parameters: {
+              type: "object",
+              properties: {
+                tasks: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      uid: { type: "string" },
+                      text: { type: "string" },
+                      status: { type: "string", enum: ["TODO", "DONE"] },
+                      attributes: { type: "object" },
+                    },
+                    required: ["uid"],
+                  },
+                  description: "Array of task modifications. Max 50.",
+                },
+              },
+              required: ["tasks"],
+            },
+            execute: async (args = {}) => runToolSafely("bt_bulk_modify", args, () => executeToolBulkModify(args)),
+          },
+          {
+            name: "bt_bulk_snooze",
+            description: "Snooze multiple tasks by shifting existing defer/start/due dates forward by a number of days.",
+            parameters: {
+              type: "object",
+              properties: {
+                uids: { type: "array", items: { type: "string" }, description: "Task UIDs to snooze. Max 50." },
+                days: { type: "number", description: "Number of days to snooze forward." },
+              },
+              required: ["uids", "days"],
+            },
+            execute: async (args = {}) => runToolSafely("bt_bulk_snooze", args, () => executeToolBulkSnooze(args)),
+          },
+          {
+            name: "bt_get_analytics",
+            description: "Task analytics: overdue count, completion rate, velocity by project and time period.",
+            parameters: {
+              type: "object",
+              properties: {
+                period: {
+                  type: "string",
+                  description: "Time period for completion/velocity stats. 'this-week', 'last-7-days', 'last-30-days', or ISO range 'YYYY-MM-DD..YYYY-MM-DD'. Default 'last-7-days'."
+                },
+                project: {
+                  type: "string",
+                  description: "Filter to a specific project. Omit for all."
+                }
+              }
+            },
+            execute: async (args = {}) => runToolSafely("bt_get_analytics", args, async () => {
+              const todayStr = new Date().toISOString().slice(0, 10);
+              const tasks = await getToolTasksSnapshot();
+              const set = S();
+              let summaries = tasks.map((task) => buildToolTaskSummary(task, set));
+
+              // Optional project filter
+              if (args.project) {
+                const proj = String(args.project).toLowerCase();
+                summaries = summaries.filter(t =>
+                  String(t.attributes?.project || "").toLowerCase().includes(proj)
+                );
+              }
+
+              // Compute period bounds
+              const period = String(args.period || "last-7-days").trim().toLowerCase();
+              let periodStart, periodEnd;
+              if (period === "this-week") {
+                const d = new Date();
+                d.setDate(d.getDate() - d.getDay() + 1); // Monday
+                periodStart = d.toISOString().slice(0, 10);
+                periodEnd = todayStr;
+              } else if (period === "last-7-days") {
+                const d = new Date();
+                d.setDate(d.getDate() - 6);
+                periodStart = d.toISOString().slice(0, 10);
+                periodEnd = todayStr;
+              } else if (period === "last-30-days") {
+                const d = new Date();
+                d.setDate(d.getDate() - 29);
+                periodStart = d.toISOString().slice(0, 10);
+                periodEnd = todayStr;
+              } else if (period.includes("..")) {
+                [periodStart, periodEnd] = period.split("..");
+              } else {
+                const d = new Date();
+                d.setDate(d.getDate() - 6);
+                periodStart = d.toISOString().slice(0, 10);
+                periodEnd = todayStr;
+              }
+
+              // Aggregates
+              const overdue = summaries.filter(t => {
+                const iso = roamDateToISO(t.due);
+                return iso && iso < todayStr && t.status === "TODO";
+              }).length;
+
+              const totalOpen = summaries.filter(t => t.status === "TODO").length;
+
+              const completedInPeriod = summaries.filter(t => {
+                const iso = roamDateToISO(t.completed);
+                return iso && iso >= periodStart && iso <= periodEnd;
+              });
+
+              // Velocity by project
+              const velocityByProject = {};
+              for (const t of completedInPeriod) {
+                const p = t.attributes?.project || "(no project)";
+                velocityByProject[p] = (velocityByProject[p] || 0) + 1;
+              }
+
+              // Velocity by day
+              const velocityByDay = {};
+              const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+              for (const t of completedInPeriod) {
+                const iso = roamDateToISO(t.completed);
+                if (iso) {
+                  const day = dayNames[new Date(iso + "T00:00:00").getDay()];
+                  velocityByDay[day] = (velocityByDay[day] || 0) + 1;
+                }
+              }
+
+              return {
+                period: `${periodStart}..${periodEnd}`,
+                overdue,
+                total_open: totalOpen,
+                completed: completedInPeriod.length,
+                completion_rate: totalOpen + completedInPeriod.length > 0
+                  ? Math.round(completedInPeriod.length / (totalOpen + completedInPeriod.length) * 100) / 100
+                  : 0,
+                velocity_by_project: velocityByProject,
+                velocity_by_day: velocityByDay,
+              };
+            })
+          },
+          {
+            name: "bt_get_task_by_uid",
+            description: "Fetch a single task by its block UID. Returns full task details including attributes.",
+            parameters: {
+              type: "object",
+              properties: {
+                uid: { type: "string", description: "Block UID of the task." }
+              },
+              required: ["uid"]
+            },
+            execute: async (args = {}) => runToolSafely("bt_get_task_by_uid", args, async () => {
+              if (!args.uid) return { error: "uid is required" };
+              const tasks = await getToolTasksSnapshot();
+              const set = S();
+              const match = tasks.find(t => t.uid === args.uid);
+              if (!match) return { error: `No task found with UID ${args.uid}` };
+              return buildToolTaskSummary(match, set);
+            })
+          }
+        ],
+      };
+    }
+
+    const KNOWN_BT_ATTR_KEYS = new Set([
+      "due", "start", "defer", "project", "repeat",
+      "gtd", "waitingFor", "context", "priority", "energy", "assignee"
+    ]);
+
+    function sweepAttributeArgs(args) {
+      const attributes = { ...(args.attributes || {}) };
+      for (const [key, value] of Object.entries(args)) {
+        if (KNOWN_BT_ATTR_KEYS.has(key) && !(key in attributes)) {
+          attributes[key] = value;
+        }
+      }
+      console.log("[BT sweepAttributeArgs]", { before: args, after: { ...args, attributes } });
+      return { ...args, attributes };
+    }
+
+    function roamDateToISO(roamDate) {
+      if (!roamDate) return null;
+      const inner = roamDate.replace(/^\[\[/, "").replace(/\]\]$/, "");
+      const cleaned = inner.replace(/(\d+)(st|nd|rd|th)/, "$1");
+      const d = new Date(cleaned);
+      if (isNaN(d.getTime())) return null;
+      // Use local date components to avoid timezone shift
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+
+    function isBtApiLoggingEnabled() {
+      try {
+        return window.localStorage?.getItem("bt-debug-tools") === "1";
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function logToolCallStart(toolName, args) {
+      if (!isBtApiLoggingEnabled()) return;
+      console.info("[BetterTasks API] call:start", { tool: toolName, args });
+    }
+
+    function logToolCallEnd(toolName, args, result, durationMs) {
+      if (!isBtApiLoggingEnabled()) return;
+      console.info("[BetterTasks API] call:end", { tool: toolName, args, result, durationMs });
+    }
+
+    function logToolCallError(toolName, args, error, durationMs) {
+      if (!isBtApiLoggingEnabled()) return;
+      console.warn("[BetterTasks API] call:error", { tool: toolName, args, error: error?.message || error, durationMs });
+    }
+
+    async function runToolSafely(toolName, args, fn) {
+      const startedAt = Date.now();
+      logToolCallStart(toolName, args);
+      try {
+        const result = await fn();
+        logToolCallEnd(toolName, args, result, Date.now() - startedAt);
+        return result;
+      } catch (err) {
+        logToolCallError(toolName, args, err, Date.now() - startedAt);
+        return { error: err?.message || "Tool execution failed" };
+      }
+    }
+
+    function clampToolLimit(value, fallback = 20, max = 200) {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n <= 0) return fallback;
+      return Math.min(Math.floor(n), max);
+    }
+
+    function normalizeToolStatus(value) {
+      if (typeof value !== "string") return "";
+      const s = value.trim().toUpperCase();
+      if (s === "OPEN") return "TODO";
+      return s;
+    }
+
+    function buildToolTaskSummary(task, set = S()) {
+      const metadata = task?.metadata || {};
+      return {
+        uid: task?.uid || "",
+        text: task?.text || "",
+        title: task?.title || "",
+        status: task?.isCompleted ? "DONE" : "TODO",
+        due: task?.dueAt ? formatDate(task.dueAt, set) : null,
+        start: task?.startAt ? formatDate(task.startAt, set) : null,
+        defer: task?.deferUntil ? formatDate(task.deferUntil, set) : null,
+        completed: task?.completedAt ? formatDate(task.completedAt, set) : null,
+        due_bucket: task?.dueBucket || "none",
+        page_uid: task?.pageUid || null,
+        page_title: task?.pageTitle || "",
+        attributes: {
+          repeat: task?.repeatText || null,
+          project: metadata?.project || null,
+          waitingFor: metadata?.waitingFor || null,
+          context: Array.isArray(metadata?.context) ? metadata.context.slice() : [],
+          priority: metadata?.priority || null,
+          energy: metadata?.energy || null,
+          gtd: metadata?.gtd || null,
+        },
+      };
+    }
+
+    async function getToolTasksSnapshot() {
+      const tasks = await collectDashboardTasks({
+        includeCompleted: true,
+        attachWatches: false,
+        cacheKey: "api:tools:all",
+      });
+      return Array.isArray(tasks) ? tasks : [];
+    }
+
+    function applyToolTaskFilters(tasks, args = {}) {
+      const query = typeof args.query === "string" ? args.query.trim().toLowerCase() : "";
+      const due = typeof args.due === "string" ? args.due.trim().toLowerCase() : "";
+      const completed = typeof args.completed === "string" ? args.completed.trim().toLowerCase() : "";
+      const status = normalizeToolStatus(args.status);
+      const project = normalizeProjectValue(args.project || "");
+      const assignee = typeof args.assignee === "string" ? args.assignee.trim().toLowerCase() : "";
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const thisWeekEnd = new Date(now.getTime());
+      thisWeekEnd.setDate(thisWeekEnd.getDate() + 7);
+      const todayEnd = new Date(todayStart.getTime());
+      todayEnd.setDate(todayEnd.getDate() + 1);
+      const last7Start = new Date(todayStart.getTime());
+      last7Start.setDate(last7Start.getDate() - 6);
+      return (Array.isArray(tasks) ? tasks : []).filter((task) => {
+        if (!task) return false;
+        if (status === "DONE" && !task.isCompleted) return false;
+        if (status === "TODO" && task.isCompleted) return false;
+        if (project) {
+          const taskProject = normalizeProjectValue(task?.metadata?.project || "");
+          if (taskProject.toLowerCase() !== project.toLowerCase()) return false;
+        }
+        if (assignee) {
+          const taskAssignee = String(task?.metadata?.assignee || "").trim().toLowerCase();
+          if (!taskAssignee || taskAssignee !== assignee) return false;
+        }
+        if (due) {
+          const dueDate = task?.dueAt instanceof Date ? task.dueAt : null;
+          if (due === "overdue") {
+            if (task?.dueBucket !== "overdue" || task?.isCompleted) return false;
+          } else if (due === "today") {
+            if (task?.dueBucket !== "today") return false;
+          } else if (due === "this-week") {
+            if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) return false;
+            if (dueDate < now || dueDate > thisWeekEnd) return false;
+          } else if (due === "upcoming") {
+            if (task?.dueBucket !== "upcoming") return false;
+          } else if (due === "none") {
+            if (task?.dueBucket !== "none") return false;
+          } else if (due.includes("..")) {
+            // Range filtering handled post-summary in executeToolSearch — skip here
+          } else {
+            const parsed = parseRoamDate(due) || parseRelativeDateText(due);
+            if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) return false;
+            if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) return false;
+            if (!isSameDay(parsed, dueDate)) return false;
+          }
+        }
+        if (completed) {
+          const compDate = task?.completedAt instanceof Date ? task.completedAt : null;
+          if (!(compDate instanceof Date) || Number.isNaN(compDate.getTime())) return false;
+          if (completed === "today") {
+            if (!isSameDay(compDate, todayStart)) return false;
+          } else if (completed === "this-week") {
+            if (compDate < todayStart || compDate >= thisWeekEnd) return false;
+          } else if (completed === "last-7-days") {
+            if (compDate < last7Start || compDate >= todayEnd) return false;
+          } else {
+            const parsed = parseRoamDate(completed) || parseRelativeDateText(completed);
+            if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) return false;
+            if (!isSameDay(parsed, compDate)) return false;
+          }
+        }
+        if (query) {
+          const haystack = [
+            task?.title || "",
+            task?.text || "",
+            task?.repeatText || "",
+            task?.metadata?.project || "",
+            task?.metadata?.waitingFor || "",
+            task?.metadata?.priority || "",
+            task?.metadata?.energy || "",
+            task?.metadata?.gtd || "",
+            ...(Array.isArray(task?.metadata?.context) ? task.metadata.context : []),
+          ]
+            .join(" ")
+            .toLowerCase();
+          if (!haystack.includes(query)) return false;
+        }
+        return true;
+      });
+    }
+
+    async function executeToolSearch(args = {}) {
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const maxResults = clampToolLimit(args.max_results, 20, 200);
+      const tasks = await getToolTasksSnapshot();
+
+      // Apply non-date filters first
+      const filtered = applyToolTaskFilters(tasks, args);
+
+      // Build summaries (this populates due, start, defer etc.)
+      const set = S();
+      let summaries = filtered.map((task) => buildToolTaskSummary(task, set));
+
+      // Now apply date bucket filters on the populated summaries
+      if (args.due === "overdue") {
+        summaries = summaries.filter(t => {
+          const iso = roamDateToISO(t.due);
+          return iso && iso < todayStr && t.status === "TODO";
+        });
+      } else if (args.due === "today") {
+        summaries = summaries.filter(t => roamDateToISO(t.due) === todayStr);
+      } else if (args.due === "upcoming") {
+        summaries = summaries.filter(t => {
+          const iso = roamDateToISO(t.due);
+          return iso && iso > todayStr;
+        });
+      } else if (args.due === "this-week") {
+        const weekEnd = new Date(now);
+        weekEnd.setDate(weekEnd.getDate() + 7);
+        const weekEndStr = `${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, "0")}-${String(weekEnd.getDate()).padStart(2, "0")}`;
+        summaries = summaries.filter(t => {
+          const iso = roamDateToISO(t.due);
+          return iso && iso >= todayStr && iso <= weekEndStr;
+        });
+      } else if (args.due === "none") {
+        summaries = summaries.filter(t => !t.due);
+      } else if (args.due && args.due.includes("..")) {
+        const [from, to] = args.due.split("..");
+        summaries = summaries.filter(t => {
+          const iso = roamDateToISO(t.due);
+          return iso && iso >= from && iso <= to;
+        });
+      } else if (args.due) {
+        const target = roamDateToISO(args.due) || args.due;
+        summaries = summaries.filter(t => roamDateToISO(t.due) === target);
+      }
+
+      // Apply completed date filter on summaries
+      if (args.completed) {
+        const compArg = String(args.completed).trim().toLowerCase();
+        if (compArg === "today") {
+          summaries = summaries.filter(t => roamDateToISO(t.completed) === todayStr);
+        } else if (compArg === "this-week") {
+          const weekEnd = new Date(now);
+          weekEnd.setDate(weekEnd.getDate() + 7);
+          const weekEndStr = `${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, "0")}-${String(weekEnd.getDate()).padStart(2, "0")}`;
+          summaries = summaries.filter(t => {
+            const iso = roamDateToISO(t.completed);
+            return iso && iso >= todayStr && iso <= weekEndStr;
+          });
+        } else if (compArg === "last-7-days") {
+          const last7 = new Date(now);
+          last7.setDate(last7.getDate() - 6);
+          const last7Str = `${last7.getFullYear()}-${String(last7.getMonth() + 1).padStart(2, "0")}-${String(last7.getDate()).padStart(2, "0")}`;
+          summaries = summaries.filter(t => {
+            const iso = roamDateToISO(t.completed);
+            return iso && iso >= last7Str && iso <= todayStr;
+          });
+        } else if (compArg.includes("..")) {
+          const [from, to] = compArg.split("..");
+          summaries = summaries.filter(t => {
+            const iso = roamDateToISO(t.completed);
+            return iso && iso >= from && iso <= to;
+          });
+        } else {
+          const target = roamDateToISO(compArg) || compArg;
+          summaries = summaries.filter(t => roamDateToISO(t.completed) === target);
+        }
+      }
+
+      const out = summaries.slice(0, maxResults);
+      return {
+        tasks: out,
+        count: summaries.length,
+        returned: out.length,
+      };
+    }
+
+    function countProjectTasks(tasks, projectName) {
+      const target = normalizeProjectValue(projectName || "").toLowerCase();
+      const counts = { todo: 0, done: 0 };
+      for (const task of Array.isArray(tasks) ? tasks : []) {
+        const name = normalizeProjectValue(task?.metadata?.project || "").toLowerCase();
+        if (!target || name !== target) continue;
+        if (task?.isCompleted) counts.done += 1;
+        else counts.todo += 1;
+      }
+      return counts;
+    }
+
+    async function batchGetPageUidsByTitles(titles) {
+      if (!titles.length) return new Map();
+      try {
+        const results = await window.roamAlphaAPI.q(
+          `[:find ?title ?uid :in $ [?title ...] :where [?p :node/title ?title] [?p :block/uid ?uid]]`,
+          titles
+        );
+        const map = new Map();
+        for (const [title, uid] of results || []) {
+          if (title && uid) map.set(title, uid);
+        }
+        return map;
+      } catch (err) {
+        console.warn("[BetterTasks] batchGetPageUidsByTitles failed", err);
+        return new Map();
+      }
+    }
+
+    async function executeToolGetProjects(args = {}) {
+      await refreshProjectOptions(false);
+      const all = getProjectOptions();
+      const query = typeof args.query === "string" ? args.query.trim().toLowerCase() : "";
+      const maxResults = clampToolLimit(args.max_results, 200, 500);
+      const statusFilter = typeof args.status === "string" ? args.status.trim().toLowerCase() : "";
+      const includeTasks = args.include_tasks === true;
+      const tasks = await getToolTasksSnapshot();
+      const filtered = query ? all.filter((name) => name.toLowerCase().includes(query)) : all;
+      const uidMap = await batchGetPageUidsByTitles(filtered);
+      const rows = [];
+      for (const name of filtered) {
+        const taskCounts = countProjectTasks(tasks, name);
+        const totalTasks = taskCounts.todo + taskCounts.done;
+        const status = totalTasks > 0 && taskCounts.todo === 0 ? "completed" : "active";
+        if (statusFilter && statusFilter !== status) continue;
+        const row = {
+          name,
+          uid: uidMap.get(name) || null,
+          status,
+          attributes: {},
+        };
+        if (includeTasks) {
+          row.task_counts = taskCounts;
+        }
+        rows.push(row);
+        if (rows.length >= maxResults) break;
+      }
+      return { projects: rows, count: rows.length };
+    }
+
+    async function executeToolGetWaitingFor(args = {}) {
+      await refreshWaitingOptions(false);
+      const query = typeof args.query === "string" ? args.query.trim().toLowerCase() : "";
+      const maxResults = clampToolLimit(args.max_results, 200, 500);
+      const includeCounts = args.include_counts === true;
+      const options = getWaitingOptions().filter((name) => !query || name.toLowerCase().includes(query));
+      let counts = null;
+      if (includeCounts) {
+        counts = new Map();
+        const tasks = await getToolTasksSnapshot();
+        for (const task of tasks) {
+          const key = String(task?.metadata?.waitingFor || "").trim();
+          if (!key) continue;
+          counts.set(key, (counts.get(key) || 0) + 1);
+        }
+      }
+      const values = options.slice(0, maxResults).map((name) => ({
+        name,
+        ...(includeCounts ? { count: counts?.get(name) || 0 } : {}),
+      }));
+      return { values, count: values.length };
+    }
+
+    async function executeToolGetContext(args = {}) {
+      await refreshContextOptions(false);
+      const query = typeof args.query === "string" ? args.query.trim().toLowerCase() : "";
+      const maxResults = clampToolLimit(args.max_results, 200, 500);
+      const includeCounts = args.include_counts === true;
+      const options = getContextOptions().filter((name) => !query || name.toLowerCase().includes(query));
+      let counts = null;
+      if (includeCounts) {
+        counts = new Map();
+        const tasks = await getToolTasksSnapshot();
+        for (const task of tasks) {
+          const list = Array.isArray(task?.metadata?.context) ? task.metadata.context : [];
+          for (const item of list) {
+            const key = String(item || "").trim();
+            if (!key) continue;
+            counts.set(key, (counts.get(key) || 0) + 1);
+          }
+        }
+      }
+      const values = options.slice(0, maxResults).map((name) => ({
+        name,
+        ...(includeCounts ? { count: counts?.get(name) || 0 } : {}),
+      }));
+      return { values, count: values.length };
+    }
+
+    function executeToolGetAttributes() {
+      const attrs = resolveAttributeNames();
+      const map = [
+        ["repeat", attrs.repeatAttr, attrs.repeatAliases, attrs.attrByType?.repeat?.defaultName, "string"],
+        ["start", attrs.startAttr, attrs.startAliases, attrs.attrByType?.start?.defaultName, "date"],
+        ["defer", attrs.deferAttr, attrs.deferAliases, attrs.attrByType?.defer?.defaultName, "date"],
+        ["due", attrs.dueAttr, attrs.dueAliases, attrs.attrByType?.due?.defaultName, "date"],
+        ["completed", attrs.completedAttr, attrs.completedAliases, attrs.attrByType?.completed?.defaultName, "date"],
+        ["project", attrs.projectAttr, attrs.projectAliases, attrs.attrByType?.project?.defaultName, "string"],
+        ["gtd", attrs.gtdAttr, attrs.gtdAliases, attrs.attrByType?.gtd?.defaultName, "enum"],
+        ["waitingFor", attrs.waitingForAttr, attrs.waitingForAliases, attrs.attrByType?.waitingFor?.defaultName, "string"],
+        ["context", attrs.contextAttr, attrs.contextAliases, attrs.attrByType?.context?.defaultName, "list"],
+        ["priority", attrs.priorityAttr, attrs.priorityAliases, attrs.attrByType?.priority?.defaultName, "enum"],
+        ["energy", attrs.energyAttr, attrs.energyAliases, attrs.attrByType?.energy?.defaultName, "enum"],
+      ];
+      const attributes = map.map(([id, name, aliases, defaultName, type]) => ({
+        id,
+        name,
+        type,
+        aliases: Array.isArray(aliases) ? aliases.slice() : [],
+        default_name: defaultName || null,
+        is_default: !!(defaultName && String(name).toLowerCase() === String(defaultName).toLowerCase()),
+        ...(id === "gtd" ? { values: GTD_STATUS_ORDER.slice() } : {}),
+        ...(id === "priority" || id === "energy" ? { values: ["low", "medium", "high"] } : {}),
+      }));
+      return {
+        surface: "Child",
+        attributes,
+      };
+    }
+
+    function normalizeToolContextValue(value) {
+      if (Array.isArray(value)) {
+        return value.map((v) => stripLinkOrTag(String(v || ""))).map((v) => v.replace(/^@+/, "").trim()).filter(Boolean);
+      }
+      if (typeof value === "string") {
+        return normalizeContextList(value);
+      }
+      return [];
+    }
+
+    function parseToolAttributePatch(input = {}) {
+      const patch = {};
+      const attrs = input && typeof input === "object" ? input : {};
+      if ("repeat" in attrs) patch.repeat = attrs.repeat;
+      if ("due" in attrs) patch.due = attrs.due;
+      if ("start" in attrs) patch.start = attrs.start;
+      if ("defer" in attrs) patch.defer = attrs.defer;
+      if ("project" in attrs) patch.project = attrs.project;
+      if ("waitingFor" in attrs) patch.waitingFor = attrs.waitingFor;
+      if ("waiting_for" in attrs && !("waitingFor" in patch)) patch.waitingFor = attrs.waiting_for;
+      if ("context" in attrs) patch.context = attrs.context;
+      if ("priority" in attrs) patch.priority = attrs.priority;
+      if ("energy" in attrs) patch.energy = attrs.energy;
+      if ("gtd" in attrs) patch.gtd = attrs.gtd;
+      if ("completed" in attrs) patch.completed = attrs.completed;
+      return patch;
+    }
+
+    async function applyToolAttributePatch(uid, patch, set) {
+      const attrNames = set.attrNames;
+      if ("repeat" in patch) {
+        if (patch.repeat == null || String(patch.repeat).trim() === "") {
+          await removeChildAttrsForType(uid, "repeat", attrNames);
+        } else {
+          const repeatVal = normalizeRepeatRuleText(String(patch.repeat)) || String(patch.repeat).trim();
+          if (!parseRuleText(repeatVal, set)) throw new Error("Invalid repeat rule");
+          await ensureChildAttrForType(uid, "repeat", repeatVal, attrNames);
+        }
+      }
+      if ("due" in patch) {
+        if (patch.due == null || String(patch.due).trim() === "") await removeChildAttrsForType(uid, "due", attrNames);
+        else await ensureChildAttrForType(uid, "due", String(patch.due).trim(), attrNames);
+      }
+      if ("start" in patch) {
+        if (patch.start == null || String(patch.start).trim() === "") await removeChildAttrsForType(uid, "start", attrNames);
+        else await ensureChildAttrForType(uid, "start", String(patch.start).trim(), attrNames);
+      }
+      if ("defer" in patch) {
+        if (patch.defer == null || String(patch.defer).trim() === "") await removeChildAttrsForType(uid, "defer", attrNames);
+        else await ensureChildAttrForType(uid, "defer", String(patch.defer).trim(), attrNames);
+      }
+      if ("completed" in patch) {
+        if (patch.completed == null || String(patch.completed).trim() === "") await removeChildAttrsForType(uid, "completed", attrNames);
+        else await ensureChildAttrForType(uid, "completed", String(patch.completed).trim(), attrNames);
+      }
+      if ("project" in patch) {
+        const val = patch.project == null ? null : normalizeProjectValue(String(patch.project || ""));
+        await setRichAttribute(uid, "project", val || null, attrNames);
+        if (val) addProjectOption(val);
+      }
+      if ("waitingFor" in patch) {
+        const val = patch.waitingFor == null ? null : String(patch.waitingFor || "").trim();
+        await setRichAttribute(uid, "waitingFor", val || null, attrNames);
+        if (val) addWaitingOption(val);
+      }
+      if ("context" in patch) {
+        const list = normalizeToolContextValue(patch.context);
+        await setRichAttribute(uid, "context", list, attrNames);
+        if (list.length) list.forEach((v) => addContextOption(v));
+      }
+      if ("priority" in patch) {
+        const val = patch.priority == null ? null : normalizePriorityValue(String(patch.priority || ""));
+        await setRichAttribute(uid, "priority", val || null, attrNames);
+      }
+      if ("energy" in patch) {
+        const val = patch.energy == null ? null : normalizeEnergyValue(String(patch.energy || ""));
+        await setRichAttribute(uid, "energy", val || null, attrNames);
+      }
+      if ("gtd" in patch) {
+        const val = patch.gtd == null ? null : normalizeGtdStatus(String(patch.gtd || ""));
+        await setRichAttribute(uid, "gtd", val || null, attrNames);
+      }
+    }
+
+    async function executeToolCreate(args = {}) {
+      const text = typeof args.text === "string" ? args.text.trim() : "";
+      if (!text) return { error: "text is required" };
+      const requestedStatus = normalizeToolStatus(args.status || "TODO");
+      if (requestedStatus !== "TODO" && requestedStatus !== "DONE") {
+        return { error: `Unsupported status: ${requestedStatus}. Allowed: TODO, DONE.` };
+      }
+      const set = S();
+      const attrsPatch = parseToolAttributePatch(args.attributes || {});
+      const dueParsed = "due" in attrsPatch ? parseDateFromText(String(attrsPatch.due || ""), set).date : null;
+      const deferParsed = "defer" in attrsPatch ? parseDateFromText(String(attrsPatch.defer || ""), set).date : null;
+      const startParsed = "start" in attrsPatch ? parseDateFromText(String(attrsPatch.start || ""), set).date : null;
+      const anchorDate = dueParsed || deferParsed || startParsed || todayLocal();
+      // Normalise dates to Roam format before writing
+      if (dueParsed) attrsPatch.due = formatDate(dueParsed, set);
+      if (deferParsed) attrsPatch.defer = formatDate(deferParsed, set);
+      if (startParsed) attrsPatch.start = formatDate(startParsed, set);
+      let parentUid = typeof args.parent_uid === "string" && args.parent_uid.trim() ? args.parent_uid.trim() : "";
+      if (parentUid) {
+        const parentBlock = await getBlock(parentUid);
+        if (!parentBlock) return { error: `Parent block not found: ${parentUid}` };
+      }
+      if (!parentUid) {
+        parentUid = await ensureTargetReady(anchorDate, { page: { uid: null } }, set);
+        if (!parentUid) {
+          parentUid = await chooseTargetPageUid(anchorDate, { page: { uid: null } }, set);
+        }
+      }
+      if (!parentUid) return { error: "Unable to determine parent block/page for task creation" };
+      const uid = window.roamAlphaAPI.util.generateUID();
+      const taskText = normalizeToTodoMacro(text);
+      await createBlock(parentUid, "last", taskText, uid);
+      await updateBlockProps(uid, { rt: { id: shortId(), tz: set.timezone } });
+      if (requestedStatus === "DONE" && !("completed" in attrsPatch)) {
+        attrsPatch.completed = formatDate(todayLocal(), set);
+      }
+      await applyToolAttributePatch(uid, attrsPatch, set);
+      if (requestedStatus === "DONE") {
+        await setTaskTodoState(uid, "DONE");
+      }
+      scheduleSurfaceSync(set.attributeSurface);
+      activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
+      const block = await getBlock(uid);
+      const meta = block ? await readRecurringMeta(block, set) : null;
+      const task = block && meta ? deriveDashboardTask(block, meta, set) : null;
+      return task ? buildToolTaskSummary(task, set) : { uid, text: taskText, status: requestedStatus };
+    }
+
+    async function executeToolModify(args = {}) {
+      const uid = typeof args.uid === "string" ? args.uid.trim() : "";
+      if (!uid) return { error: "uid is required" };
+      const block = await getBlock(uid);
+      if (!block) return { error: `Task not found: ${uid}` };
+      if (!isTaskBlock(block)) return { error: "Target block is not a TODO/DONE task block" };
+      const set = S();
+      const nextTextRaw = typeof args.text === "string" ? args.text.trim() : "";
+      if (nextTextRaw) {
+        const stateNow = isBlockCompleted(block) ? "DONE" : "TODO";
+        const nextText = formatTodoStateString(nextTextRaw, stateNow);
+        await updateBlockString(uid, nextText);
+      }
+      const status = normalizeToolStatus(args.status || "");
+      if (status === "TODO" || status === "DONE") {
+        await setTaskTodoState(uid, status);
+      } else if (status) {
+        return { error: `Unsupported status: ${status}. Allowed: TODO, DONE.` };
+      }
+      const patch = parseToolAttributePatch(args.attributes || {});
+      // Normalise dates to Roam format
+      for (const dateKey of ["due", "start", "defer"]) {
+        if (dateKey in patch && patch[dateKey] != null) {
+          const parsed = parseDateFromText(String(patch[dateKey]), set).date;
+          if (parsed) patch[dateKey] = formatDate(parsed, set);
+        }
+      }
+      if (status === "DONE" && !("completed" in patch)) {
+        patch.completed = formatDate(todayLocal(), set);
+      } else if (status === "TODO" && !("completed" in patch)) {
+        patch.completed = null;
+      }
+      if (Object.keys(patch).length) {
+        await applyToolAttributePatch(uid, patch, set);
+        scheduleSurfaceSync(set.attributeSurface);
+      }
+      activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
+      const nextBlock = await getBlock(uid);
+      const meta = nextBlock ? await readRecurringMeta(nextBlock, set) : null;
+      const task = nextBlock && meta ? deriveDashboardTask(nextBlock, meta, set) : null;
+      return task ? buildToolTaskSummary(task, set) : { uid };
+    }
+
+    async function executeToolBulkModify(args = {}) {
+      const tasks = args.tasks;
+      if (!Array.isArray(tasks) || !tasks.length) return { error: "tasks array is required and must be non-empty" };
+      if (tasks.length > 50) return { error: "Maximum 50 tasks per bulk operation" };
+      if (bulkOperationCooldownTimer) {
+        clearTimeout(bulkOperationCooldownTimer);
+        bulkOperationCooldownTimer = null;
+      }
+      bulkOperationInProgress = true;
+      try {
+        const set = S();
+        const results = [];
+        let anyPatchApplied = false;
+        for (const rawItem of tasks) {
+          const item = sweepAttributeArgs(rawItem || {});
+          const uid = typeof item.uid === "string" ? item.uid.trim() : "";
+          if (!uid) {
+            results.push({ uid: uid || null, success: false, error: "uid is required" });
+            continue;
+          }
+          try {
+            const block = await getBlock(uid);
+            if (!block) { results.push({ uid, success: false, error: "Task not found" }); continue; }
+            if (!isTaskBlock(block)) { results.push({ uid, success: false, error: "Target block is not a TODO/DONE task block" }); continue; }
+            const nextTextRaw = typeof item.text === "string" ? item.text.trim() : "";
+            if (nextTextRaw) {
+              const stateNow = isBlockCompleted(block) ? "DONE" : "TODO";
+              const nextText = formatTodoStateString(nextTextRaw, stateNow);
+              await updateBlockString(uid, nextText);
+            }
+            const status = normalizeToolStatus(item.status || "");
+            if (status === "TODO" || status === "DONE") {
+              await setTaskTodoState(uid, status);
+            } else if (status) {
+              results.push({ uid, success: false, error: `Unsupported status: ${status}. Allowed: TODO, DONE.` });
+              continue;
+            }
+            const patch = parseToolAttributePatch(item.attributes || {});
+            // Normalise dates to Roam format
+            for (const dateKey of ["due", "start", "defer"]) {
+              if (dateKey in patch && patch[dateKey] != null) {
+                const parsed = parseDateFromText(String(patch[dateKey]), set).date;
+                if (parsed) patch[dateKey] = formatDate(parsed, set);
+              }
+            }
+            if (status === "DONE" && !("completed" in patch)) {
+              patch.completed = formatDate(todayLocal(), set);
+            } else if (status === "TODO" && !("completed" in patch)) {
+              patch.completed = null;
+            }
+            if (Object.keys(patch).length) {
+              await applyToolAttributePatch(uid, patch, set);
+              anyPatchApplied = true;
+            }
+            const nextBlock = await getBlock(uid);
+            const meta = nextBlock ? await readRecurringMeta(nextBlock, set) : null;
+            const task = nextBlock && meta ? deriveDashboardTask(nextBlock, meta, set) : null;
+            results.push({ uid, success: true, task: task ? buildToolTaskSummary(task, set) : { uid } });
+          } catch (err) {
+            results.push({ uid, success: false, error: err?.message || "Modification failed" });
+          }
+        }
+        if (anyPatchApplied) scheduleSurfaceSync(set.attributeSurface);
+        await refresh({ reason: "force" });
+        requestTodayWidgetRenderOnDnp(120, true);
+        const succeeded = results.filter((r) => r.success).length;
+        return {
+          results,
+          summary: { total: results.length, succeeded, failed: results.length - succeeded },
+        };
+      } finally {
+        if (bulkOperationCooldownTimer) clearTimeout(bulkOperationCooldownTimer);
+        bulkOperationCooldownTimer = setTimeout(() => {
+          bulkOperationInProgress = false;
+          bulkOperationCooldownTimer = null;
+        }, BULK_OPERATION_COOLDOWN_MS);
+      }
+    }
+
+    async function executeToolBulkSnooze(args = {}) {
+      const uids = args.uids;
+      if (!Array.isArray(uids) || !uids.length) return { error: "uids array is required and must be non-empty" };
+      if (uids.length > 50) return { error: "Maximum 50 tasks per bulk operation" };
+      const days = args.days;
+      if (typeof days !== "number" || !Number.isFinite(days) || days < 1) return { error: "days must be a positive number" };
+      if (bulkOperationCooldownTimer) {
+        clearTimeout(bulkOperationCooldownTimer);
+        bulkOperationCooldownTimer = null;
+      }
+      bulkOperationInProgress = true;
+      try {
+        const set = S();
+        const results = [];
+        for (const rawUid of uids) {
+          const uid = typeof rawUid === "string" ? rawUid.trim() : "";
+          if (!uid) { results.push({ uid: uid || null, success: false, error: "Invalid uid" }); continue; }
+          try {
+            const block = await getBlock(uid);
+            if (!block) { results.push({ uid, success: false, error: "Task not found" }); continue; }
+            if (!isTaskBlock(block)) { results.push({ uid, success: false, error: "Target block is not a TODO/DONE task block" }); continue; }
+            await snoozeDeferByDays(uid, set, days);
+            const nextBlock = await getBlock(uid);
+            const meta = nextBlock ? await readRecurringMeta(nextBlock, set) : null;
+            const task = nextBlock && meta ? deriveDashboardTask(nextBlock, meta, set) : null;
+            results.push({ uid, success: true, task: task ? buildToolTaskSummary(task, set) : { uid } });
+          } catch (err) {
+            results.push({ uid, success: false, error: err?.message || "Snooze failed" });
+          }
+        }
+        scheduleSurfaceSync(set.attributeSurface);
+        await refresh({ reason: "force" });
+        requestTodayWidgetRenderOnDnp(120, true);
+        const succeeded = results.filter((r) => r.success).length;
+        return {
+          results,
+          summary: { total: results.length, succeeded, failed: results.length - succeeded },
+        };
+      } finally {
+        if (bulkOperationCooldownTimer) clearTimeout(bulkOperationCooldownTimer);
+        bulkOperationCooldownTimer = setTimeout(() => {
+          bulkOperationInProgress = false;
+          bulkOperationCooldownTimer = null;
+        }, BULK_OPERATION_COOLDOWN_MS);
+      }
     }
 
     function pickInlineAttr(inlineMap, aliases, options = {}) {
@@ -7642,6 +8732,7 @@ export default {
       const next = resolveAttributeNames();
       updateAttrNameHistory(prev, next);
       lastAttrNames = next;
+      syncPublicAttrNames(next);
       repeatOverrides.clear();
       scheduleSurfaceSync(lastAttrSurface);
       void refreshProjectOptions(true);
@@ -7658,6 +8749,7 @@ export default {
 
     function clearAllPills(removeStyle = true) {
       document.querySelectorAll?.(".rt-pill-wrap")?.forEach((el) => el.remove());
+      pillSkipDecorate.clear();
       if (removeStyle) {
         const style = document.getElementById("rt-pill-style");
         if (style?.parentNode) style.parentNode.removeChild(style);
@@ -7803,6 +8895,42 @@ export default {
 
     function getTodaySetting(settingId) {
       return extensionAPI.settings.get(settingId);
+    }
+
+    function loadStoredAnchorUids() {
+      try {
+        const raw = extensionAPI?.settings?.get?.(TODAY_ANCHOR_UIDS_SETTING);
+        if (!raw) return [];
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        return Array.isArray(parsed) ? parsed.filter((u) => typeof u === "string" && u.trim()) : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function saveAnchorUid(uid) {
+      if (!uid || typeof uid !== "string") return;
+      try {
+        const existing = loadStoredAnchorUids();
+        if (existing.includes(uid)) return;
+        const next = [...existing, uid].slice(-10);
+        extensionAPI?.settings?.set?.(TODAY_ANCHOR_UIDS_SETTING, JSON.stringify(next));
+      } catch (_) {}
+    }
+
+    function removeStoredAnchorUid(uid) {
+      if (!uid) return;
+      try {
+        const existing = loadStoredAnchorUids();
+        const next = existing.filter((u) => u !== uid);
+        extensionAPI?.settings?.set?.(TODAY_ANCHOR_UIDS_SETTING, JSON.stringify(next));
+      } catch (_) {}
+    }
+
+    function clearStoredAnchorUids() {
+      try {
+        extensionAPI?.settings?.set?.(TODAY_ANCHOR_UIDS_SETTING, "[]");
+      } catch (_) {}
     }
 
     function getLanguageSetting(override = null) {
@@ -8356,6 +9484,20 @@ export default {
 
     async function removeAllTodayAnchorsByQuery({ includeHeading = false, textsOverride = null } = {}) {
       try {
+        // Prefer deleting by stored UIDs to avoid text-match collisions with user content.
+        const storedUids = loadStoredAnchorUids();
+        if (storedUids.length > 0 && !textsOverride) {
+          for (const u of storedUids) {
+            try {
+              await deleteBlockAndDescendants(u);
+            } catch (_) {}
+            removeStoredAnchorUid(u);
+          }
+          lastTodayAnchorUid = null;
+          return;
+        }
+
+        // Fallback: text-based scan (backward compat for anchors created before UID tracking).
         const cache = createTodayRenderCache();
         const dnpUid = await getOrCreatePageUidCached(toDnpTitle(todayLocal()), cache);
         const { headingUid } = await getTodayParentInfo(cache);
@@ -8372,6 +9514,7 @@ export default {
           await deleteBlockAndDescendants(u);
         }
         lastTodayAnchorUid = null;
+        clearStoredAnchorUids();
       } catch (_) {
         // ignore errors
       }
@@ -11179,6 +12322,7 @@ export default {
       }
 
       function open() {
+        dashboardEverOpened = true;
         if (dashboardWatchClearTimer) {
           clearTimeout(dashboardWatchClearTimer);
           dashboardWatchClearTimer = null;
@@ -11257,6 +12401,8 @@ export default {
         try {
           if (action === "complete") {
             await setTaskTodoState(uid, "DONE");
+            const set = S();
+            await ensureChildAttrForType(uid, "completed", formatDate(todayLocal(), set), set.attrNames);
           } else {
             await setTaskTodoState(uid, "TODO");
             await undoTaskCompletion(uid);
@@ -11393,6 +12539,9 @@ export default {
         }
         bulkOperationInProgress = true;
         try {
+          const set = S();
+          const attrNames = set.attrNames;
+          const completedDate = formatDate(todayLocal(), set);
           const previousStates = [];
           // Capture previous states for undo
           for (const uid of uids) {
@@ -11410,6 +12559,7 @@ export default {
             try {
               if (action === "complete") {
                 await setTaskTodoState(uid, "DONE");
+                await ensureChildAttrForType(uid, "completed", completedDate, attrNames);
               } else {
                 await setTaskTodoState(uid, "TODO");
                 await undoTaskCompletion(uid);
@@ -11424,11 +12574,11 @@ export default {
           const bulkStrings = t(["dashboard", "bulk"], lang) || {};
           const msg = action === "complete"
             ? (typeof bulkStrings.completedCount === "function"
-                ? bulkStrings.completedCount(successCount)
-                : `Completed ${successCount} task${successCount === 1 ? "" : "s"}`)
+              ? bulkStrings.completedCount(successCount)
+              : `Completed ${successCount} task${successCount === 1 ? "" : "s"}`)
             : (typeof bulkStrings.reopenedCount === "function"
-                ? bulkStrings.reopenedCount(successCount)
-                : `Reopened ${successCount} task${successCount === 1 ? "" : "s"}`);
+              ? bulkStrings.reopenedCount(successCount)
+              : `Reopened ${successCount} task${successCount === 1 ? "" : "s"}`);
           showBulkUndoToast({
             message: msg,
             undo: async () => {
@@ -11439,10 +12589,14 @@ export default {
               }
               bulkOperationInProgress = true;
               try {
+                const undoSet = S();
+                const undoAttrNames = undoSet.attrNames;
+                const undoCompletedDate = formatDate(todayLocal(), undoSet);
                 for (const { uid, wasCompleted } of previousStates) {
                   try {
                     if (wasCompleted) {
                       await setTaskTodoState(uid, "DONE");
+                      await ensureChildAttrForType(uid, "completed", undoCompletedDate, undoAttrNames);
                     } else {
                       await setTaskTodoState(uid, "TODO");
                       await undoTaskCompletion(uid);
@@ -12167,27 +13321,28 @@ export default {
     }
 
     const dashboardTaskCache = (() => {
-      let lastKey = null;
-      let lastAt = 0;
-      let lastValue = null;
+      const store = new Map();
       const TTL_MS = 5000;
+      const MAX_SLOTS = 3;
       return {
         get(key) {
-          const now = Date.now();
-          if (lastKey === key && now - lastAt < TTL_MS) return lastValue;
-          return null;
+          const entry = store.get(key);
+          if (!entry) return null;
+          if (Date.now() - entry.at >= TTL_MS) { store.delete(key); return null; }
+          return entry.value;
         },
         set(key, value) {
-          lastKey = key;
-          lastAt = Date.now();
-          lastValue = value;
+          if (store.size >= MAX_SLOTS && !store.has(key)) {
+            let oldestKey = null, oldestAt = Infinity;
+            for (const [k, v] of store) {
+              if (v.at < oldestAt) { oldestAt = v.at; oldestKey = k; }
+            }
+            if (oldestKey) store.delete(oldestKey);
+          }
+          store.set(key, { at: Date.now(), value });
           return value;
         },
-        clear() {
-          lastKey = null;
-          lastAt = 0;
-          lastValue = null;
-        },
+        clear() { store.clear(); },
       };
     })();
 
@@ -12705,6 +13860,7 @@ export default {
             } catch (_) { }
           }
         }
+        saveAnchorUid(existing.uid);
         return existing.uid;
       }
       const order = desiredOrder;
@@ -12714,6 +13870,7 @@ export default {
         await window.roamAlphaAPI.updateBlock({ block: { uid, heading } });
       } catch (_) { }
       lastTodayAnchorIsHeading = false;
+      saveAnchorUid(uid);
       return uid;
     }
 
@@ -13292,7 +14449,19 @@ export default {
   },
 
   onunload: async () => {
+    if (typeof window !== "undefined" && window.RoamExtensionTools) {
+      delete window.RoamExtensionTools[EXTENSION_TOOLS_ID];
+    }
     if (typeof window !== "undefined") {
+      try {
+        window.__btInlineMetaCache?.clear?.();
+      } catch (_) {}
+      delete window.__btInlineMetaCache;
+      try {
+        window.__btPillSignatureCache?.clear?.();
+      } catch (_) {}
+      delete window.__btPillSignatureCache;
+      delete window.__btLastPillMenuOpen;
       try {
         window.__RecurringTasksCleanup?.();
       } finally {
@@ -13301,12 +14470,12 @@ export default {
     }
 
     const slashCommandAPI = window.roamAlphaAPI?.ui?.slashCommand;
-    slashCommandAPI?.removeCommand({
-      label: "Create a Better Task",
-    });
-    slashCommandAPI?.removeCommand({
-      label: "Convert TODO to Better Task",
-    });
+    if (slashCommandAPI) {
+      if (registeredSlashCreateLabel) slashCommandAPI.removeCommand({ label: registeredSlashCreateLabel });
+      if (registeredSlashConvertLabel) slashCommandAPI.removeCommand({ label: registeredSlashConvertLabel });
+      registeredSlashCreateLabel = null;
+      registeredSlashConvertLabel = null;
+    }
 
     removeDashboardTopbarButton();
     disconnectTopbarObserver();
@@ -13325,10 +14494,7 @@ export default {
       }
     }
     dashboardRefreshTimer = null;
-    if (completionQueueTimer) {
-      clearTimeout(completionQueueTimer);
-      completionQueueTimer = null;
-    }
+    dashboardEverOpened = false;
     if (pillRefreshTimer) {
       clearTimeout(pillRefreshTimer);
       pillRefreshTimer = null;
@@ -13336,10 +14502,6 @@ export default {
     if (todayTitleChangeDebounceTimer) {
       clearTimeout(todayTitleChangeDebounceTimer);
       todayTitleChangeDebounceTimer = null;
-    }
-    if (childEditDebounce && typeof childEditDebounce.forEach === "function") {
-      childEditDebounce.forEach((timer) => clearTimeout(timer));
-      childEditDebounce.clear();
     }
     if (bulkOperationCooldownTimer) {
       clearTimeout(bulkOperationCooldownTimer);
@@ -13379,8 +14541,14 @@ export default {
       activeDashboardController = null;
     }
 
-    window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: "Convert TODO to Better Task" });
-    window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: "Create a Better Task" });
+    if (registeredBlockCtxConvertLabel) {
+      window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: registeredBlockCtxConvertLabel });
+      registeredBlockCtxConvertLabel = null;
+    }
+    if (registeredBlockCtxCreateLabel) {
+      window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: registeredBlockCtxCreateLabel });
+      registeredBlockCtxCreateLabel = null;
+    }
     // window.roamAlphaAPI.ui.blockContextMenu.removeCommand({label: "Convert Better Task to plain TODO",});
     disconnectThemeObserver();
     if (pillScrollHandlerAttached && pillScrollHandler && typeof document !== "undefined") {
@@ -13393,6 +14561,9 @@ export default {
         pillScrollHandler = null;
       }
     }
+    resetProjectStore();
+    resetWaitingStore();
+    resetContextStore();
   },
 };
 
@@ -13661,12 +14832,38 @@ function disconnectThemeObserver() {
     }
     themeObserver = null;
   }
+  if (roamStudioToggleObserver) {
+    try {
+      roamStudioToggleObserver.disconnect();
+    } catch (_) {
+      // ignore
+    }
+    roamStudioToggleObserver = null;
+  }
+  if (roamStudioToggleRetryTimer) {
+    clearTimeout(roamStudioToggleRetryTimer);
+    roamStudioToggleRetryTimer = null;
+  }
+  if (themeToggleClickHandler && typeof document !== "undefined") {
+    try {
+      document.body?.removeEventListener("click", themeToggleClickHandler, true);
+    } catch (_) {
+      // ignore
+    }
+    themeToggleClickHandler = null;
+    if (typeof window !== "undefined") {
+      window.__btThemeToggleClickHandlerAttached = false;
+    }
+  }
   if (themeSyncTimer) {
     clearTimeout(themeSyncTimer);
     themeSyncTimer = null;
   }
   if (typeof window !== "undefined" && window.__btThemeMediaQuery) {
-    window.__btThemeMediaQuery.removeEventListener?.("change", syncDashboardThemeVars);
+    if (themeMediaQueryHandler) {
+      window.__btThemeMediaQuery.removeEventListener?.("change", themeMediaQueryHandler);
+      themeMediaQueryHandler = null;
+    }
     window.__btThemeMediaQuery = null;
   }
 }
@@ -14015,9 +15212,8 @@ function observeThemeChanges() {
   if (typeof window !== "undefined" && window.matchMedia) {
     if (!window.__btThemeMediaQuery) {
       window.__btThemeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-      window.__btThemeMediaQuery.addEventListener?.("change", () => {
-        triggerThemeResync(0);
-      });
+      themeMediaQueryHandler = () => { triggerThemeResync(0); };
+      window.__btThemeMediaQuery.addEventListener?.("change", themeMediaQueryHandler);
     }
   }
 
@@ -14037,7 +15233,7 @@ function observeThemeToggleClicks() {
   if (typeof document === "undefined" || !document.body) return;
   if (window.__btThemeToggleClickHandlerAttached) return;
 
-  const handler = (e) => {
+  themeToggleClickHandler = (e) => {
     const toggle = e.target.closest(".roamstudio-dm-toggle, .blueprint-dm-toggle");
     if (!toggle) return;
 
@@ -14047,7 +15243,7 @@ function observeThemeToggleClicks() {
     triggerThemeResync(650);
   };
 
-  document.body.addEventListener("click", handler, true);
+  document.body.addEventListener("click", themeToggleClickHandler, true);
   window.__btThemeToggleClickHandlerAttached = true;
 }
 
@@ -14058,7 +15254,10 @@ function observeRoamStudioToggleAttributes() {
   const toggle = document.querySelector(".roamstudio-dm-toggle");
   if (!toggle) {
     // Try again later – RS might not have injected the button yet
-    setTimeout(observeRoamStudioToggleAttributes, 1000);
+    roamStudioToggleRetryTimer = setTimeout(() => {
+      roamStudioToggleRetryTimer = null;
+      observeRoamStudioToggleAttributes();
+    }, 1000);
     return;
   }
 
@@ -14092,6 +15291,11 @@ function disconnectTopbarObserver() {
 function ensureDashboardWatch(uid) {
   if (!uid || dashboardWatchers.has(uid)) return;
   if (!window.roamAlphaAPI?.data?.addPullWatch) return;
+  // Evict oldest watches when the cap is reached to prevent unbounded PullWatch growth.
+  if (dashboardWatchers.size >= MAX_DASHBOARD_WATCHERS) {
+    const oldest = dashboardWatchers.keys().next().value;
+    if (oldest) removeDashboardWatch(oldest);
+  }
   const pattern = "[:block/uid]";
   const selector = [":block/uid", uid];
   try {

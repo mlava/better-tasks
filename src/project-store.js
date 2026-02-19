@@ -9,6 +9,7 @@ import {
 let extensionAPI = null;
 let lastRefreshed = 0;
 let refreshPromise = null;
+let initRetryTimer = null;
 let projects = [];
 const subscribers = new Set();
 
@@ -193,7 +194,7 @@ async function refreshProjectOptions(force = false) {
   queryProjectsFromGraph({ includeRegex: false }).then((values) => {
     if (!values.length) return;
     setProjects(values);
-  });
+  }).catch(() => {});
   refreshPromise = queryProjectsFromGraph({ includeRegex: true })
     .then((values) => {
       lastRefreshed = Date.now();
@@ -216,11 +217,25 @@ function initProjectStore(api) {
   extensionAPI = api || null;
   void refreshProjectOptions(true);
   // In some cases settings populate just after onload; a small delayed refresh helps catch them.
-  setTimeout(() => void refreshProjectOptions(true), 500);
+  // Skip the retry if the first refresh already completed (lastRefreshed > 0).
+  initRetryTimer = setTimeout(() => {
+    initRetryTimer = null;
+    if (!lastRefreshed) void refreshProjectOptions(true);
+  }, 500);
+}
+
+function resetProjectStore() {
+  if (initRetryTimer) { clearTimeout(initRetryTimer); initRetryTimer = null; }
+  subscribers.clear();
+  projects = [];
+  lastRefreshed = 0;
+  refreshPromise = null;
+  extensionAPI = null;
 }
 
 export {
   initProjectStore,
+  resetProjectStore,
   getProjectAttrName,
   refreshProjectOptions,
   getProjectOptions,
