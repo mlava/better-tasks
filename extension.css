@@ -1004,6 +1004,53 @@ body.bt-theme-dark .bt-sidebar__close:hover {
     font-size: 12px;
 }
 
+.bt-project-filter-row {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.bt-project-filter-row select {
+    flex: 1;
+    min-width: 0;
+}
+
+.bt-archive-project-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    padding: 0;
+    border: 1px solid var(--bt-border, #ccc);
+    border-radius: 6px;
+    background: var(--bt-panel-bg, #fff);
+    color: var(--bt-panel-text, #333);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+}
+
+.bt-archive-project-btn:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.bt-show-archived-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--bt-muted, #888);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.bt-show-archived-toggle input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+}
+
 .bt-dashboard__content {
     flex: 1;
     position: relative;

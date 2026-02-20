@@ -1527,6 +1527,18 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const [contextOptions, setContextOptions] = useState(() =>
     controller?.getContextOptions?.() || []
   );
+  const [archivedProjectNames, setArchivedProjectNames] = useState(() =>
+    new Set(controller?.getArchivedProjects?.() || [])
+  );
+  const [showArchivedProjects, setShowArchivedProjects] = useState(false);
+  const [archivedWaitingNames, setArchivedWaitingNames] = useState(() =>
+    new Set(controller?.getArchivedWaiting?.() || [])
+  );
+  const [showArchivedWaiting, setShowArchivedWaiting] = useState(false);
+  const [archivedContextNames, setArchivedContextNames] = useState(() =>
+    new Set(controller?.getArchivedContexts?.() || [])
+  );
+  const [showArchivedContexts, setShowArchivedContexts] = useState(false);
   const initialViewAppliedRef = useRef(false);
   const defaultStatePersistTimerRef = useRef(null);
   const lastDefaultStateSigRef = useRef(null);
@@ -1703,6 +1715,18 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     }),
     [tt]
   );
+  const visibleProjectOptions = useMemo(() => {
+    if (showArchivedProjects) return projectOptions;
+    return projectOptions.filter((name) => !archivedProjectNames.has(name));
+  }, [projectOptions, archivedProjectNames, showArchivedProjects]);
+  const visibleWaitingOptions = useMemo(() => {
+    if (showArchivedWaiting) return waitingOptions;
+    return waitingOptions.filter((name) => !archivedWaitingNames.has(name));
+  }, [waitingOptions, archivedWaitingNames, showArchivedWaiting]);
+  const visibleContextOptions = useMemo(() => {
+    if (showArchivedContexts) return contextOptions;
+    return contextOptions.filter((name) => !archivedContextNames.has(name));
+  }, [contextOptions, archivedContextNames, showArchivedContexts]);
   const groupingOptions = useMemo(
     () => [
       { value: "time", label: tt(["dashboard", "groupingLabels", "time"], "Time") },
@@ -1783,10 +1807,23 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       projectFilterLabel: tt(["dashboard", "projectFilterLabel"], "Project"),
       projectFilterPlaceholder: tt(["dashboard", "projectFilterPlaceholder"], "Project name"),
       projectFilterAny: tt(["dashboard", "projectFilterAny"], "All projects"),
+      showArchivedProjects: tt(["dashboard", "showArchivedProjects"], "Show archived"),
+      archiveProject: tt(["dashboard", "archiveProject"], "Archive project"),
+      unarchiveProject: tt(["dashboard", "unarchiveProject"], "Unarchive project"),
+      projectArchivedSuffix: tt(["dashboard", "projectArchivedSuffix"], " (archived)"),
       contextFilterLabel: tt(["dashboard", "contextFilterLabel"], "Context"),
       contextFilterAny: tt(["dashboard", "contextFilterAny"], "All contexts"),
+      showArchivedContexts: tt(["dashboard", "showArchivedContexts"], "Show archived"),
+      archiveContext: tt(["dashboard", "archiveContext"], "Archive"),
+      unarchiveContext: tt(["dashboard", "unarchiveContext"], "Unarchive"),
+      contextArchivedSuffix: tt(["dashboard", "contextArchivedSuffix"], " (archived)"),
       waitingFilterLabel: tt(["dashboard", "waitingFilterLabel"], "Waiting for"),
       waitingFilterPlaceholder: tt(["dashboard", "waitingFilterPlaceholder"], "Waiting for"),
+      waitingFilterAny: tt(["dashboard", "waitingFilterAny"], "All waiting-for"),
+      showArchivedWaiting: tt(["dashboard", "showArchivedWaiting"], "Show archived"),
+      archiveWaiting: tt(["dashboard", "archiveWaiting"], "Archive"),
+      unarchiveWaiting: tt(["dashboard", "unarchiveWaiting"], "Unarchive"),
+      waitingArchivedSuffix: tt(["dashboard", "waitingArchivedSuffix"], " (archived)"),
       completedWithinLabel: tt(["dashboard", "completedWithinLabel"], "Completed within"),
       completedWithinAny: tt(["dashboard", "completedWithinOptions", "any"], "Any time"),
       completedWithin7d: tt(["dashboard", "completedWithinOptions", "7d"], "Last 7 days"),
@@ -2123,12 +2160,43 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     const unsubContext = controller.subscribeContextOptions?.((opts) =>
       setContextOptions(Array.isArray(opts) ? opts : [])
     );
+    const unsubArchived = controller.subscribeArchivedProjects?.((names) =>
+      setArchivedProjectNames(new Set(Array.isArray(names) ? names : []))
+    );
+    const unsubArchivedWaiting = controller.subscribeArchivedWaiting?.((names) =>
+      setArchivedWaitingNames(new Set(Array.isArray(names) ? names : []))
+    );
+    const unsubArchivedContext = controller.subscribeArchivedContexts?.((names) =>
+      setArchivedContextNames(new Set(Array.isArray(names) ? names : []))
+    );
     return () => {
       unsub?.();
       unsubWaiting?.();
       unsubContext?.();
+      unsubArchived?.();
+      unsubArchivedWaiting?.();
+      unsubArchivedContext?.();
     };
   }, [controller]);
+
+  // Auto-clear filter when the selected value becomes archived (and "show archived" is off)
+  useEffect(() => {
+    if (filters.projectText && !showArchivedProjects && archivedProjectNames.has(filters.projectText)) {
+      dispatchFilters({ type: "setText", section: "projectText", value: "" });
+    }
+  }, [archivedProjectNames, filters.projectText, showArchivedProjects]);
+
+  useEffect(() => {
+    if (filters.waitingText && !showArchivedWaiting && archivedWaitingNames.has(filters.waitingText)) {
+      dispatchFilters({ type: "setText", section: "waitingText", value: "" });
+    }
+  }, [archivedWaitingNames, filters.waitingText, showArchivedWaiting]);
+
+  useEffect(() => {
+    if (filters.contextText && !showArchivedContexts && archivedContextNames.has(filters.contextText)) {
+      dispatchFilters({ type: "setText", section: "contextText", value: "" });
+    }
+  }, [archivedContextNames, filters.contextText, showArchivedContexts]);
 
   const [quickText, setQuickText] = useState("");
 
@@ -2743,45 +2811,123 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
         />
         <label className="bt-filter-text">
           <span>{ui.projectFilterLabel}</span>
-          <select value={filters.projectText || ""} onChange={handleProjectFilterChange}>
-            <option value="">{ui.projectFilterAny || ui.projectFilterPlaceholder || "All projects"}</option>
-            {projectOptions.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-            {filters.projectText && !projectOptions.includes(filters.projectText) ? (
-              <option value={filters.projectText}>{filters.projectText}</option>
+          <span className="bt-project-filter-row">
+            <select value={filters.projectText || ""} onChange={handleProjectFilterChange}>
+              <option value="">{ui.projectFilterAny || ui.projectFilterPlaceholder || "All projects"}</option>
+              {visibleProjectOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}{showArchivedProjects && archivedProjectNames.has(opt) ? ui.projectArchivedSuffix : ""}
+                </option>
+              ))}
+              {filters.projectText && !visibleProjectOptions.includes(filters.projectText) ? (
+                <option value={filters.projectText}>{filters.projectText}</option>
+              ) : null}
+            </select>
+            {filters.projectText ? (
+              <button
+                type="button"
+                className="bt-archive-project-btn"
+                title={archivedProjectNames.has(filters.projectText) ? ui.unarchiveProject : ui.archiveProject}
+                onClick={() => {
+                  if (archivedProjectNames.has(filters.projectText)) {
+                    controller?.unarchiveProject?.(filters.projectText);
+                  } else {
+                    controller?.archiveProject?.(filters.projectText);
+                  }
+                }}
+              >
+                {archivedProjectNames.has(filters.projectText) ? "\u{1F4E4}" : "\u{1F4E5}"}
+              </button>
             ) : null}
-          </select>
+          </span>
+          <label className="bt-show-archived-toggle">
+            <input
+              type="checkbox"
+              checked={showArchivedProjects}
+              onChange={(e) => setShowArchivedProjects(e.target.checked)}
+            />
+            <span>{ui.showArchivedProjects}</span>
+          </label>
         </label>
         <label className="bt-filter-text">
           <span>{ui.waitingFilterLabel}</span>
-          <select value={filters.waitingText || ""} onChange={handleWaitingFilterChange}>
-            <option value="">{ui.waitingFilterAny || ui.waitingFilterPlaceholder || "All waiting"}</option>
-            {waitingOptions.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-            {filters.waitingText && !waitingOptions.includes(filters.waitingText) ? (
-              <option value={filters.waitingText}>{filters.waitingText}</option>
+          <span className="bt-project-filter-row">
+            <select value={filters.waitingText || ""} onChange={handleWaitingFilterChange}>
+              <option value="">{ui.waitingFilterAny || ui.waitingFilterPlaceholder || "All waiting-for"}</option>
+              {visibleWaitingOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}{showArchivedWaiting && archivedWaitingNames.has(opt) ? ui.waitingArchivedSuffix : ""}
+                </option>
+              ))}
+              {filters.waitingText && !visibleWaitingOptions.includes(filters.waitingText) ? (
+                <option value={filters.waitingText}>{filters.waitingText}</option>
+              ) : null}
+            </select>
+            {filters.waitingText ? (
+              <button
+                type="button"
+                className="bt-archive-project-btn"
+                title={archivedWaitingNames.has(filters.waitingText) ? ui.unarchiveWaiting : ui.archiveWaiting}
+                onClick={() => {
+                  if (archivedWaitingNames.has(filters.waitingText)) {
+                    controller?.unarchiveWaiting?.(filters.waitingText);
+                  } else {
+                    controller?.archiveWaiting?.(filters.waitingText);
+                  }
+                }}
+              >
+                {archivedWaitingNames.has(filters.waitingText) ? "\u{1F4E4}" : "\u{1F4E5}"}
+              </button>
             ) : null}
-          </select>
+          </span>
+          <label className="bt-show-archived-toggle">
+            <input
+              type="checkbox"
+              checked={showArchivedWaiting}
+              onChange={(e) => setShowArchivedWaiting(e.target.checked)}
+            />
+            <span>{ui.showArchivedWaiting}</span>
+          </label>
         </label>
         <label className="bt-filter-text">
           <span>{ui.contextFilterLabel}</span>
-          <select value={filters.contextText || ""} onChange={handleContextFilterChange}>
-            <option value="">{ui.contextFilterAny || "All contexts"}</option>
-            {contextOptions.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-            {filters.contextText && !contextOptions.includes(filters.contextText) ? (
-              <option value={filters.contextText}>{filters.contextText}</option>
+          <span className="bt-project-filter-row">
+            <select value={filters.contextText || ""} onChange={handleContextFilterChange}>
+              <option value="">{ui.contextFilterAny || "All contexts"}</option>
+              {visibleContextOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}{showArchivedContexts && archivedContextNames.has(opt) ? ui.contextArchivedSuffix : ""}
+                </option>
+              ))}
+              {filters.contextText && !visibleContextOptions.includes(filters.contextText) ? (
+                <option value={filters.contextText}>{filters.contextText}</option>
+              ) : null}
+            </select>
+            {filters.contextText ? (
+              <button
+                type="button"
+                className="bt-archive-project-btn"
+                title={archivedContextNames.has(filters.contextText) ? ui.unarchiveContext : ui.archiveContext}
+                onClick={() => {
+                  if (archivedContextNames.has(filters.contextText)) {
+                    controller?.unarchiveContext?.(filters.contextText);
+                  } else {
+                    controller?.archiveContext?.(filters.contextText);
+                  }
+                }}
+              >
+                {archivedContextNames.has(filters.contextText) ? "\u{1F4E4}" : "\u{1F4E5}"}
+              </button>
             ) : null}
-          </select>
+          </span>
+          <label className="bt-show-archived-toggle">
+            <input
+              type="checkbox"
+              checked={showArchivedContexts}
+              onChange={(e) => setShowArchivedContexts(e.target.checked)}
+            />
+            <span>{ui.showArchivedContexts}</span>
+          </label>
         </label>
       </FullPageFilterGroup>
 
@@ -3300,54 +3446,132 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
               <div className="bt-filter-text-row">
                 <label className="bt-filter-text">
                   <span>{ui.projectFilterLabel}</span>
-                  <select value={filters.projectText || ""} onChange={handleProjectFilterChange}>
-                    <option value="">
-                      {ui.projectFilterAny || ui.projectFilterPlaceholder || "All projects"}
-                    </option>
-                    {projectOptions.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
+                  <span className="bt-project-filter-row">
+                    <select value={filters.projectText || ""} onChange={handleProjectFilterChange}>
+                      <option value="">
+                        {ui.projectFilterAny || ui.projectFilterPlaceholder || "All projects"}
                       </option>
-                    ))}
-                    {filters.projectText &&
-                    !projectOptions.includes(filters.projectText) ? (
-                      <option value={filters.projectText}>{filters.projectText}</option>
+                      {visibleProjectOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}{showArchivedProjects && archivedProjectNames.has(opt) ? ui.projectArchivedSuffix : ""}
+                        </option>
+                      ))}
+                      {filters.projectText &&
+                      !visibleProjectOptions.includes(filters.projectText) ? (
+                        <option value={filters.projectText}>{filters.projectText}</option>
+                      ) : null}
+                    </select>
+                    {filters.projectText ? (
+                      <button
+                        type="button"
+                        className="bt-archive-project-btn"
+                        title={archivedProjectNames.has(filters.projectText) ? ui.unarchiveProject : ui.archiveProject}
+                        onClick={() => {
+                          if (archivedProjectNames.has(filters.projectText)) {
+                            controller?.unarchiveProject?.(filters.projectText);
+                          } else {
+                            controller?.archiveProject?.(filters.projectText);
+                          }
+                        }}
+                      >
+                        {archivedProjectNames.has(filters.projectText) ? "\u{1F4E4}" : "\u{1F4E5}"}
+                      </button>
                     ) : null}
-                  </select>
+                  </span>
+                  <label className="bt-show-archived-toggle">
+                    <input
+                      type="checkbox"
+                      checked={showArchivedProjects}
+                      onChange={(e) => setShowArchivedProjects(e.target.checked)}
+                    />
+                    <span>{ui.showArchivedProjects}</span>
+                  </label>
                 </label>
                 <label className="bt-filter-text">
                   <span>{ui.waitingFilterLabel}</span>
-                  <select value={filters.waitingText || ""} onChange={handleWaitingFilterChange}>
-                    <option value="">
-                      {ui.waitingFilterAny || ui.waitingFilterPlaceholder || "All waiting"}
-                    </option>
-                    {waitingOptions.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
+                  <span className="bt-project-filter-row">
+                    <select value={filters.waitingText || ""} onChange={handleWaitingFilterChange}>
+                      <option value="">
+                        {ui.waitingFilterAny || ui.waitingFilterPlaceholder || "All waiting-for"}
                       </option>
-                    ))}
-                    {filters.waitingText &&
-                    !waitingOptions.includes(filters.waitingText) ? (
-                        <option value={filters.waitingText}>{filters.waitingText}</option>
-                      ) : null}
-                  </select>
+                      {visibleWaitingOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}{showArchivedWaiting && archivedWaitingNames.has(opt) ? ui.waitingArchivedSuffix : ""}
+                        </option>
+                      ))}
+                      {filters.waitingText &&
+                      !visibleWaitingOptions.includes(filters.waitingText) ? (
+                          <option value={filters.waitingText}>{filters.waitingText}</option>
+                        ) : null}
+                    </select>
+                    {filters.waitingText ? (
+                      <button
+                        type="button"
+                        className="bt-archive-project-btn"
+                        title={archivedWaitingNames.has(filters.waitingText) ? ui.unarchiveWaiting : ui.archiveWaiting}
+                        onClick={() => {
+                          if (archivedWaitingNames.has(filters.waitingText)) {
+                            controller?.unarchiveWaiting?.(filters.waitingText);
+                          } else {
+                            controller?.archiveWaiting?.(filters.waitingText);
+                          }
+                        }}
+                      >
+                        {archivedWaitingNames.has(filters.waitingText) ? "\u{1F4E4}" : "\u{1F4E5}"}
+                      </button>
+                    ) : null}
+                  </span>
+                  <label className="bt-show-archived-toggle">
+                    <input
+                      type="checkbox"
+                      checked={showArchivedWaiting}
+                      onChange={(e) => setShowArchivedWaiting(e.target.checked)}
+                    />
+                    <span>{ui.showArchivedWaiting}</span>
+                  </label>
                 </label>
                 <label className="bt-filter-text">
                   <span>{ui.contextFilterLabel}</span>
-                  <select value={filters.contextText || ""} onChange={handleContextFilterChange}>
-                    <option value="">
-                      {ui.contextFilterAny || "All contexts"}
-                    </option>
-                    {contextOptions.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
+                  <span className="bt-project-filter-row">
+                    <select value={filters.contextText || ""} onChange={handleContextFilterChange}>
+                      <option value="">
+                        {ui.contextFilterAny || "All contexts"}
                       </option>
-                    ))}
-                    {filters.contextText &&
-                    !contextOptions.includes(filters.contextText) ? (
-                        <option value={filters.contextText}>{filters.contextText}</option>
+                      {visibleContextOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}{showArchivedContexts && archivedContextNames.has(opt) ? ui.contextArchivedSuffix : ""}
+                        </option>
+                      ))}
+                      {filters.contextText &&
+                      !visibleContextOptions.includes(filters.contextText) ? (
+                          <option value={filters.contextText}>{filters.contextText}</option>
+                      ) : null}
+                    </select>
+                    {filters.contextText ? (
+                      <button
+                        type="button"
+                        className="bt-archive-project-btn"
+                        title={archivedContextNames.has(filters.contextText) ? ui.unarchiveContext : ui.archiveContext}
+                        onClick={() => {
+                          if (archivedContextNames.has(filters.contextText)) {
+                            controller?.unarchiveContext?.(filters.contextText);
+                          } else {
+                            controller?.archiveContext?.(filters.contextText);
+                          }
+                        }}
+                      >
+                        {archivedContextNames.has(filters.contextText) ? "\u{1F4E4}" : "\u{1F4E5}"}
+                      </button>
                     ) : null}
-                  </select>
+                  </span>
+                  <label className="bt-show-archived-toggle">
+                    <input
+                      type="checkbox"
+                      checked={showArchivedContexts}
+                      onChange={(e) => setShowArchivedContexts(e.target.checked)}
+                    />
+                    <span>{ui.showArchivedContexts}</span>
+                  </label>
                 </label>
         {dueIncludesUpcomingMemo ? (
           <label className="bt-filter-text">

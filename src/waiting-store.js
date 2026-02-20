@@ -6,12 +6,16 @@ import {
   shouldExcludePicklistSourcePage,
 } from "./picklist-excludes";
 
+const ARCHIVED_WAITING_SETTING = "bt_archivedWaitingFor";
+
 let extensionAPI = null;
 let lastRefreshed = 0;
 let refreshPromise = null;
 let initRetryTimer = null;
 let values = [];
 const subscribers = new Set();
+let archivedValues = new Set();
+const archivedSubscribers = new Set();
 
 function sanitizeAttrName(value, fallback) {
   if (value == null) return fallback;
@@ -200,8 +204,78 @@ function subscribeToWaitingOptions(cb) {
   return () => subscribers.delete(cb);
 }
 
+// --- Archived waiting-for values ---
+
+function notifyArchivedSubscribers() {
+  const snapshot = Array.from(archivedValues);
+  archivedSubscribers.forEach((cb) => {
+    try {
+      cb(snapshot);
+    } catch (err) {
+      console.warn("[BetterTasks] waiting-store archived subscriber failed", err);
+    }
+  });
+}
+
+function loadArchivedWaiting() {
+  try {
+    const raw = extensionAPI?.settings?.get?.(ARCHIVED_WAITING_SETTING);
+    if (!raw) { archivedValues = new Set(); return; }
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    archivedValues = new Set(
+      (Array.isArray(parsed) ? parsed : []).map(normalizeWaitingValue).filter(Boolean)
+    );
+  } catch (err) {
+    console.warn("[BetterTasks] failed to load archived waiting-for", err);
+    archivedValues = new Set();
+  }
+}
+
+function saveArchivedWaiting() {
+  try {
+    const arr = Array.from(archivedValues).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    extensionAPI?.settings?.set?.(ARCHIVED_WAITING_SETTING, JSON.stringify(arr));
+  } catch (err) {
+    console.warn("[BetterTasks] failed to save archived waiting-for", err);
+  }
+}
+
+function archiveWaiting(name) {
+  const normalized = normalizeWaitingValue(name);
+  if (!normalized || archivedValues.has(normalized)) return;
+  archivedValues.add(normalized);
+  saveArchivedWaiting();
+  notifyArchivedSubscribers();
+}
+
+function unarchiveWaiting(name) {
+  const normalized = normalizeWaitingValue(name);
+  if (!normalized || !archivedValues.has(normalized)) return;
+  archivedValues.delete(normalized);
+  saveArchivedWaiting();
+  notifyArchivedSubscribers();
+}
+
+function isWaitingArchived(name) {
+  return archivedValues.has(normalizeWaitingValue(name));
+}
+
+function getArchivedWaiting() {
+  return Array.from(archivedValues);
+}
+
+function subscribeToArchivedWaiting(cb) {
+  if (typeof cb !== "function") return () => {};
+  archivedSubscribers.add(cb);
+  cb(Array.from(archivedValues));
+  return () => archivedSubscribers.delete(cb);
+}
+
 function initWaitingStore(api) {
   extensionAPI = api || null;
+  loadArchivedWaiting();
   void refreshWaitingOptions(true);
   // Skip the retry if the first refresh already completed (lastRefreshed > 0).
   initRetryTimer = setTimeout(() => {
@@ -213,6 +287,8 @@ function initWaitingStore(api) {
 function resetWaitingStore() {
   if (initRetryTimer) { clearTimeout(initRetryTimer); initRetryTimer = null; }
   subscribers.clear();
+  archivedSubscribers.clear();
+  archivedValues = new Set();
   values = [];
   lastRefreshed = 0;
   refreshPromise = null;
@@ -229,4 +305,9 @@ export {
   removeWaitingOption,
   subscribeToWaitingOptions,
   normalizeWaitingValue,
+  archiveWaiting,
+  unarchiveWaiting,
+  isWaitingArchived,
+  getArchivedWaiting,
+  subscribeToArchivedWaiting,
 };

@@ -6,12 +6,16 @@ import {
   shouldExcludePicklistSourcePage,
 } from "./picklist-excludes";
 
+const ARCHIVED_CONTEXT_SETTING = "bt_archivedContexts";
+
 let extensionAPI = null;
 let lastRefreshed = 0;
 let refreshPromise = null;
 let initRetryTimer = null;
 let values = [];
 const subscribers = new Set();
+let archivedValues = new Set();
+const archivedSubscribers = new Set();
 
 function sanitizeAttrName(value, fallback) {
   if (value == null) return fallback;
@@ -205,8 +209,78 @@ function subscribeToContextOptions(cb) {
   return () => subscribers.delete(cb);
 }
 
+// --- Archived contexts ---
+
+function notifyArchivedSubscribers() {
+  const snapshot = Array.from(archivedValues);
+  archivedSubscribers.forEach((cb) => {
+    try {
+      cb(snapshot);
+    } catch (err) {
+      console.warn("[BetterTasks] context-store archived subscriber failed", err);
+    }
+  });
+}
+
+function loadArchivedContexts() {
+  try {
+    const raw = extensionAPI?.settings?.get?.(ARCHIVED_CONTEXT_SETTING);
+    if (!raw) { archivedValues = new Set(); return; }
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    archivedValues = new Set(
+      (Array.isArray(parsed) ? parsed : []).map(normalizeContextValue).filter(Boolean)
+    );
+  } catch (err) {
+    console.warn("[BetterTasks] failed to load archived contexts", err);
+    archivedValues = new Set();
+  }
+}
+
+function saveArchivedContexts() {
+  try {
+    const arr = Array.from(archivedValues).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    extensionAPI?.settings?.set?.(ARCHIVED_CONTEXT_SETTING, JSON.stringify(arr));
+  } catch (err) {
+    console.warn("[BetterTasks] failed to save archived contexts", err);
+  }
+}
+
+function archiveContext(name) {
+  const normalized = normalizeContextValue(name);
+  if (!normalized || archivedValues.has(normalized)) return;
+  archivedValues.add(normalized);
+  saveArchivedContexts();
+  notifyArchivedSubscribers();
+}
+
+function unarchiveContext(name) {
+  const normalized = normalizeContextValue(name);
+  if (!normalized || !archivedValues.has(normalized)) return;
+  archivedValues.delete(normalized);
+  saveArchivedContexts();
+  notifyArchivedSubscribers();
+}
+
+function isContextArchived(name) {
+  return archivedValues.has(normalizeContextValue(name));
+}
+
+function getArchivedContexts() {
+  return Array.from(archivedValues);
+}
+
+function subscribeToArchivedContexts(cb) {
+  if (typeof cb !== "function") return () => {};
+  archivedSubscribers.add(cb);
+  cb(Array.from(archivedValues));
+  return () => archivedSubscribers.delete(cb);
+}
+
 function initContextStore(api) {
   extensionAPI = api || null;
+  loadArchivedContexts();
   void refreshContextOptions(true);
   // Skip the retry if the first refresh already completed (lastRefreshed > 0).
   initRetryTimer = setTimeout(() => {
@@ -218,6 +292,8 @@ function initContextStore(api) {
 function resetContextStore() {
   if (initRetryTimer) { clearTimeout(initRetryTimer); initRetryTimer = null; }
   subscribers.clear();
+  archivedSubscribers.clear();
+  archivedValues = new Set();
   values = [];
   lastRefreshed = 0;
   refreshPromise = null;
@@ -234,4 +310,9 @@ export {
   removeContextOption,
   subscribeToContextOptions,
   normalizeContextValue,
+  archiveContext,
+  unarchiveContext,
+  isContextArchived,
+  getArchivedContexts,
+  subscribeToArchivedContexts,
 };

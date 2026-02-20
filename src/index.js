@@ -10,6 +10,11 @@ import {
   removeProjectOption,
   subscribeToProjectOptions,
   normalizeProjectValue,
+  archiveProject,
+  unarchiveProject,
+  isProjectArchived,
+  getArchivedProjects,
+  subscribeToArchivedProjects,
 } from "./project-store";
 import {
   initWaitingStore,
@@ -20,6 +25,11 @@ import {
   removeWaitingOption,
   subscribeToWaitingOptions,
   normalizeWaitingValue,
+  archiveWaiting,
+  unarchiveWaiting,
+  isWaitingArchived,
+  getArchivedWaiting,
+  subscribeToArchivedWaiting,
 } from "./waiting-store";
 import {
   initContextStore,
@@ -30,6 +40,11 @@ import {
   removeContextOption,
   subscribeToContextOptions,
   normalizeContextValue,
+  archiveContext,
+  unarchiveContext,
+  isContextArchived,
+  getArchivedContexts,
+  subscribeToArchivedContexts,
 } from "./context-store";
 import {
   loadViewsStore,
@@ -4338,7 +4353,7 @@ export default {
             parameters: {
               type: "object",
               properties: {
-                status: { type: "string", enum: ["active", "completed"], description: "Filter by derived status. Active = has open tasks or no tasks; completed = all tasks DONE." },
+                status: { type: "string", enum: ["active", "completed", "archived"], description: "Filter by derived status. Active = has open tasks or no tasks; completed = all tasks DONE; archived = explicitly archived by user." },
                 include_tasks: { type: "boolean" },
                 query: { type: "string" },
                 max_results: { type: "number" },
@@ -4387,7 +4402,7 @@ export default {
                 status: { type: "string", enum: ["TODO", "DONE"], description: "Filter by task state." },
                 query: { type: "string", description: "Free text search." },
                 due: { type: "string", description: "Due date filter. Accepts: 'overdue', 'today', 'upcoming', 'this-week', 'none', ISO date, or range 'YYYY-MM-DD..YYYY-MM-DD'." },
-                completed: { type: "string", description: "Completed date filter. Accepts: 'today', 'this-week', 'last-7-days', or an ISO date (YYYY-MM-DD), or a range 'YYYY-MM-DD..YYYY-MM-DD'." },
+                completed: { type: "string", description: "Completed date filter. Accepts: 'today', 'last-24-hours', 'this-week', 'last-7-days', or an ISO date (YYYY-MM-DD), or a range 'YYYY-MM-DD..YYYY-MM-DD'." },
                 project: { type: "string", description: "Filter by project name." },
                 assignee: { type: "string", description: "Filter by assignee." },
                 max_results: { type: "number", description: "Max tasks to return. Default 20." },
@@ -4676,6 +4691,7 @@ export default {
         start: task?.startAt ? formatDate(task.startAt, set) : null,
         defer: task?.deferUntil ? formatDate(task.deferUntil, set) : null,
         completed: task?.completedAt ? formatDate(task.completedAt, set) : null,
+        edited_at: typeof task?.editedAt === "number" ? task.editedAt : null,
         due_bucket: task?.dueBucket || "none",
         page_uid: task?.pageUid || null,
         page_title: task?.pageTitle || "",
@@ -4756,6 +4772,17 @@ export default {
             if (!isSameDay(compDate, todayStart)) return false;
           } else if (completed === "this-week") {
             if (compDate < todayStart || compDate >= thisWeekEnd) return false;
+          } else if (completed === "last-24-hours") {
+            const cutoff = now.getTime() - 24 * 60 * 60 * 1000;
+            const editMs = typeof task?.editedAt === "number" ? task.editedAt : null;
+            if (editMs != null) {
+              if (editMs < cutoff) return false;
+            } else {
+              // Fall back to day-granularity: today or yesterday
+              const yesterdayStart = new Date(todayStart.getTime());
+              yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+              if (compDate < yesterdayStart || compDate >= todayEnd) return false;
+            }
           } else if (completed === "last-7-days") {
             if (compDate < last7Start || compDate >= todayEnd) return false;
           } else {
@@ -4844,6 +4871,21 @@ export default {
             const iso = roamDateToISO(t.completed);
             return iso && iso >= todayStr && iso <= weekEndStr;
           });
+        } else if (compArg === "last-24-hours") {
+          const cutoff = now.getTime() - 24 * 60 * 60 * 1000;
+          summaries = summaries.filter(t => {
+            // Prefer block edit time for true 24h precision
+            if (typeof t.edited_at === "number" && t.edited_at > 0) {
+              return t.edited_at >= cutoff;
+            }
+            // Fall back to day-granularity: today or yesterday
+            const iso = roamDateToISO(t.completed);
+            if (!iso) return false;
+            const yesterday = new Date(now);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+            return iso >= yesterdayStr && iso <= todayStr;
+          });
         } else if (compArg === "last-7-days") {
           const last7 = new Date(now);
           last7.setDate(last7.getDate() - 6);
@@ -4917,11 +4959,14 @@ export default {
         const taskCounts = countProjectTasks(tasks, name);
         const totalTasks = taskCounts.todo + taskCounts.done;
         const status = totalTasks > 0 && taskCounts.todo === 0 ? "completed" : "active";
-        if (statusFilter && statusFilter !== status) continue;
+        if (statusFilter && statusFilter !== status && statusFilter !== "archived") continue;
+        const archived = isProjectArchived(name);
+        if (statusFilter === "archived" && !archived) continue;
         const row = {
           name,
           uid: uidMap.get(name) || null,
           status,
+          archived,
           attributes: {},
         };
         if (includeTasks) {
@@ -11850,10 +11895,25 @@ export default {
         getWaitingOptions,
         getContextOptions,
         subscribeWaitingOptions: subscribeToWaitingOptions,
+        archiveWaiting,
+        unarchiveWaiting,
+        isWaitingArchived,
+        getArchivedWaiting,
+        subscribeArchivedWaiting: subscribeToArchivedWaiting,
         subscribeContextOptions: subscribeToContextOptions,
+        archiveContext,
+        unarchiveContext,
+        isContextArchived,
+        getArchivedContexts,
+        subscribeArchivedContexts: subscribeToArchivedContexts,
         refreshProjectOptions,
         getProjectOptions,
         subscribeProjectOptions: subscribeToProjectOptions,
+        archiveProject,
+        unarchiveProject,
+        isProjectArchived,
+        getArchivedProjects,
+        subscribeArchivedProjects: subscribeToArchivedProjects,
         getTaskMetadata,
         isOpen: () => !!root,
         editRepeat,
@@ -13387,7 +13447,7 @@ export default {
     }
 
     async function fetchBlocksByPageRef(title) {
-      const pull = `[:block/uid :block/string :block/props :block/order :block/open
+      const pull = `[:block/uid :block/string :block/props :block/order :block/open :edit/time
         {:block/children [:block/uid :block/string]}
         {:block/page [:block/uid :node/title]}
         {:block/parents [:block/uid]}]`;
@@ -13423,7 +13483,7 @@ export default {
         ].filter(Boolean)
       );
       if (!labels.size) return [];
-      const pull = `[:block/uid :block/string :block/props :block/order :block/open
+      const pull = `[:block/uid :block/string :block/props :block/order :block/open :edit/time
         {:block/children [:block/uid :block/string]}
         {:block/page [:block/uid :node/title]}
         {:block/parents [:block/uid]}]`;
@@ -13495,6 +13555,7 @@ export default {
         availabilityLabel,
         isCompleted,
         completedAt,
+        editedAt: typeof block?.["edit/time"] === "number" ? block["edit/time"] : null,
         startDisplay: formatDateDisplay(startAt, set),
         deferDisplay: formatDateDisplay(deferUntil, set),
         dueDisplay: formatDateDisplay(dueAt, set),

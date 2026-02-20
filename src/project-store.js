@@ -6,12 +6,16 @@ import {
   shouldExcludePicklistSourcePage,
 } from "./picklist-excludes";
 
+const ARCHIVED_PROJECTS_SETTING = "bt_archivedProjects";
+
 let extensionAPI = null;
 let lastRefreshed = 0;
 let refreshPromise = null;
 let initRetryTimer = null;
 let projects = [];
 const subscribers = new Set();
+let archivedProjects = new Set();
+const archivedSubscribers = new Set();
 
 function sanitizeAttrName(value, fallback) {
   if (value == null) return fallback;
@@ -213,8 +217,78 @@ function subscribeToProjectOptions(cb) {
   return () => subscribers.delete(cb);
 }
 
+// --- Archived projects ---
+
+function notifyArchivedSubscribers() {
+  const snapshot = Array.from(archivedProjects);
+  archivedSubscribers.forEach((cb) => {
+    try {
+      cb(snapshot);
+    } catch (err) {
+      console.warn("[BetterTasks] project-store archived subscriber failed", err);
+    }
+  });
+}
+
+function loadArchivedProjects() {
+  try {
+    const raw = extensionAPI?.settings?.get?.(ARCHIVED_PROJECTS_SETTING);
+    if (!raw) { archivedProjects = new Set(); return; }
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    archivedProjects = new Set(
+      (Array.isArray(parsed) ? parsed : []).map(normalizeProjectValue).filter(Boolean)
+    );
+  } catch (err) {
+    console.warn("[BetterTasks] failed to load archived projects", err);
+    archivedProjects = new Set();
+  }
+}
+
+function saveArchivedProjects() {
+  try {
+    const arr = Array.from(archivedProjects).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    extensionAPI?.settings?.set?.(ARCHIVED_PROJECTS_SETTING, JSON.stringify(arr));
+  } catch (err) {
+    console.warn("[BetterTasks] failed to save archived projects", err);
+  }
+}
+
+function archiveProject(name) {
+  const normalized = normalizeProjectValue(name);
+  if (!normalized || archivedProjects.has(normalized)) return;
+  archivedProjects.add(normalized);
+  saveArchivedProjects();
+  notifyArchivedSubscribers();
+}
+
+function unarchiveProject(name) {
+  const normalized = normalizeProjectValue(name);
+  if (!normalized || !archivedProjects.has(normalized)) return;
+  archivedProjects.delete(normalized);
+  saveArchivedProjects();
+  notifyArchivedSubscribers();
+}
+
+function isProjectArchived(name) {
+  return archivedProjects.has(normalizeProjectValue(name));
+}
+
+function getArchivedProjects() {
+  return Array.from(archivedProjects);
+}
+
+function subscribeToArchivedProjects(cb) {
+  if (typeof cb !== "function") return () => {};
+  archivedSubscribers.add(cb);
+  cb(Array.from(archivedProjects));
+  return () => archivedSubscribers.delete(cb);
+}
+
 function initProjectStore(api) {
   extensionAPI = api || null;
+  loadArchivedProjects();
   void refreshProjectOptions(true);
   // In some cases settings populate just after onload; a small delayed refresh helps catch them.
   // Skip the retry if the first refresh already completed (lastRefreshed > 0).
@@ -227,6 +301,8 @@ function initProjectStore(api) {
 function resetProjectStore() {
   if (initRetryTimer) { clearTimeout(initRetryTimer); initRetryTimer = null; }
   subscribers.clear();
+  archivedSubscribers.clear();
+  archivedProjects = new Set();
   projects = [];
   lastRefreshed = 0;
   refreshPromise = null;
@@ -243,4 +319,9 @@ export {
   removeProjectOption,
   subscribeToProjectOptions,
   normalizeProjectValue,
+  archiveProject,
+  unarchiveProject,
+  isProjectArchived,
+  getArchivedProjects,
+  subscribeToArchivedProjects,
 };
