@@ -9,7 +9,7 @@ module.exports = {
             type: "module",
         },
     },
-    mode: "development",
+    mode: "production",
     experiments: {
         outputModule: true,
     },
