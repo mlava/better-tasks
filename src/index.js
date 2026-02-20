@@ -7830,6 +7830,8 @@ export default {
       });
     }
 
+    let activePickerDismiss = null;
+
     const ATTR_PICKER_CONFIG = {
       project: {
         refresh: refreshProjectOptions,
@@ -7858,6 +7860,10 @@ export default {
     };
 
     async function promptForAttribute(type = "project", { initialValue = "", allowMulti = false } = {}) {
+      if (activePickerDismiss) {
+        activePickerDismiss();
+        activePickerDismiss = null;
+      }
       const cfg = ATTR_PICKER_CONFIG[type] || ATTR_PICKER_CONFIG.project;
       await cfg.refresh?.(true);
       const lang = getLanguageSetting();
@@ -7889,9 +7895,14 @@ export default {
             iziToast.hide({}, toastElement);
           }
         };
+        activePickerDismiss = () => {
+          hideToast();
+          if (!settled) { settled = true; resolve(null); }
+        };
         const finish = (value) => {
           if (settled) return;
           settled = true;
+          activePickerDismiss = null;
           if (allowMulti) {
             const list = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
             const normalizedList = list.map(normalize).filter(Boolean);
@@ -8650,7 +8661,10 @@ export default {
               });
             }
           },
-          onClosed: () => finish(null),
+          onClosed: () => {
+            if (activePickerDismiss) { activePickerDismiss(); activePickerDismiss = null; }
+            finish(null);
+          },
         });
       });
     }
