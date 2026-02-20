@@ -4367,6 +4367,7 @@ export default {
             parameters: {
               type: "object",
               properties: {
+                status: { type: "string", enum: ["active", "archived"], description: "Filter by status. Active = not archived; archived = explicitly archived by user." },
                 include_counts: { type: "boolean" },
                 query: { type: "string" },
                 max_results: { type: "number" },
@@ -4380,6 +4381,7 @@ export default {
             parameters: {
               type: "object",
               properties: {
+                status: { type: "string", enum: ["active", "archived"], description: "Filter by status. Active = not archived; archived = explicitly archived by user." },
                 include_counts: { type: "boolean" },
                 query: { type: "string" },
                 max_results: { type: "number" },
@@ -4982,6 +4984,7 @@ export default {
       await refreshWaitingOptions(false);
       const query = typeof args.query === "string" ? args.query.trim().toLowerCase() : "";
       const maxResults = clampToolLimit(args.max_results, 200, 500);
+      const statusFilter = typeof args.status === "string" ? args.status.trim().toLowerCase() : "";
       const includeCounts = args.include_counts === true;
       const options = getWaitingOptions().filter((name) => !query || name.toLowerCase().includes(query));
       let counts = null;
@@ -4994,10 +4997,18 @@ export default {
           counts.set(key, (counts.get(key) || 0) + 1);
         }
       }
-      const values = options.slice(0, maxResults).map((name) => ({
-        name,
-        ...(includeCounts ? { count: counts?.get(name) || 0 } : {}),
-      }));
+      const values = [];
+      for (const name of options) {
+        const archived = isWaitingArchived(name);
+        if (statusFilter === "active" && archived) continue;
+        if (statusFilter === "archived" && !archived) continue;
+        values.push({
+          name,
+          archived,
+          ...(includeCounts ? { count: counts?.get(name) || 0 } : {}),
+        });
+        if (values.length >= maxResults) break;
+      }
       return { values, count: values.length };
     }
 
@@ -5005,6 +5016,7 @@ export default {
       await refreshContextOptions(false);
       const query = typeof args.query === "string" ? args.query.trim().toLowerCase() : "";
       const maxResults = clampToolLimit(args.max_results, 200, 500);
+      const statusFilter = typeof args.status === "string" ? args.status.trim().toLowerCase() : "";
       const includeCounts = args.include_counts === true;
       const options = getContextOptions().filter((name) => !query || name.toLowerCase().includes(query));
       let counts = null;
@@ -5020,10 +5032,18 @@ export default {
           }
         }
       }
-      const values = options.slice(0, maxResults).map((name) => ({
-        name,
-        ...(includeCounts ? { count: counts?.get(name) || 0 } : {}),
-      }));
+      const values = [];
+      for (const name of options) {
+        const archived = isContextArchived(name);
+        if (statusFilter === "active" && archived) continue;
+        if (statusFilter === "archived" && !archived) continue;
+        values.push({
+          name,
+          archived,
+          ...(includeCounts ? { count: counts?.get(name) || 0 } : {}),
+        });
+        if (values.length >= maxResults) break;
+      }
       return { values, count: values.length };
     }
 
