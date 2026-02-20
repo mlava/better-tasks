@@ -2840,14 +2840,16 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
               </button>
             ) : null}
           </span>
-          <label className="bt-show-archived-toggle">
-            <input
-              type="checkbox"
-              checked={showArchivedProjects}
-              onChange={(e) => setShowArchivedProjects(e.target.checked)}
-            />
-            <span>{ui.showArchivedProjects}</span>
-          </label>
+          {archivedProjectNames.size > 0 ? (
+            <label className="bt-show-archived-toggle">
+              <input
+                type="checkbox"
+                checked={showArchivedProjects}
+                onChange={(e) => setShowArchivedProjects(e.target.checked)}
+              />
+              <span>{ui.showArchivedProjects}</span>
+            </label>
+          ) : null}
         </label>
         <label className="bt-filter-text">
           <span>{ui.waitingFilterLabel}</span>
@@ -2880,14 +2882,16 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
               </button>
             ) : null}
           </span>
-          <label className="bt-show-archived-toggle">
-            <input
-              type="checkbox"
-              checked={showArchivedWaiting}
-              onChange={(e) => setShowArchivedWaiting(e.target.checked)}
-            />
-            <span>{ui.showArchivedWaiting}</span>
-          </label>
+          {archivedWaitingNames.size > 0 ? (
+            <label className="bt-show-archived-toggle">
+              <input
+                type="checkbox"
+                checked={showArchivedWaiting}
+                onChange={(e) => setShowArchivedWaiting(e.target.checked)}
+              />
+              <span>{ui.showArchivedWaiting}</span>
+            </label>
+          ) : null}
         </label>
         <label className="bt-filter-text">
           <span>{ui.contextFilterLabel}</span>
@@ -2920,14 +2924,16 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
               </button>
             ) : null}
           </span>
-          <label className="bt-show-archived-toggle">
-            <input
-              type="checkbox"
-              checked={showArchivedContexts}
-              onChange={(e) => setShowArchivedContexts(e.target.checked)}
-            />
-            <span>{ui.showArchivedContexts}</span>
-          </label>
+          {archivedContextNames.size > 0 ? (
+            <label className="bt-show-archived-toggle">
+              <input
+                type="checkbox"
+                checked={showArchivedContexts}
+                onChange={(e) => setShowArchivedContexts(e.target.checked)}
+              />
+              <span>{ui.showArchivedContexts}</span>
+            </label>
+          ) : null}
         </label>
       </FullPageFilterGroup>
 
@@ -3478,14 +3484,16 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                       </button>
                     ) : null}
                   </span>
-                  <label className="bt-show-archived-toggle">
-                    <input
-                      type="checkbox"
-                      checked={showArchivedProjects}
-                      onChange={(e) => setShowArchivedProjects(e.target.checked)}
-                    />
-                    <span>{ui.showArchivedProjects}</span>
-                  </label>
+                  {archivedProjectNames.size > 0 ? (
+                    <label className="bt-show-archived-toggle">
+                      <input
+                        type="checkbox"
+                        checked={showArchivedProjects}
+                        onChange={(e) => setShowArchivedProjects(e.target.checked)}
+                      />
+                      <span>{ui.showArchivedProjects}</span>
+                    </label>
+                  ) : null}
                 </label>
                 <label className="bt-filter-text">
                   <span>{ui.waitingFilterLabel}</span>
@@ -3521,14 +3529,16 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                       </button>
                     ) : null}
                   </span>
-                  <label className="bt-show-archived-toggle">
-                    <input
-                      type="checkbox"
-                      checked={showArchivedWaiting}
-                      onChange={(e) => setShowArchivedWaiting(e.target.checked)}
-                    />
-                    <span>{ui.showArchivedWaiting}</span>
-                  </label>
+                  {archivedWaitingNames.size > 0 ? (
+                    <label className="bt-show-archived-toggle">
+                      <input
+                        type="checkbox"
+                        checked={showArchivedWaiting}
+                        onChange={(e) => setShowArchivedWaiting(e.target.checked)}
+                      />
+                      <span>{ui.showArchivedWaiting}</span>
+                    </label>
+                  ) : null}
                 </label>
                 <label className="bt-filter-text">
                   <span>{ui.contextFilterLabel}</span>
@@ -3564,14 +3574,16 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                       </button>
                     ) : null}
                   </span>
-                  <label className="bt-show-archived-toggle">
-                    <input
-                      type="checkbox"
-                      checked={showArchivedContexts}
-                      onChange={(e) => setShowArchivedContexts(e.target.checked)}
-                    />
-                    <span>{ui.showArchivedContexts}</span>
-                  </label>
+                  {archivedContextNames.size > 0 ? (
+                    <label className="bt-show-archived-toggle">
+                      <input
+                        type="checkbox"
+                        checked={showArchivedContexts}
+                        onChange={(e) => setShowArchivedContexts(e.target.checked)}
+                      />
+                      <span>{ui.showArchivedContexts}</span>
+                    </label>
+                  ) : null}
                 </label>
         {dueIncludesUpcomingMemo ? (
           <label className="bt-filter-text">
