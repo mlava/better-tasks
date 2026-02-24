@@ -4349,6 +4349,7 @@ export default {
         tools: [
           {
             name: "bt_get_projects",
+            readOnly: true,
             description: "List projects tracked by Better Tasks.",
             parameters: {
               type: "object",
@@ -4363,6 +4364,7 @@ export default {
           },
           {
             name: "bt_get_waiting_for",
+            readOnly: true,
             description: "List waiting-for values tracked by Better Tasks.",
             parameters: {
               type: "object",
@@ -4377,6 +4379,7 @@ export default {
           },
           {
             name: "bt_get_context",
+            readOnly: true,
             description: "List context values tracked by Better Tasks.",
             parameters: {
               type: "object",
@@ -4391,12 +4394,14 @@ export default {
           },
           {
             name: "bt_get_attributes",
+            readOnly: true,
             description: "Get Better Tasks attribute schema and configured labels.",
             parameters: { type: "object", properties: {} },
             execute: async (args = {}) => runToolSafely("bt_get_attributes", args, () => executeToolGetAttributes()),
           },
           {
             name: "bt_search",
+            readOnly: true,
             description: "Search Better Tasks tasks by status, due, project, assignee, or free text.",
             parameters: {
               type: "object",
@@ -4414,6 +4419,7 @@ export default {
           },
           {
             name: "bt_create",
+            readOnly: false,
             description: "Create a new Better Tasks task. Use attributes object for due, project, defer, start, priority, energy, gtd, waitingFor, context. Top-level attribute keys also accepted.",
             parameters: {
               type: "object",
@@ -4429,6 +4435,7 @@ export default {
           },
           {
             name: "bt_modify",
+            readOnly: false,
             description: "Modify an existing Better Tasks task. Use attributes object for due, project, defer, start, priority, energy, gtd, waitingFor, context. Top-level attribute keys also accepted.",
             parameters: {
               type: "object",
@@ -4444,6 +4451,7 @@ export default {
           },
           {
             name: "bt_bulk_modify",
+            readOnly: false,
             description: "Modify multiple tasks in a single operation. Each item supports text, status, and attributes. Top-level attribute keys also accepted per item.",
             parameters: {
               type: "object",
@@ -4469,6 +4477,7 @@ export default {
           },
           {
             name: "bt_bulk_snooze",
+            readOnly: false,
             description: "Snooze multiple tasks by shifting existing defer/start/due dates forward by a number of days.",
             parameters: {
               type: "object",
@@ -4482,6 +4491,7 @@ export default {
           },
           {
             name: "bt_get_analytics",
+            readOnly: true,
             description: "Task analytics: overdue count, completion rate, velocity by project and time period.",
             parameters: {
               type: "object",
@@ -4583,6 +4593,7 @@ export default {
           },
           {
             name: "bt_get_task_by_uid",
+            readOnly: true,
             description: "Fetch a single task by its block UID. Returns full task details including attributes.",
             parameters: {
               type: "object",
