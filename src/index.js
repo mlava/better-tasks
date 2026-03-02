@@ -9039,6 +9039,9 @@ export default {
         if (lower === "zh-hans" || lower === "zh_hans" || lower === "zh-cn") {
           return "zh";
         }
+        if (lower === "pt" || lower === "pt-pt" || lower === "pt_pt") {
+          return "pt-PT";
+        }
         return cleaned;
       };
       const candidates = [override, extensionAPI?.settings?.get?.(LANGUAGE_SETTING), currentLanguage];

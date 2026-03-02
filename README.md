@@ -415,6 +415,16 @@ Supported:
 - English (en)
 - Simplified Chinese (zh)
 - Traditional Chinese (zhHant)
+- Spanish (es)
+- German (de)
+- French (fr)
+- Japanese (ja)
+- Russian (ru)
+- Korean (ko)
+- Portuguese, Portugal (pt-PT)
+- Portuguese, Brazil (pt-BR)
+- Arabic (ar)
+- Italian (it)
 
 UI is fully locale-aware.  
 Natural-language recurrence parsing is intentionally English-only for now.

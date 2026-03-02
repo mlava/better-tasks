@@ -38,8 +38,39 @@ function getByPath(obj, path) {
 }
 
 /**
+ * Extracts normalized placeholder token names from template strings.
+ * Example: "Hi {{ name }} on {{date}}" -> Set(["name", "date"])
+ */
+function extractPlaceholderTokens(str) {
+  const tokens = new Set();
+  if (typeof str !== "string") return tokens;
+
+  const re = /\{\{\s*([^{}\s]+)\s*\}\}/g;
+  let match;
+  while ((match = re.exec(str)) !== null) {
+    tokens.add(match[1]);
+  }
+  return tokens;
+}
+
+function sameSet(a, b) {
+  if (a.size !== b.size) return false;
+  for (const item of a) {
+    if (!b.has(item)) return false;
+  }
+  return true;
+}
+
+function truncate(str, maxLen = 60) {
+  if (typeof str !== "string") return String(str);
+  if (str.length <= maxLen) return str;
+  return str.slice(0, maxLen - 1) + "\u2026";
+}
+
+/**
  * Asserts that all locales in the i18n object have the same key structure as the base locale.
  * Also checks that arrays for the same key have the same length.
+ * Also checks placeholder-token parity for string leaves (same {{...}} token set per key).
  *
  * Throws an Error with a detailed message if any mismatch is found.
  */
@@ -81,6 +112,13 @@ function assertI18nParity(i18n, baseLocale = "en") {
       const baseVal = getByPath(base, key);
       const targetVal = getByPath(target, key);
 
+      // Leaf type parity (catches function↔string, string↔number, etc.)
+      const baseType = Array.isArray(baseVal) ? "array" : typeof baseVal;
+      const targetType = Array.isArray(targetVal) ? "array" : typeof targetVal;
+      if (baseType !== targetType) {
+        errors.push(`[${locale}] type mismatch at key "${key}": base is ${baseType}, locale is ${targetType}`);
+      }
+
       if (Array.isArray(baseVal) && Array.isArray(targetVal)) {
         if (baseVal.length !== targetVal.length) {
           errors.push(
@@ -88,13 +126,49 @@ function assertI18nParity(i18n, baseLocale = "en") {
             `${baseVal.length} (base) vs ${targetVal.length} (locale)`
           );
         }
+
+        // Placeholder parity for array string elements
+        const minLen = Math.min(baseVal.length, targetVal.length);
+        for (let i = 0; i < minLen; i++) {
+          if (typeof baseVal[i] === "string" && typeof targetVal[i] === "string") {
+            const bt = extractPlaceholderTokens(baseVal[i]);
+            const tt = extractPlaceholderTokens(targetVal[i]);
+            if (!sameSet(bt, tt)) {
+              errors.push(
+                `[${locale}] placeholder mismatch at key "${key}[${i}]": ` +
+                `base={${[...bt].sort().join(", ")}} vs locale={${[...tt].sort().join(", ")}} ` +
+                `(base: "${truncate(baseVal[i])}" / locale: "${truncate(targetVal[i])}")`
+              );
+            }
+          }
+        }
+      }
+
+      // Placeholder token parity for string leaves
+      if (typeof baseVal === "string" && typeof targetVal === "string") {
+        const baseTokens = extractPlaceholderTokens(baseVal);
+        const targetTokens = extractPlaceholderTokens(targetVal);
+        if (!sameSet(baseTokens, targetTokens)) {
+          const baseList = [...baseTokens].sort().join(", ");
+          const targetList = [...targetTokens].sort().join(", ");
+          errors.push(
+            `[${locale}] placeholder mismatch at key "${key}": ` +
+            `base={${baseList}} vs locale={${targetList}} ` +
+            `(base: "${truncate(baseVal)}" / locale: "${truncate(targetVal)}")`
+          );
+        }
       }
     }
   }
 
   if (errors.length > 0) {
+    const MAX_ERRORS = 200;
+    const displayed = errors.slice(0, MAX_ERRORS);
+    const suffix = errors.length > MAX_ERRORS
+      ? `\n  ... and ${errors.length - MAX_ERRORS} more error(s)`
+      : "";
     const msg =
-      `i18n parity check failed:\n` + errors.map((e) => `  - ${e}`).join("\n");
+      `i18n parity check failed:\n` + displayed.map((e) => `  - ${e}`).join("\n") + suffix;
     throw new Error(msg);
   }
 }
