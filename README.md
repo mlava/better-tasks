@@ -244,6 +244,18 @@ All bulk actions support **Undo** via the toast notification.
   <img src="https://raw.githubusercontent.com/mlava/better-tasks/main/images/today-widget.jpg" width="600" alt="Today widget on DNP"/>
 </p>
 
+Shows tasks starting, deferred until, due, and (optionally) overdue today. Each task row has configurable action buttons:
+
+| Button | Default | Description |
+|--------|---------|-------------|
+| ✓ Complete | On | Mark the task as done |
+| ⏱ Snooze +1d | On | Snooze all dates forward 1 day |
+| ⏱+7 Snooze +7d | On | Snooze all dates forward 7 days |
+| (()) Copy Ref | Off | Copy the block reference `((uid))` to the clipboard |
+| ⧉ Open Sidebar | Off | Open the task in the right sidebar |
+
+Toggle each button on or off in the Today Widget settings. Clicking a task title navigates to the block; Shift+Click opens it in the sidebar.
+
 ### Today badge (left sidebar)
 
 <p align="center">
@@ -266,6 +278,8 @@ Core settings:
 - Inline pill checkbox threshold (performance guard)
 
 Additional sections appear only when enabled.
+- **Today Badge** — sidebar badge label, overdue inclusion, background and text colours.
+- **Today Widget** — layout (panel or Roam-style inline), placement (top/bottom), heading level, overdue/completed inclusion, and per-button toggles (complete, snooze +1d, snooze +7d, copy ref, open sidebar).
 - **Advanced Dashboard options** unlock the Weekly Review step toggles (on/off per step; order is fixed).
 - **Advanced Project/Context/Waiting options** let you exclude specific pages from picklists.
 - **Customise attribute names (advanced)** exposes settings to rename Better Tasks attribute labels/keys.
