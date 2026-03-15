@@ -8998,6 +8998,7 @@ export default {
         }
         .bt-today-panel__row {
           display: flex;
+          flex-wrap: nowrap;
           justify-content: space-between;
           align-items: center;
           gap: 8px;
@@ -9011,6 +9012,9 @@ export default {
           cursor: pointer;
           font: inherit;
           color: inherit;
+          min-width: 0;
+          flex: 1 1 auto;
+          word-break: break-word;
         }
         .bt-today-panel__item--completed .bt-today-panel__row-title {
           text-decoration: line-through;
@@ -9019,6 +9023,8 @@ export default {
         .bt-today-panel__row-actions {
           display: flex;
           gap: 6px;
+          flex-shrink: 0;
+          white-space: nowrap;
         }
         .bt-today-panel__icon-btn {
           border: 1px solid var(--bt-border, rgba(0,0,0,0.22));
