@@ -111,6 +111,11 @@ const TODAY_BADGE_LABEL_SETTING = "bt-today-badge-label";
 const TODAY_BADGE_OVERDUE_SETTING = "bt-today-badge-include-overdue";
 const TODAY_BADGE_BG_SETTING = "bt-today-badge-bg";
 const TODAY_BADGE_FG_SETTING = "bt-today-badge-fg";
+const TODAY_PANEL_BTN_COMPLETE_SETTING = "bt-today-btn-complete";
+const TODAY_PANEL_BTN_SNOOZE1_SETTING = "bt-today-btn-snooze1";
+const TODAY_PANEL_BTN_SNOOZE7_SETTING = "bt-today-btn-snooze7";
+const TODAY_PANEL_BTN_COPYREF_SETTING = "bt-today-btn-copyref";
+const TODAY_PANEL_BTN_SIDEBAR_SETTING = "bt-today-btn-sidebar";
 const LANGUAGE_SETTING = "bt-language";
 const ADV_DASH_OPTIONS_SETTING = "bt-advanced-dashboard-options";
 const REVIEW_STEP_NEXT_ACTIONS_SETTING = "bt-review-step-next-actions";
@@ -880,6 +885,36 @@ export default {
             description: tr("settings.todayWidgetShowCompletedDescription", "Include completed tasks (hidden by default)"),
             action: { type: "switch", onChange: (v) => handleTodaySettingChange(TODAY_WIDGET_COMPLETED_SETTING, v) },
           },
+          {
+            id: TODAY_PANEL_BTN_COMPLETE_SETTING,
+            name: tr("settings.todayBtnComplete", "Show Complete button (✓)"),
+            description: tr("settings.todayBtnCompleteDesc", "Show the complete button on each task row"),
+            action: { type: "switch", onChange: (v) => handleTodaySettingChange(TODAY_PANEL_BTN_COMPLETE_SETTING, v) },
+          },
+          {
+            id: TODAY_PANEL_BTN_SNOOZE1_SETTING,
+            name: tr("settings.todayBtnSnooze1", "Show Snooze +1d button (⏱)"),
+            description: tr("settings.todayBtnSnooze1Desc", "Show the snooze +1 day button on each task row"),
+            action: { type: "switch", onChange: (v) => handleTodaySettingChange(TODAY_PANEL_BTN_SNOOZE1_SETTING, v) },
+          },
+          {
+            id: TODAY_PANEL_BTN_SNOOZE7_SETTING,
+            name: tr("settings.todayBtnSnooze7", "Show Snooze +7d button (⏱+7)"),
+            description: tr("settings.todayBtnSnooze7Desc", "Show the snooze +7 days button on each task row"),
+            action: { type: "switch", onChange: (v) => handleTodaySettingChange(TODAY_PANEL_BTN_SNOOZE7_SETTING, v) },
+          },
+          {
+            id: TODAY_PANEL_BTN_COPYREF_SETTING,
+            name: tr("settings.todayBtnCopyRef", "Show Copy Ref button (())"),
+            description: tr("settings.todayBtnCopyRefDesc", "Show a button to copy the block reference to the clipboard"),
+            action: { type: "switch", onChange: (v) => handleTodaySettingChange(TODAY_PANEL_BTN_COPYREF_SETTING, v) },
+          },
+          {
+            id: TODAY_PANEL_BTN_SIDEBAR_SETTING,
+            name: tr("settings.todayBtnSidebar", "Show Open Sidebar button (⧉)"),
+            description: tr("settings.todayBtnSidebarDesc", "Show a button to open the task in the right sidebar"),
+            action: { type: "switch", onChange: (v) => handleTodaySettingChange(TODAY_PANEL_BTN_SIDEBAR_SETTING, v) },
+          },
         ]
         : [];
 
@@ -963,6 +998,21 @@ export default {
     }
     if (extensionAPI.settings.get(TODAY_BADGE_OVERDUE_SETTING) == null) {
       extensionAPI.settings.set(TODAY_BADGE_OVERDUE_SETTING, false);
+    }
+    if (extensionAPI.settings.get(TODAY_PANEL_BTN_COMPLETE_SETTING) == null) {
+      extensionAPI.settings.set(TODAY_PANEL_BTN_COMPLETE_SETTING, true);
+    }
+    if (extensionAPI.settings.get(TODAY_PANEL_BTN_SNOOZE1_SETTING) == null) {
+      extensionAPI.settings.set(TODAY_PANEL_BTN_SNOOZE1_SETTING, true);
+    }
+    if (extensionAPI.settings.get(TODAY_PANEL_BTN_SNOOZE7_SETTING) == null) {
+      extensionAPI.settings.set(TODAY_PANEL_BTN_SNOOZE7_SETTING, true);
+    }
+    if (extensionAPI.settings.get(TODAY_PANEL_BTN_COPYREF_SETTING) == null) {
+      extensionAPI.settings.set(TODAY_PANEL_BTN_COPYREF_SETTING, false);
+    }
+    if (extensionAPI.settings.get(TODAY_PANEL_BTN_SIDEBAR_SETTING) == null) {
+      extensionAPI.settings.set(TODAY_PANEL_BTN_SIDEBAR_SETTING, false);
     }
     if (extensionAPI.settings.get(PICKLIST_EXCLUDE_ENABLED_SETTING) == null) {
       extensionAPI.settings.set(PICKLIST_EXCLUDE_ENABLED_SETTING, false);
@@ -9361,6 +9411,7 @@ export default {
         placement,
         `h${heading}`,
         `t:${anchorText}`,
+        `btns:${getTodayPanelEnabledButtons().join(",")}`,
       ].join("|");
       return { layout, includeOverdue, showCompleted, placement, heading, anchorText, signature };
     }
@@ -14270,6 +14321,132 @@ export default {
       }
     }
 
+    const TODAY_PANEL_BUTTON_DEFS = [
+      {
+        id: "complete",
+        settingId: TODAY_PANEL_BTN_COMPLETE_SETTING,
+        defaultOn: true,
+        create(task, todayStrings, disableAll, reenableAll) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "bt-today-panel__icon-btn";
+          btn.textContent = "✓";
+          btn.title = todayStrings.complete || "Complete";
+          btn.setAttribute("aria-label", btn.title);
+          btn.addEventListener("click", async () => {
+            disableAll();
+            try {
+              await activeDashboardController?.toggleTask?.(task.uid, "complete");
+            } finally {
+              scheduleTodayWidgetRender(30, true);
+              reenableAll();
+            }
+          });
+          return btn;
+        },
+      },
+      {
+        id: "snooze1",
+        settingId: TODAY_PANEL_BTN_SNOOZE1_SETTING,
+        defaultOn: true,
+        create(task, todayStrings, disableAll, reenableAll) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "bt-today-panel__icon-btn";
+          btn.textContent = "⏱";
+          btn.title = todayStrings.snoozeShort || "Snooze +1d";
+          btn.setAttribute("aria-label", btn.title);
+          btn.addEventListener("click", async () => {
+            disableAll();
+            try {
+              await activeDashboardController?.snoozeTask?.(task.uid, 1);
+            } finally {
+              scheduleTodayWidgetRender(30, true);
+              reenableAll();
+            }
+          });
+          return btn;
+        },
+      },
+      {
+        id: "snooze7",
+        settingId: TODAY_PANEL_BTN_SNOOZE7_SETTING,
+        defaultOn: true,
+        create(task, todayStrings, disableAll, reenableAll) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "bt-today-panel__icon-btn";
+          btn.textContent = "⏱+7";
+          btn.title = todayStrings.snoozeWeek || "Snooze +7d";
+          btn.setAttribute("aria-label", btn.title);
+          btn.addEventListener("click", async () => {
+            disableAll();
+            try {
+              await activeDashboardController?.snoozeTask?.(task.uid, 7);
+            } finally {
+              scheduleTodayWidgetRender(30, true);
+              reenableAll();
+            }
+          });
+          return btn;
+        },
+      },
+      {
+        id: "copyRef",
+        settingId: TODAY_PANEL_BTN_COPYREF_SETTING,
+        defaultOn: false,
+        create(task, todayStrings) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "bt-today-panel__icon-btn";
+          btn.textContent = "(())";
+          btn.title = todayStrings.copyRef || "Copy block reference";
+          btn.setAttribute("aria-label", btn.title);
+          btn.addEventListener("click", async () => {
+            try {
+              await navigator.clipboard?.writeText?.(`((${task.uid}))`);
+              toast(todayStrings.copyRefDone || "Block reference copied");
+            } catch (err) {
+              console.warn("[BetterTasks] copy block ref failed", err);
+            }
+          });
+          return btn;
+        },
+      },
+      {
+        id: "sidebar",
+        settingId: TODAY_PANEL_BTN_SIDEBAR_SETTING,
+        defaultOn: false,
+        create(task, todayStrings) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "bt-today-panel__icon-btn";
+          btn.textContent = "⧉";
+          btn.title = todayStrings.openSidebar || "Open in sidebar";
+          btn.setAttribute("aria-label", btn.title);
+          btn.addEventListener("click", () => {
+            try {
+              window.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({
+                window: { type: "block", "block-uid": task.uid },
+              });
+            } catch (_) { /* ignore */ }
+          });
+          return btn;
+        },
+      },
+    ];
+
+    const TODAY_PANEL_BUTTON_MAP = new Map(TODAY_PANEL_BUTTON_DEFS.map(d => [d.id, d]));
+
+    function getTodayPanelEnabledButtons() {
+      return TODAY_PANEL_BUTTON_DEFS
+        .filter(def => {
+          const val = extensionAPI.settings.get(def.settingId);
+          return val == null ? def.defaultOn : !!val;
+        })
+        .map(def => def.id);
+    }
+
     async function renderTodayPanelDom(container, sections, options = {}, layoutSignature = "") {
       if (!container || typeof container.appendChild !== "function") return;
       const perfPanel = perfMark("renderTodayPanelDom");
@@ -14292,6 +14469,7 @@ export default {
       container.innerHTML = "";
       const lang = getLanguageSetting();
       const todayStrings = t(["today"], lang) || {};
+      const enabledButtonIds = getTodayPanelEnabledButtons();
       if (!hasAny) {
         const empty = document.createElement("div");
         empty.textContent = todayStrings.empty || "No tasks for today.";
@@ -14340,68 +14518,20 @@ export default {
             }
           });
           row.appendChild(titleBtn);
-          if (!task.isCompleted) {
+          if (!task.isCompleted && enabledButtonIds.length) {
             const actions = document.createElement("div");
             actions.className = "bt-today-panel__row-actions";
-            const doneBtn = document.createElement("button");
-            doneBtn.type = "button";
-            doneBtn.className = "bt-today-panel__icon-btn";
-            doneBtn.textContent = "✓";
-            doneBtn.title = todayStrings.complete || "Complete";
-            doneBtn.setAttribute("aria-label", doneBtn.title);
-            const snoozeBtn = document.createElement("button");
-            snoozeBtn.type = "button";
-            snoozeBtn.className = "bt-today-panel__icon-btn";
-            snoozeBtn.textContent = "⏱";
-            snoozeBtn.title = todayStrings.snoozeShort || "Snooze +1d";
-            snoozeBtn.setAttribute("aria-label", snoozeBtn.title);
-            const snoozeWeekBtn = document.createElement("button");
-            snoozeWeekBtn.type = "button";
-            snoozeWeekBtn.className = "bt-today-panel__icon-btn";
-            snoozeWeekBtn.textContent = "⏱+7";
-            snoozeWeekBtn.title = todayStrings.snoozeWeek || "Snooze +7d";
-            snoozeWeekBtn.setAttribute("aria-label", snoozeWeekBtn.title);
-            const disableActions = () => {
-              doneBtn.disabled = true;
-              snoozeBtn.disabled = true;
-              snoozeWeekBtn.disabled = true;
-            };
-            const reenableActions = () => {
-              doneBtn.disabled = false;
-              snoozeBtn.disabled = false;
-              snoozeWeekBtn.disabled = false;
-            };
-            snoozeBtn.addEventListener("click", async () => {
-              disableActions();
-              try {
-                await activeDashboardController?.snoozeTask?.(task.uid, 1);
-              } finally {
-                scheduleTodayWidgetRender(30, true);
-                reenableActions();
-              }
-            });
-            snoozeWeekBtn.addEventListener("click", async () => {
-              disableActions();
-              try {
-                await activeDashboardController?.snoozeTask?.(task.uid, 7);
-              } finally {
-                scheduleTodayWidgetRender(30, true);
-                reenableActions();
-              }
-            });
-            doneBtn.addEventListener("click", async () => {
-              disableActions();
-              try {
-                await activeDashboardController?.toggleTask?.(task.uid, "complete");
-              } finally {
-                scheduleTodayWidgetRender(30, true);
-                reenableActions();
-              }
-            });
-            actions.appendChild(doneBtn);
-            actions.appendChild(snoozeBtn);
-            actions.appendChild(snoozeWeekBtn);
-            row.appendChild(actions);
+            const allBtns = [];
+            const disableAll = () => allBtns.forEach(b => { b.disabled = true; });
+            const reenableAll = () => allBtns.forEach(b => { b.disabled = false; });
+            for (const id of enabledButtonIds) {
+              const def = TODAY_PANEL_BUTTON_MAP.get(id);
+              if (!def) continue;
+              const btn = def.create(task, todayStrings, disableAll, reenableAll);
+              allBtns.push(btn);
+              actions.appendChild(btn);
+            }
+            if (allBtns.length) row.appendChild(actions);
           }
           li.appendChild(row);
           list.appendChild(li);
