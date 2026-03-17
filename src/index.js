@@ -4140,6 +4140,43 @@ export default {
       return value;
     }
 
+    // ========================= Dependency / blocked-state helpers =========================
+    const blockedStateCache = new Map();
+    const BLOCKED_CACHE_TTL_MS = 30000;
+
+    function invalidateBlockedState(uid) {
+      if (uid) blockedStateCache.delete(uid);
+    }
+
+    function invalidateAllBlockedState() {
+      blockedStateCache.clear();
+    }
+
+    async function computeBlockedState(dependsUids) {
+      if (!Array.isArray(dependsUids) || !dependsUids.length) return { blocked: false, blockedBy: [] };
+      const blockedBy = [];
+      for (const uid of dependsUids) {
+        const block = await getBlock(uid);
+        if (!block) continue; // deleted dependency = no longer blocking
+        if (!isBlockCompleted(block)) {
+          blockedBy.push({ uid, title: formatDashboardTitle(block.string || "") });
+        }
+      }
+      return { blocked: blockedBy.length > 0, blockedBy };
+    }
+
+    async function isTaskBlocked(taskUid, dependsUids) {
+      if (!Array.isArray(dependsUids) || !dependsUids.length) return { blocked: false, blockedBy: [] };
+      const now = Date.now();
+      const cached = blockedStateCache.get(taskUid);
+      if (cached && now - cached.at < BLOCKED_CACHE_TTL_MS) {
+        return { blocked: cached.blocked, blockedBy: cached.blockedBy };
+      }
+      const result = await computeBlockedState(dependsUids);
+      blockedStateCache.set(taskUid, { ...result, at: now });
+      return result;
+    }
+
     function parseDependsValue(raw) {
       if (!raw || typeof raw !== "string") return [];
       return raw
@@ -13683,6 +13720,18 @@ export default {
           console.warn("[BetterTasks] deriveDashboardTask failed", err);
         }
       }
+      // Compute blocked state for tasks with dependencies
+      for (const task of tasks) {
+        if (task.depends.length) {
+          try {
+            const result = await isTaskBlocked(task.uid, task.depends);
+            task.isBlocked = result.blocked;
+            task.blockedBy = result.blockedBy;
+          } catch (err) {
+            debugLog("collectDashboardTasks blocked check failed", err);
+          }
+        }
+      }
       return dashboardTaskCache.set(memoKey, sortDashboardTasksList(tasks));
     }
 
@@ -13720,6 +13769,7 @@ export default {
           getAttrLabel("context", attrNames),
           getAttrLabel("priority", attrNames),
           getAttrLabel("energy", attrNames),
+          getAttrLabel("depends", attrNames),
         ].filter(Boolean)
       );
       if (!labels.size) return [];
@@ -13801,6 +13851,9 @@ export default {
         dueDisplay: formatDateDisplay(dueAt, set),
         metaPills,
         metadata: richMeta,
+        depends: richMeta.depends || [],
+        isBlocked: false,
+        blockedBy: [],
       };
     }
 
