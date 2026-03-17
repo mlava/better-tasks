@@ -9376,6 +9376,9 @@ export default {
           font-size: 13px;
           text-align: center;
         }
+        .bt-task-row--blocked {
+          opacity: 0.55;
+        }
       `;
       document.head.appendChild(style);
     }

@@ -79,6 +79,7 @@ const DEFAULT_FILTERS = {
   Priority: [],
   Energy: [],
   GTD: [],
+  Blocked: [],
   projectText: "",
   waitingText: "",
   contextText: "",
@@ -300,6 +301,11 @@ function applyFilters(tasks, filters, query) {
     if (energyFilter.size && !energyFilter.has(meta.energy || "")) return false;
     const gtdValue = (meta.gtd || "").toLowerCase();
     if (gtdFilter.size && !gtdFilter.has(gtdValue)) return false;
+    const blockedFilter = new Set(filters.Blocked || filters.blocked || []);
+    if (blockedFilter.size) {
+      const value = task.isBlocked ? "blocked" : "actionable";
+      if (!blockedFilter.has(value)) return false;
+    }
     if (projectText) {
       const hay = (meta.project || "").trim();
       if (hay.toLowerCase() !== projectText.toLowerCase()) return false;
@@ -1104,6 +1110,7 @@ function TaskRow({ task, controller, strings, selectionActive, isSelected, onTog
     "bt-task-row",
     menuOpen ? "bt-task-row--menu-open" : "",
     isSelected ? "bt-task-row--selected" : "",
+    task.isBlocked ? "bt-task-row--blocked" : "",
   ].filter(Boolean).join(" ");
   // In selection mode: show selection state; otherwise show completion state
   const checkboxIcon = selectionActive
@@ -1128,7 +1135,7 @@ function TaskRow({ task, controller, strings, selectionActive, isSelected, onTog
       </button>
       <div className="bt-task-row__body">
         <div className="bt-task-row__title" aria-describedby={metaDescriptionId}>
-          {task.title || strings?.untitled || "(Untitled task)"}
+          {task.isBlocked ? "🔒 " : ""}{task.title || strings?.untitled || "(Untitled task)"}
         </div>
         <span id={metaDescriptionId} className="bt-sr-only">
           {contextBits.map((bit) => bit.text).filter(Boolean).join(", ")}
@@ -1700,6 +1707,10 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
         { value: "deferred", label: fv("deferred") },
         { value: "someday", label: fv("someday") },
       ],
+      Blocked: [
+        { value: "actionable", label: fv("actionable") },
+        { value: "blocked", label: fv("blocked") },
+      ],
     };
   }, [tt, fallbackCapitalize]);
   const filterSectionLabels = useMemo(
@@ -1712,6 +1723,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       Priority: tt(["dashboard", "filterSections", "Priority"], "Priority"),
       Energy: tt(["dashboard", "filterSections", "Energy"], "Energy"),
       GTD: tt(["dashboard", "filterSections", "GTD"], "GTD"),
+      Blocked: tt(["dashboard", "filterSections", "Blocked"], "Blocked"),
     }),
     [tt]
   );
@@ -3447,6 +3459,14 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                 label={filterSectionLabels["GTD"] || "GTD"}
                 chips={filterDefs["GTD"]}
                 activeValues={filters["GTD"]}
+                onToggle={handleFilterToggle}
+              />
+              <FilterChips
+                key="Blocked"
+                sectionKey="Blocked"
+                label={filterSectionLabels["Blocked"] || "Blocked"}
+                chips={filterDefs["Blocked"]}
+                activeValues={filters["Blocked"]}
                 onToggle={handleFilterToggle}
               />
               <div className="bt-filter-text-row">

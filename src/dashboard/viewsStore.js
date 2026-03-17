@@ -12,6 +12,7 @@ export const DASHBOARD_PRESET_IDS = [
   "bt_preset_overdue",
   "bt_preset_someday",
   "bt_preset_all_open",
+  "bt_preset_blocked",
 ];
 
 export const DASHBOARD_REVIEW_PRESET_IDS = [
@@ -250,6 +251,18 @@ export function buildPresetViews({ getName } = {}) {
       state: {
         filters: { Completion: ["open"], completedRange: "any" },
         grouping: "time",
+        query: "",
+      },
+    },
+    {
+      id: "bt_preset_blocked",
+      name: nameFor("blocked", "Blocked Tasks"),
+      createdAt: t,
+      updatedAt: t,
+      schema: VIEW_SCHEMA,
+      state: {
+        filters: { Completion: ["open"], Blocked: ["blocked"], completedRange: "any" },
+        grouping: "project",
         query: "",
       },
     },
