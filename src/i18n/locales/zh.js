@@ -95,6 +95,8 @@ const locale = {
     priorityAttrDescription: "优先级属性的标签",
     energyAttr: "精力属性名称",
     energyAttrDescription: "精力属性的标签",
+    dependsAttr: "依赖属性名称",
+    dependsAttrDescription: "任务依赖属性的标签（子块）",
     confirmBeforeSpawn: "生成下一个任务前需要确认",
     confirmBeforeSpawnDescription: "在重复任务完成时生成下一次前提示确认",
     weekStart: "每周的第一天",
@@ -282,7 +284,10 @@ const locale = {
     dashViewsPresetNameCollisions: "由于名称冲突而跳过预设：",
     dashViewsPresetInstallFailed: "无法重新安装仪表板预设视图。",
     dashReviewNoPresets: "未找到复盘预设。",
-    dashReviewStartFailed: "无法开始每周复盘。"
+    dashReviewStartFailed: "无法开始每周复盘。",
+    dependencyAdded: "已添加依赖",
+    dependencyRemoved: "已移除依赖",
+    circularDependency: "检测到循环依赖"
   },
   dashboard: {
     topbarTitle: "Better Tasks Dashboard",
@@ -364,7 +369,8 @@ const locale = {
       Completion: "完成状态",
       Priority: "优先级",
       Energy: "精力",
-      GTD: "GTD"
+      GTD: "GTD",
+      Blocked: "已阻塞"
     },
     filterValues: {
       recurring: "重复",
@@ -384,7 +390,9 @@ const locale = {
       low: "低",
       "next action": "下一步行动",
       delegated: "已委派",
-      someday: "某天"
+      someday: "某天",
+      blocked: "已阻塞",
+      actionable: "可执行"
     },
     completedWithinLabel: "完成时间范围",
     completedWithinOptions: {
@@ -529,6 +537,9 @@ const locale = {
     cyclePriority: "切换优先级",
     cycleEnergy: "切换精力",
     cycleGtd: "切换 GTD",
+    addDepends: "添加依赖",
+    editDepends: "编辑依赖",
+    removeDepends: "移除所有依赖",
     metaHeading: "元数据"
   },
   taskMenu: {
@@ -544,6 +555,9 @@ const locale = {
     priorityCycle: "优先级（点击循环）",
     energyCycle: "精力（点击循环）",
     cycleGtd: "切换 GTD",
+    setDepends: "设置依赖",
+    editDepends: "编辑依赖",
+    removeDepends: "移除依赖",
     metaHeading: "元数据"
   },
   metadata: {
@@ -569,7 +583,19 @@ const locale = {
     contextLabel: "情境",
     priorityLabel: "优先级",
     energyLabel: "精力",
-    gtdLabel: "GTD"
+    gtdLabel: "GTD",
+    depends: "依赖",
+    dependsLabel: "依赖于",
+    blocked: "已阻塞",
+    blockedBy: "被阻塞",
+    actionable: "可执行"
+  },
+  dependsPicker: {
+    title: "选择依赖任务",
+    placeholder: "搜索未完成任务…",
+    noItems: "未找到匹配任务",
+    cycleDetected: "无法添加 — 会产生循环依赖",
+    alreadyAdded: "已是依赖项"
   }
 };
 

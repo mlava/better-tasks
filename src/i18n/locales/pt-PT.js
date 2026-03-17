@@ -95,6 +95,8 @@ const locale = {
     priorityAttrDescription: "Rótulo para o atributo de prioridade",
     energyAttr: "Nome do atributo de energia",
     energyAttrDescription: "Rótulo para o atributo de energia",
+    dependsAttr: "Nome do atributo de dependências",
+    dependsAttrDescription: "Rótulo para o atributo de dependências de tarefa (bloco filho)",
     confirmBeforeSpawn: "Confirmar antes de gerar próxima tarefa",
     confirmBeforeSpawnDescription: "Pedir confirmação antes de gerar quando uma Better Task recorrente é concluída",
     weekStart: "Primeiro dia da semana",
@@ -282,7 +284,10 @@ const locale = {
     dashViewsPresetNameCollisions: "Predefinições ignoradas por conflitos de nome:",
     dashViewsPresetInstallFailed: "Não foi possível reinstalar as vistas predefinidas do painel.",
     dashReviewNoPresets: "Nenhuma predefinição de revisão encontrada.",
-    dashReviewStartFailed: "Não foi possível iniciar a revisão semanal."
+    dashReviewStartFailed: "Não foi possível iniciar a revisão semanal.",
+    dependencyAdded: "Dependência adicionada",
+    dependencyRemoved: "Dependência removida",
+    circularDependency: "Dependência circular detectada"
   },
   dashboard: {
     topbarTitle: "Painel Better Tasks",
@@ -364,7 +369,8 @@ const locale = {
       Completion: "Conclusão",
       Priority: "Prioridade",
       Energy: "Energia",
-      GTD: "GTD"
+      GTD: "GTD",
+      Blocked: "Bloqueada"
     },
     filterValues: {
       recurring: "Recorrente",
@@ -384,7 +390,9 @@ const locale = {
       low: "Baixa",
       "next action": "Próxima ação",
       delegated: "Delegada",
-      someday: "Um dia"
+      someday: "Um dia",
+      blocked: "Bloqueada",
+      actionable: "Acionável"
     },
     completedWithinLabel: "Concluídas em",
     completedWithinOptions: {
@@ -529,6 +537,9 @@ const locale = {
     cyclePriority: "Alternar prioridade",
     cycleEnergy: "Alternar energia",
     cycleGtd: "Alternar GTD",
+    addDepends: "Adicionar dependência",
+    editDepends: "Editar dependências",
+    removeDepends: "Remover todas as dependências",
     metaHeading: "Metadados"
   },
   taskMenu: {
@@ -544,6 +555,9 @@ const locale = {
     priorityCycle: "Prioridade (clique para alternar)",
     energyCycle: "Energia (clique para alternar)",
     cycleGtd: "Alternar GTD",
+    setDepends: "Definir dependência",
+    editDepends: "Editar dependências",
+    removeDepends: "Remover dependências",
     metaHeading: "Metadados"
   },
   metadata: {
@@ -569,7 +583,19 @@ const locale = {
     contextLabel: "Contexto",
     priorityLabel: "Prioridade",
     energyLabel: "Energia",
-    gtdLabel: "GTD"
+    gtdLabel: "GTD",
+    depends: "Dependências",
+    dependsLabel: "Depende de",
+    blocked: "Bloqueada",
+    blockedBy: "Bloqueada por",
+    actionable: "Acionável"
+  },
+  dependsPicker: {
+    title: "Selecionar tarefas de dependência",
+    placeholder: "Pesquisar tarefas abertas…",
+    noItems: "Nenhuma tarefa correspondente encontrada",
+    cycleDetected: "Não é possível adicionar — criaria uma dependência circular",
+    alreadyAdded: "Já é uma dependência"
   }
 };
 

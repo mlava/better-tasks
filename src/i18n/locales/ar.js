@@ -95,6 +95,8 @@ const locale = {
     priorityAttrDescription: "تسمية سمة الأولوية",
     energyAttr: "اسم سمة الطاقة",
     energyAttrDescription: "تسمية سمة الطاقة",
+    dependsAttr: "اسم سمة التبعيات",
+    dependsAttrDescription: "تسمية سمة تبعيات المهمة (بلوك فرعي)",
     confirmBeforeSpawn: "تأكيد قبل إنشاء المهمة التالية",
     confirmBeforeSpawnDescription: "طلب التأكيد قبل الإنشاء عند إكمال مهمة Better Tasks متكررة",
     weekStart: "أول يوم في الأسبوع",
@@ -282,7 +284,10 @@ const locale = {
     dashViewsPresetNameCollisions: "تم تخطي إعدادات افتراضية بسبب تعارض الأسماء:",
     dashViewsPresetInstallFailed: "تعذّرت إعادة تثبيت العروض الافتراضية.",
     dashReviewNoPresets: "لم يتم العثور على إعدادات مراجعة افتراضية.",
-    dashReviewStartFailed: "تعذّر بدء المراجعة الأسبوعية."
+    dashReviewStartFailed: "تعذّر بدء المراجعة الأسبوعية.",
+    dependencyAdded: "تمت إضافة التبعية",
+    dependencyRemoved: "تمت إزالة التبعية",
+    circularDependency: "تم اكتشاف تبعية دائرية"
   },
   dashboard: {
     topbarTitle: "لوحة Better Tasks",
@@ -364,7 +369,8 @@ const locale = {
       Completion: "الإكمال",
       Priority: "الأولوية",
       Energy: "الطاقة",
-      GTD: "GTD"
+      GTD: "GTD",
+      Blocked: "محظور"
     },
     filterValues: {
       recurring: "متكرر",
@@ -384,7 +390,9 @@ const locale = {
       low: "منخفضة",
       "next action": "الإجراء التالي",
       delegated: "مفوّض",
-      someday: "يوماً ما"
+      someday: "يوماً ما",
+      blocked: "محظور",
+      actionable: "قابل للتنفيذ"
     },
     completedWithinLabel: "مكتمل خلال",
     completedWithinOptions: {
@@ -529,6 +537,9 @@ const locale = {
     cyclePriority: "تدوير الأولوية",
     cycleEnergy: "تدوير الطاقة",
     cycleGtd: "تدوير GTD",
+    addDepends: "إضافة تبعية",
+    editDepends: "تعديل التبعيات",
+    removeDepends: "إزالة جميع التبعيات",
     metaHeading: "البيانات الوصفية"
   },
   taskMenu: {
@@ -544,6 +555,9 @@ const locale = {
     priorityCycle: "الأولوية (انقر للتدوير)",
     energyCycle: "الطاقة (انقر للتدوير)",
     cycleGtd: "تدوير GTD",
+    setDepends: "تعيين تبعية",
+    editDepends: "تعديل التبعيات",
+    removeDepends: "إزالة التبعيات",
     metaHeading: "البيانات الوصفية"
   },
   metadata: {
@@ -569,7 +583,19 @@ const locale = {
     contextLabel: "السياق",
     priorityLabel: "الأولوية",
     energyLabel: "الطاقة",
-    gtdLabel: "GTD"
+    gtdLabel: "GTD",
+    depends: "التبعيات",
+    dependsLabel: "يعتمد على",
+    blocked: "محظور",
+    blockedBy: "محظور بواسطة",
+    actionable: "قابل للتنفيذ"
+  },
+  dependsPicker: {
+    title: "اختر مهام التبعية",
+    placeholder: "ابحث في المهام المفتوحة…",
+    noItems: "لم يتم العثور على مهام مطابقة",
+    cycleDetected: "لا يمكن الإضافة — ستنشئ تبعية دائرية",
+    alreadyAdded: "تبعية موجودة بالفعل"
   }
 };
 

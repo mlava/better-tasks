@@ -95,6 +95,8 @@ const locale = {
     priorityAttrDescription: "Метка атрибута приоритета",
     energyAttr: "Имя атрибута энергии",
     energyAttrDescription: "Метка атрибута энергии",
+    dependsAttr: "Имя атрибута зависимостей",
+    dependsAttrDescription: "Метка атрибута зависимостей задачи (дочерний блок)",
     confirmBeforeSpawn: "Подтверждать перед созданием следующей задачи",
     confirmBeforeSpawnDescription: "Запрашивать подтверждение перед созданием следующего повторения при завершении повторяющейся Better Task",
     weekStart: "Первый день недели",
@@ -282,7 +284,10 @@ const locale = {
     dashViewsPresetNameCollisions: "Предустановки пропущены из-за конфликтов имён:",
     dashViewsPresetInstallFailed: "Не удалось переустановить предустановленные виды панели.",
     dashReviewNoPresets: "Предустановки обзора не найдены.",
-    dashReviewStartFailed: "Не удалось запустить еженедельный обзор."
+    dashReviewStartFailed: "Не удалось запустить еженедельный обзор.",
+    dependencyAdded: "Зависимость добавлена",
+    dependencyRemoved: "Зависимость удалена",
+    circularDependency: "Обнаружена циклическая зависимость"
   },
   dashboard: {
     topbarTitle: "Панель Better Tasks",
@@ -364,7 +369,8 @@ const locale = {
       Completion: "Завершение",
       Priority: "Приоритет",
       Energy: "Энергия",
-      GTD: "GTD"
+      GTD: "GTD",
+      Blocked: "Заблокировано"
     },
     filterValues: {
       recurring: "Повторяющаяся",
@@ -384,7 +390,9 @@ const locale = {
       low: "Низкий",
       "next action": "Следующее действие",
       delegated: "Делегировано",
-      someday: "Когда-нибудь"
+      someday: "Когда-нибудь",
+      blocked: "Заблокировано",
+      actionable: "Выполнимо"
     },
     completedWithinLabel: "Выполнено за",
     completedWithinOptions: {
@@ -529,6 +537,9 @@ const locale = {
     cyclePriority: "Сменить приоритет",
     cycleEnergy: "Сменить энергию",
     cycleGtd: "Сменить GTD",
+    addDepends: "Добавить зависимость",
+    editDepends: "Изменить зависимости",
+    removeDepends: "Удалить все зависимости",
     metaHeading: "Метаданные"
   },
   taskMenu: {
@@ -544,6 +555,9 @@ const locale = {
     priorityCycle: "Приоритет (клик для смены)",
     energyCycle: "Энергия (клик для смены)",
     cycleGtd: "Сменить GTD",
+    setDepends: "Задать зависимость",
+    editDepends: "Изменить зависимости",
+    removeDepends: "Удалить зависимости",
     metaHeading: "Метаданные"
   },
   metadata: {
@@ -569,7 +583,19 @@ const locale = {
     contextLabel: "Контекст",
     priorityLabel: "Приоритет",
     energyLabel: "Энергия",
-    gtdLabel: "GTD"
+    gtdLabel: "GTD",
+    depends: "Зависимости",
+    dependsLabel: "Зависит от",
+    blocked: "Заблокировано",
+    blockedBy: "Заблокировано",
+    actionable: "Выполнимо"
+  },
+  dependsPicker: {
+    title: "Выбрать задачи-зависимости",
+    placeholder: "Поиск открытых задач…",
+    noItems: "Подходящие задачи не найдены",
+    cycleDetected: "Невозможно добавить — возникнет циклическая зависимость",
+    alreadyAdded: "Уже является зависимостью"
   }
 };
 

@@ -95,6 +95,8 @@ const locale = {
     priorityAttrDescription: "Beschriftung des Prioritätsattributs",
     energyAttr: "Name des Energieattributs",
     energyAttrDescription: "Beschriftung des Energieattributs",
+    dependsAttr: "Name des Abhängigkeitsattributs",
+    dependsAttrDescription: "Beschriftung des Aufgabenabhängigkeits-Attributs (Unterblock)",
     confirmBeforeSpawn: "Vor der Erzeugung der nächsten Aufgabe bestätigen",
     confirmBeforeSpawnDescription: "Bestätigung anfordern, bevor die nächste Wiederholung beim Erledigen einer wiederkehrenden Aufgabe erzeugt wird",
     weekStart: "Erster Tag der Woche",
@@ -282,7 +284,10 @@ const locale = {
     dashViewsPresetNameCollisions: "Voreinstellungen wegen Namenskonflikten übersprungen:",
     dashViewsPresetInstallFailed: "Voreingestellte Dashboard-Ansichten konnten nicht neu installiert werden.",
     dashReviewNoPresets: "Keine Rückschau-Voreinstellungen gefunden.",
-    dashReviewStartFailed: "Wochenrückschau konnte nicht gestartet werden."
+    dashReviewStartFailed: "Wochenrückschau konnte nicht gestartet werden.",
+    dependencyAdded: "Abhängigkeit hinzugefügt",
+    dependencyRemoved: "Abhängigkeit entfernt",
+    circularDependency: "Zirkuläre Abhängigkeit erkannt"
   },
   dashboard: {
     topbarTitle: "Better Tasks Dashboard",
@@ -364,7 +369,8 @@ const locale = {
       Completion: "Erledigung",
       Priority: "Priorität",
       Energy: "Energie",
-      GTD: "GTD"
+      GTD: "GTD",
+      Blocked: "Blockiert"
     },
     filterValues: {
       recurring: "Wiederkehrend",
@@ -384,7 +390,9 @@ const locale = {
       low: "Niedrig",
       "next action": "Nächste Aktion",
       delegated: "Delegiert",
-      someday: "Irgendwann"
+      someday: "Irgendwann",
+      blocked: "Blockiert",
+      actionable: "Umsetzbar"
     },
     completedWithinLabel: "Erledigt innerhalb",
     completedWithinOptions: {
@@ -529,6 +537,9 @@ const locale = {
     cyclePriority: "Priorität wechseln",
     cycleEnergy: "Energie wechseln",
     cycleGtd: "GTD wechseln",
+    addDepends: "Abhängigkeit hinzufügen",
+    editDepends: "Abhängigkeiten bearbeiten",
+    removeDepends: "Alle Abhängigkeiten entfernen",
     metaHeading: "Metadaten"
   },
   taskMenu: {
@@ -544,6 +555,9 @@ const locale = {
     priorityCycle: "Priorität (Klick zum Wechseln)",
     energyCycle: "Energie (Klick zum Wechseln)",
     cycleGtd: "GTD wechseln",
+    setDepends: "Abhängigkeit setzen",
+    editDepends: "Abhängigkeiten bearbeiten",
+    removeDepends: "Abhängigkeiten entfernen",
     metaHeading: "Metadaten"
   },
   metadata: {
@@ -569,7 +583,19 @@ const locale = {
     contextLabel: "Kontext",
     priorityLabel: "Priorität",
     energyLabel: "Energie",
-    gtdLabel: "GTD"
+    gtdLabel: "GTD",
+    depends: "Abhängigkeiten",
+    dependsLabel: "Abhängig von",
+    blocked: "Blockiert",
+    blockedBy: "Blockiert durch",
+    actionable: "Umsetzbar"
+  },
+  dependsPicker: {
+    title: "Abhängige Aufgaben auswählen",
+    placeholder: "Offene Aufgaben suchen…",
+    noItems: "Keine passenden Aufgaben gefunden",
+    cycleDetected: "Kann nicht hinzugefügt werden — würde zirkuläre Abhängigkeit erzeugen",
+    alreadyAdded: "Bereits eine Abhängigkeit"
   }
 };
 

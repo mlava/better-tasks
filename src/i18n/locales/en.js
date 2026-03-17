@@ -95,6 +95,8 @@ const locale = {
     priorityAttrDescription: "Label for priority attribute",
     energyAttr: "Energy attribute name",
     energyAttrDescription: "Label for energy attribute",
+    dependsAttr: "Dependencies attribute name",
+    dependsAttrDescription: "Label for task dependencies attribute (child block)",
     confirmBeforeSpawn: "Confirm before spawning next task",
     confirmBeforeSpawnDescription: "Ask for confirmation before spawning when a repeating Better Task is completed",
     weekStart: "First day of the week",
@@ -282,7 +284,10 @@ const locale = {
     dashViewsPresetNameCollisions: "Skipped presets due to name conflicts:",
     dashViewsPresetInstallFailed: "Unable to reinstall preset dashboard views.",
     dashReviewNoPresets: "No review presets found.",
-    dashReviewStartFailed: "Unable to start weekly review."
+    dashReviewStartFailed: "Unable to start weekly review.",
+    dependencyAdded: "Dependency added",
+    dependencyRemoved: "Dependency removed",
+    circularDependency: "Circular dependency detected"
   },
   dashboard: {
     topbarTitle: "Better Tasks Dashboard",
@@ -364,7 +369,8 @@ const locale = {
       Completion: "Completion",
       Priority: "Priority",
       Energy: "Energy",
-      GTD: "GTD"
+      GTD: "GTD",
+      Blocked: "Blocked"
     },
     filterValues: {
       recurring: "Recurring",
@@ -384,7 +390,9 @@ const locale = {
       low: "Low",
       "next action": "Next action",
       delegated: "Delegated",
-      someday: "Someday"
+      someday: "Someday",
+      blocked: "Blocked",
+      actionable: "Actionable"
     },
     completedWithinLabel: "Completed within",
     completedWithinOptions: {
@@ -529,6 +537,9 @@ const locale = {
     cyclePriority: "Cycle priority",
     cycleEnergy: "Cycle energy",
     cycleGtd: "Cycle GTD",
+    addDepends: "Add dependency",
+    editDepends: "Edit dependencies",
+    removeDepends: "Remove all dependencies",
     metaHeading: "Metadata"
   },
   taskMenu: {
@@ -544,6 +555,9 @@ const locale = {
     priorityCycle: "Priority (click to cycle)",
     energyCycle: "Energy (click to cycle)",
     cycleGtd: "Cycle GTD",
+    setDepends: "Set dependency",
+    editDepends: "Edit dependencies",
+    removeDepends: "Remove dependencies",
     metaHeading: "Metadata"
   },
   metadata: {
@@ -569,7 +583,19 @@ const locale = {
     contextLabel: "Context",
     priorityLabel: "Priority",
     energyLabel: "Energy",
-    gtdLabel: "GTD"
+    gtdLabel: "GTD",
+    depends: "Dependencies",
+    dependsLabel: "Depends on",
+    blocked: "Blocked",
+    blockedBy: "Blocked by",
+    actionable: "Actionable"
+  },
+  dependsPicker: {
+    title: "Select dependency tasks",
+    placeholder: "Search open tasks…",
+    noItems: "No matching tasks found",
+    cycleDetected: "Cannot add — would create circular dependency",
+    alreadyAdded: "Already a dependency"
   }
 };
 

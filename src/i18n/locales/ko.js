@@ -95,6 +95,8 @@ const locale = {
     priorityAttrDescription: "우선순위 속성 라벨",
     energyAttr: "에너지 속성 이름",
     energyAttrDescription: "에너지 속성 라벨",
+    dependsAttr: "의존성 속성 이름",
+    dependsAttrDescription: "작업 의존성 속성 라벨 (하위 블록)",
     confirmBeforeSpawn: "다음 작업 생성 전 확인",
     confirmBeforeSpawnDescription: "반복 Better Task 완료 시 다음 발생 생성 전에 확인 요청",
     weekStart: "한 주의 시작 요일",
@@ -282,7 +284,10 @@ const locale = {
     dashViewsPresetNameCollisions: "이름 충돌로 건너뛴 프리셋:",
     dashViewsPresetInstallFailed: "프리셋 대시보드 뷰를 다시 설치하지 못했습니다.",
     dashReviewNoPresets: "리뷰 프리셋을 찾지 못했습니다.",
-    dashReviewStartFailed: "주간 리뷰를 시작하지 못했습니다."
+    dashReviewStartFailed: "주간 리뷰를 시작하지 못했습니다.",
+    dependencyAdded: "의존성이 추가되었습니다",
+    dependencyRemoved: "의존성이 제거되었습니다",
+    circularDependency: "순환 의존성이 감지되었습니다"
   },
   dashboard: {
     topbarTitle: "Better Tasks 대시보드",
@@ -364,7 +369,8 @@ const locale = {
       Completion: "완료",
       Priority: "우선순위",
       Energy: "에너지",
-      GTD: "GTD"
+      GTD: "GTD",
+      Blocked: "차단됨"
     },
     filterValues: {
       recurring: "반복",
@@ -384,7 +390,9 @@ const locale = {
       low: "낮음",
       "next action": "다음 행동",
       delegated: "위임됨",
-      someday: "언젠가"
+      someday: "언젠가",
+      blocked: "차단됨",
+      actionable: "실행 가능"
     },
     completedWithinLabel: "완료 기간",
     completedWithinOptions: {
@@ -529,6 +537,9 @@ const locale = {
     cyclePriority: "우선순위 순환",
     cycleEnergy: "에너지 순환",
     cycleGtd: "GTD 순환",
+    addDepends: "의존성 추가",
+    editDepends: "의존성 편집",
+    removeDepends: "모든 의존성 제거",
     metaHeading: "메타데이터"
   },
   taskMenu: {
@@ -544,6 +555,9 @@ const locale = {
     priorityCycle: "우선순위(클릭하여 순환)",
     energyCycle: "에너지(클릭하여 순환)",
     cycleGtd: "GTD 순환",
+    setDepends: "의존성 설정",
+    editDepends: "의존성 편집",
+    removeDepends: "의존성 제거",
     metaHeading: "메타데이터"
   },
   metadata: {
@@ -569,7 +583,19 @@ const locale = {
     contextLabel: "컨텍스트",
     priorityLabel: "우선순위",
     energyLabel: "에너지",
-    gtdLabel: "GTD"
+    gtdLabel: "GTD",
+    depends: "의존성",
+    dependsLabel: "의존 대상",
+    blocked: "차단됨",
+    blockedBy: "차단 원인",
+    actionable: "실행 가능"
+  },
+  dependsPicker: {
+    title: "의존 작업 선택",
+    placeholder: "미완료 작업 검색…",
+    noItems: "일치하는 작업이 없습니다",
+    cycleDetected: "추가할 수 없음 — 순환 의존성이 발생합니다",
+    alreadyAdded: "이미 의존성입니다"
   }
 };
 

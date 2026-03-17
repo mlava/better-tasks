@@ -95,6 +95,8 @@ const locale = {
     priorityAttrDescription: "優先級屬性的標籤",
     energyAttr: "精力屬性名稱",
     energyAttrDescription: "精力屬性的標籤",
+    dependsAttr: "相依屬性名稱",
+    dependsAttrDescription: "任務相依屬性的標籤（子區塊）",
     confirmBeforeSpawn: "生成下一個任務前需確認",
     confirmBeforeSpawnDescription: "在重複任務完成時生成下一次前提示確認",
     weekStart: "每週的第一天",
@@ -282,7 +284,10 @@ const locale = {
     dashViewsPresetNameCollisions: "因名稱衝突而略過預設：",
     dashViewsPresetInstallFailed: "無法重新安裝儀表板預設檢視。",
     dashReviewNoPresets: "未找到複盤預設。",
-    dashReviewStartFailed: "無法開始每週複盤。"
+    dashReviewStartFailed: "無法開始每週複盤。",
+    dependencyAdded: "已新增相依",
+    dependencyRemoved: "已移除相依",
+    circularDependency: "偵測到循環相依"
   },
   dashboard: {
     topbarTitle: "Better Tasks Dashboard",
@@ -364,7 +369,8 @@ const locale = {
       Completion: "完成狀態",
       Priority: "優先級",
       Energy: "精力",
-      GTD: "GTD"
+      GTD: "GTD",
+      Blocked: "已封鎖"
     },
     filterValues: {
       recurring: "重複",
@@ -384,7 +390,9 @@ const locale = {
       low: "低",
       "next action": "下一步行動",
       delegated: "已委派",
-      someday: "某天"
+      someday: "某天",
+      blocked: "已封鎖",
+      actionable: "可執行"
     },
     completedWithinLabel: "完成時間範圍",
     completedWithinOptions: {
@@ -529,6 +537,9 @@ const locale = {
     cyclePriority: "切換優先級",
     cycleEnergy: "切換精力",
     cycleGtd: "切換 GTD",
+    addDepends: "新增相依",
+    editDepends: "編輯相依",
+    removeDepends: "移除所有相依",
     metaHeading: "中繼資料"
   },
   taskMenu: {
@@ -544,6 +555,9 @@ const locale = {
     priorityCycle: "優先級（點擊切換）",
     energyCycle: "精力（點擊切換）",
     cycleGtd: "切換 GTD",
+    setDepends: "設定相依",
+    editDepends: "編輯相依",
+    removeDepends: "移除相依",
     metaHeading: "中繼資料"
   },
   metadata: {
@@ -569,7 +583,19 @@ const locale = {
     contextLabel: "情境",
     priorityLabel: "優先級",
     energyLabel: "精力",
-    gtdLabel: "GTD"
+    gtdLabel: "GTD",
+    depends: "相依",
+    dependsLabel: "相依於",
+    blocked: "已封鎖",
+    blockedBy: "被封鎖",
+    actionable: "可執行"
+  },
+  dependsPicker: {
+    title: "選擇相依任務",
+    placeholder: "搜尋未完成任務…",
+    noItems: "未找到符合的任務",
+    cycleDetected: "無法新增 — 會產生循環相依",
+    alreadyAdded: "已是相依項"
   }
 };
 

@@ -95,6 +95,8 @@ const locale = {
     priorityAttrDescription: "Libellé de l'attribut de priorité",
     energyAttr: "Nom de l'attribut d'énergie",
     energyAttrDescription: "Libellé de l'attribut d'énergie",
+    dependsAttr: "Nom de l'attribut de dépendances",
+    dependsAttrDescription: "Libellé de l'attribut de dépendances de tâche (bloc enfant)",
     confirmBeforeSpawn: "Confirmer avant de générer la tâche suivante",
     confirmBeforeSpawnDescription: "Demander confirmation avant de générer la prochaine occurrence lors de la complétion d'une Better Task récurrente",
     weekStart: "Premier jour de la semaine",
@@ -282,7 +284,10 @@ const locale = {
     dashViewsPresetNameCollisions: "Prédéfinies ignorées en raison de conflits de noms :",
     dashViewsPresetInstallFailed: "Impossible de réinstaller les vues prédéfinies du tableau de bord.",
     dashReviewNoPresets: "Aucune prédéfinie de revue trouvée.",
-    dashReviewStartFailed: "Impossible de démarrer la revue hebdomadaire."
+    dashReviewStartFailed: "Impossible de démarrer la revue hebdomadaire.",
+    dependencyAdded: "Dépendance ajoutée",
+    dependencyRemoved: "Dépendance supprimée",
+    circularDependency: "Dépendance circulaire détectée"
   },
   dashboard: {
     topbarTitle: "Tableau de Bord Better Tasks",
@@ -364,7 +369,8 @@ const locale = {
       Completion: "Complétion",
       Priority: "Priorité",
       Energy: "Énergie",
-      GTD: "GTD"
+      GTD: "GTD",
+      Blocked: "Bloquée"
     },
     filterValues: {
       recurring: "Récurrente",
@@ -384,7 +390,9 @@ const locale = {
       low: "Basse",
       "next action": "Prochaine action",
       delegated: "Déléguée",
-      someday: "Un jour"
+      someday: "Un jour",
+      blocked: "Bloquée",
+      actionable: "Actionnable"
     },
     completedWithinLabel: "Terminées dans",
     completedWithinOptions: {
@@ -529,6 +537,9 @@ const locale = {
     cyclePriority: "Changer la priorité",
     cycleEnergy: "Changer l'énergie",
     cycleGtd: "Changer le GTD",
+    addDepends: "Ajouter une dépendance",
+    editDepends: "Modifier les dépendances",
+    removeDepends: "Supprimer toutes les dépendances",
     metaHeading: "Métadonnées"
   },
   taskMenu: {
@@ -544,6 +555,9 @@ const locale = {
     priorityCycle: "Priorité (cliquer pour changer)",
     energyCycle: "Énergie (cliquer pour changer)",
     cycleGtd: "Changer le GTD",
+    setDepends: "Définir une dépendance",
+    editDepends: "Modifier les dépendances",
+    removeDepends: "Supprimer les dépendances",
     metaHeading: "Métadonnées"
   },
   metadata: {
@@ -569,7 +583,19 @@ const locale = {
     contextLabel: "Contexte",
     priorityLabel: "Priorité",
     energyLabel: "Énergie",
-    gtdLabel: "GTD"
+    gtdLabel: "GTD",
+    depends: "Dépendances",
+    dependsLabel: "Dépend de",
+    blocked: "Bloquée",
+    blockedBy: "Bloquée par",
+    actionable: "Actionnable"
+  },
+  dependsPicker: {
+    title: "Sélectionner les tâches de dépendance",
+    placeholder: "Rechercher des tâches ouvertes…",
+    noItems: "Aucune tâche correspondante trouvée",
+    cycleDetected: "Impossible d'ajouter — créerait une dépendance circulaire",
+    alreadyAdded: "Déjà une dépendance"
   }
 };
 

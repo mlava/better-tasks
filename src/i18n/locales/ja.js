@@ -95,6 +95,8 @@ const locale = {
     priorityAttrDescription: "優先度属性のラベル",
     energyAttr: "エネルギー属性名",
     energyAttrDescription: "エネルギー属性のラベル",
+    dependsAttr: "依存関係属性名",
+    dependsAttrDescription: "タスク依存関係属性のラベル（子ブロック）",
     confirmBeforeSpawn: "次のタスク生成前に確認",
     confirmBeforeSpawnDescription: "繰り返しBetter Taskの完了時に次の発生を生成する前に確認を求める",
     weekStart: "週の最初の曜日",
@@ -282,7 +284,10 @@ const locale = {
     dashViewsPresetNameCollisions: "名前の競合によりスキップされたプリセット：",
     dashViewsPresetInstallFailed: "プリセットダッシュボードビューを再インストールできませんでした。",
     dashReviewNoPresets: "レビュープリセットが見つかりません。",
-    dashReviewStartFailed: "週次レビューを開始できませんでした。"
+    dashReviewStartFailed: "週次レビューを開始できませんでした。",
+    dependencyAdded: "依存関係を追加しました",
+    dependencyRemoved: "依存関係を削除しました",
+    circularDependency: "循環依存が検出されました"
   },
   dashboard: {
     topbarTitle: "Better Tasksダッシュボード",
@@ -364,7 +369,8 @@ const locale = {
       Completion: "完了",
       Priority: "優先度",
       Energy: "エネルギー",
-      GTD: "GTD"
+      GTD: "GTD",
+      Blocked: "ブロック中"
     },
     filterValues: {
       recurring: "繰り返し",
@@ -384,7 +390,9 @@ const locale = {
       low: "低",
       "next action": "次のアクション",
       delegated: "委任済み",
-      someday: "いつか"
+      someday: "いつか",
+      blocked: "ブロック中",
+      actionable: "実行可能"
     },
     completedWithinLabel: "完了期間",
     completedWithinOptions: {
@@ -529,6 +537,9 @@ const locale = {
     cyclePriority: "優先度を切り替え",
     cycleEnergy: "エネルギーを切り替え",
     cycleGtd: "GTDを切り替え",
+    addDepends: "依存関係を追加",
+    editDepends: "依存関係を編集",
+    removeDepends: "すべての依存関係を削除",
     metaHeading: "メタデータ"
   },
   taskMenu: {
@@ -544,6 +555,9 @@ const locale = {
     priorityCycle: "優先度（クリックで切り替え）",
     energyCycle: "エネルギー（クリックで切り替え）",
     cycleGtd: "GTDを切り替え",
+    setDepends: "依存関係を設定",
+    editDepends: "依存関係を編集",
+    removeDepends: "依存関係を削除",
     metaHeading: "メタデータ"
   },
   metadata: {
@@ -569,7 +583,19 @@ const locale = {
     contextLabel: "コンテキスト",
     priorityLabel: "優先度",
     energyLabel: "エネルギー",
-    gtdLabel: "GTD"
+    gtdLabel: "GTD",
+    depends: "依存関係",
+    dependsLabel: "依存先",
+    blocked: "ブロック中",
+    blockedBy: "ブロック元",
+    actionable: "実行可能"
+  },
+  dependsPicker: {
+    title: "依存タスクを選択",
+    placeholder: "未完了タスクを検索…",
+    noItems: "一致するタスクが見つかりません",
+    cycleDetected: "追加できません — 循環依存が発生します",
+    alreadyAdded: "すでに依存関係です"
   }
 };
 
