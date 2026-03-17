@@ -66,6 +66,7 @@ const DEFAULT_CONTEXT_ATTR = "BT_attrContext";
 const DEFAULT_PRIORITY_ATTR = "BT_attrPriority";
 const DEFAULT_ENERGY_ATTR = "BT_attrEnergy";
 const DEFAULT_GTD_ATTR = "BT_attrGTD";
+const DEFAULT_DEPENDS_ATTR = "BT_attrDepends";
 const ATTR_NAMES_PUBLIC_KEY_PREFIX = "betterTasks.attributeNames";
 const ATTR_NAMES_PUBLIC_VERSION = 1;
 const EXTENSION_TOOLS_ID = "better-tasks";
@@ -680,6 +681,12 @@ export default {
           name: tr("settings.energyAttr", "Energy attribute name"),
           description: tr("settings.energyAttrDescription", "Label for energy attribute (child block)"),
           action: { type: "input", placeholder: "BT_attrEnergy", onChange: handleAttributeNameChange },
+        },
+        {
+          id: "bt-attr-depends",
+          name: tr("settings.dependsAttr", "Dependencies attribute name"),
+          description: tr("settings.dependsAttrDescription", "Label for task dependencies attribute (child block)"),
+          action: { type: "input", placeholder: "BT_attrDepends", onChange: handleAttributeNameChange },
         },
       ];
 
@@ -3696,7 +3703,8 @@ export default {
           (richMeta.context || []).length ||
           richMeta.priority ||
           richMeta.energy ||
-          richMeta.gtd
+          richMeta.gtd ||
+          (richMeta.depends || []).length
         );
 
       let repeatText = null;
@@ -3973,6 +3981,7 @@ export default {
       const contextAliases = new Set(attrNames.contextAliases || []);
       const priorityAliases = new Set(attrNames.priorityAliases || []);
       const energyAliases = new Set(attrNames.energyAliases || []);
+      const dependsAliases = new Set(attrNames.dependsAliases || []);
       for (const child of children) {
         const text = typeof child?.string === "string" ? child.string : null;
         if (!text) continue;
@@ -4009,6 +4018,8 @@ export default {
             out.priority = out[key];
           } else if (energyAliases.has(key) && out.energy == null) {
             out.energy = out[key];
+          } else if (dependsAliases.has(key) && out.depends == null) {
+            out.depends = out[key];
           }
         }
       }
@@ -4129,6 +4140,23 @@ export default {
       return value;
     }
 
+    function parseDependsValue(raw) {
+      if (!raw || typeof raw !== "string") return [];
+      return raw
+        .split(",")
+        .map((token) => token.trim())
+        .map((token) => {
+          const m = token.match(/^\(\(([a-zA-Z0-9_-]+)\)\)$/);
+          return m ? m[1] : null;
+        })
+        .filter(Boolean);
+    }
+
+    function formatDependsValue(uids) {
+      if (!Array.isArray(uids)) return "";
+      return uids.map((uid) => `((${uid}))`).join(", ");
+    }
+
     function parseRichMetadata(childAttrMap, attrNames = resolveAttributeNames()) {
       const projectEntry = pickChildAttr(childAttrMap, attrNames.projectAliases || [], { allowFallback: true });
       const waitingEntry = pickChildAttr(childAttrMap, attrNames.waitingForAliases || [], { allowFallback: true });
@@ -4136,6 +4164,7 @@ export default {
       const priorityEntry = pickChildAttr(childAttrMap, attrNames.priorityAliases || [], { allowFallback: true });
       const energyEntry = pickChildAttr(childAttrMap, attrNames.energyAliases || [], { allowFallback: true });
       const gtdEntry = pickChildAttr(childAttrMap, attrNames.gtdAliases || [], { allowFallback: true });
+      const dependsEntry = pickChildAttr(childAttrMap, attrNames.dependsAliases || [], { allowFallback: true });
 
       const project = projectEntry?.value ? stripLinkOrTag(projectEntry.value) || null : null;
       const waitingFor = waitingEntry?.value ? stripLinkOrTag(waitingEntry.value) || null : null;
@@ -4143,7 +4172,8 @@ export default {
       const priority = normalizePriorityValue(priorityEntry?.value || null);
       const energy = normalizeEnergyValue(energyEntry?.value || null);
       const gtd = normalizeGtdStatus(gtdEntry?.value || null);
-      return { project, waitingFor, context, priority, energy, gtd };
+      const depends = dependsEntry?.value ? parseDependsValue(dependsEntry.value) : [];
+      return { project, waitingFor, context, priority, energy, gtd, depends };
     }
 
     function escapeRegExp(str) {
@@ -4243,6 +4273,7 @@ export default {
         { type: "context", settingId: "bt-attr-context" },
         { type: "priority", settingId: "bt-attr-priority" },
         { type: "energy", settingId: "bt-attr-energy" },
+        { type: "depends", settingId: "bt-attr-depends" },
       ];
       map.forEach(({ type, settingId }) => {
         const prevLabel = prev?.[`${type}Attr`];
@@ -4269,6 +4300,7 @@ export default {
           context: attrNames.contextAttr,
           priority: attrNames.priorityAttr,
           energy: attrNames.energyAttr,
+          depends: attrNames.dependsAttr,
         },
       };
     }
@@ -4354,6 +4386,7 @@ export default {
       const context = buildAttrConfig("bt-attr-context", DEFAULT_CONTEXT_ATTR);
       const priority = buildAttrConfig("bt-attr-priority", DEFAULT_PRIORITY_ATTR);
       const energy = buildAttrConfig("bt-attr-energy", DEFAULT_ENERGY_ATTR);
+      const depends = buildAttrConfig("bt-attr-depends", DEFAULT_DEPENDS_ATTR);
       const attrByType = {
         repeat,
         due,
@@ -4366,6 +4399,7 @@ export default {
         context,
         priority,
         energy,
+        depends,
       };
       return {
         repeatAttr: repeat.attr,
@@ -4412,6 +4446,10 @@ export default {
         energyKey: energy.key,
         energyAliases: energy.aliases,
         energyRemovalKeys: energy.removalKeys,
+        dependsAttr: depends.attr,
+        dependsKey: depends.key,
+        dependsAliases: depends.aliases,
+        dependsRemovalKeys: depends.removalKeys,
         attrByType,
       };
     }
@@ -5507,6 +5545,7 @@ export default {
       context: 9,
       priority: 10,
       energy: 11,
+      depends: 12,
     };
 
     function getChildOrderForType(type) {
@@ -5529,6 +5568,7 @@ export default {
         { type: "context", label: getAttrLabel("context", attrNames) },
         { type: "priority", label: getAttrLabel("priority", attrNames) },
         { type: "energy", label: getAttrLabel("energy", attrNames) },
+        { type: "depends", label: getAttrLabel("depends", attrNames) },
       ].filter((entry) => typeof entry.label === "string" && entry.label.trim());
     }
 
@@ -5652,6 +5692,13 @@ export default {
             aliases: attrNames.energyAliases,
             removalKeys: attrNames.energyRemovalKeys,
           };
+        case "depends":
+          return {
+            attr: attrNames.dependsAttr,
+            key: attrNames.dependsKey,
+            aliases: attrNames.dependsAliases,
+            removalKeys: attrNames.dependsRemovalKeys,
+          };
         default:
           return null;
       }
@@ -5706,7 +5753,9 @@ export default {
         return;
       }
       let writeValue = value;
-      if (Array.isArray(value)) {
+      if (type === "depends") {
+        writeValue = Array.isArray(value) ? formatDependsValue(value) : typeof value === "string" ? value.trim() : "";
+      } else if (Array.isArray(value)) {
         writeValue = value.join(", ");
       } else if (typeof value === "string") {
         writeValue = value.trim();
@@ -10454,7 +10503,8 @@ export default {
               (metadataInfo?.context || []).length ||
               metadataInfo?.priority ||
               metadataInfo?.energy ||
-              metadataInfo?.gtd
+              metadataInfo?.gtd ||
+              (metadataInfo?.depends || []).length
             );
           if (!isBetterTask && !hasMetadataSignal) {
             main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
