@@ -4934,7 +4934,12 @@ export default {
           priority: metadata?.priority || null,
           energy: metadata?.energy || null,
           gtd: metadata?.gtd || null,
+          depends: Array.isArray(metadata?.depends) ? metadata.depends.slice() : [],
         },
+        is_blocked: !!task?.isBlocked,
+        blocked_by: Array.isArray(task?.blockedBy)
+          ? task.blockedBy.map((b) => ({ uid: b.uid, title: b.title }))
+          : [],
       };
     }
 
@@ -4954,6 +4959,7 @@ export default {
       const status = normalizeToolStatus(args.status);
       const project = normalizeProjectValue(args.project || "");
       const assignee = typeof args.assignee === "string" ? args.assignee.trim().toLowerCase() : "";
+      const blocked = typeof args.blocked === "string" ? args.blocked.trim().toLowerCase() : "";
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const thisWeekEnd = new Date(now.getTime());
@@ -5022,6 +5028,8 @@ export default {
             if (!isSameDay(parsed, compDate)) return false;
           }
         }
+        if (blocked === "blocked" && !task.isBlocked) return false;
+        if (blocked === "actionable" && task.isBlocked) return false;
         if (query) {
           const haystack = [
             task?.title || "",
@@ -5290,6 +5298,7 @@ export default {
         ["context", attrs.contextAttr, attrs.contextAliases, attrs.attrByType?.context?.defaultName, "list"],
         ["priority", attrs.priorityAttr, attrs.priorityAliases, attrs.attrByType?.priority?.defaultName, "enum"],
         ["energy", attrs.energyAttr, attrs.energyAliases, attrs.attrByType?.energy?.defaultName, "enum"],
+        ["depends", attrs.dependsAttr, attrs.dependsAliases, attrs.attrByType?.depends?.defaultName, "list"],
       ];
       const attributes = map.map(([id, name, aliases, defaultName, type]) => ({
         id,
@@ -5332,6 +5341,7 @@ export default {
       if ("energy" in attrs) patch.energy = attrs.energy;
       if ("gtd" in attrs) patch.gtd = attrs.gtd;
       if ("completed" in attrs) patch.completed = attrs.completed;
+      if ("depends" in attrs) patch.depends = attrs.depends;
       return patch;
     }
 
@@ -5388,6 +5398,21 @@ export default {
       if ("gtd" in patch) {
         const val = patch.gtd == null ? null : normalizeGtdStatus(String(patch.gtd || ""));
         await setRichAttribute(uid, "gtd", val || null, attrNames);
+      }
+      if ("depends" in patch) {
+        if (patch.depends == null || (Array.isArray(patch.depends) && !patch.depends.length)) {
+          await removeChildAttrsForType(uid, "depends", attrNames);
+          invalidateBlockedState(uid);
+        } else {
+          const uids = Array.isArray(patch.depends) ? patch.depends : parseDependsValue(String(patch.depends));
+          for (const depUid of uids) {
+            if (await wouldCreateCycle(uid, depUid)) {
+              throw new Error(`Circular dependency detected: ${uid} -> ${depUid}`);
+            }
+          }
+          await setRichAttribute(uid, "depends", uids, attrNames);
+          invalidateBlockedState(uid);
+        }
       }
     }
 
