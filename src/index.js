@@ -4219,6 +4219,31 @@ export default {
       }
     }
 
+    async function wouldCreateCycle(taskUid, newDepUid, maxDepth = 20) {
+      if (taskUid === newDepUid) return true;
+      const visited = new Set();
+      const stack = [newDepUid];
+      let depth = 0;
+      while (stack.length && depth < maxDepth) {
+        const current = stack.pop();
+        if (visited.has(current)) continue;
+        visited.add(current);
+        depth++;
+        const block = await getBlock(current);
+        if (!block) continue;
+        const children = Array.isArray(block.children) ? block.children : [];
+        const childAttrMap = parseAttrsFromChildBlocks(children);
+        const attrNames = resolveAttributeNames();
+        const dependsEntry = pickChildAttr(childAttrMap, attrNames.dependsAliases || [], { allowFallback: true });
+        const deps = dependsEntry?.value ? parseDependsValue(dependsEntry.value) : [];
+        for (const dep of deps) {
+          if (dep === taskUid) return true;
+          if (!visited.has(dep)) stack.push(dep);
+        }
+      }
+      return false;
+    }
+
     function parseDependsValue(raw) {
       if (!raw || typeof raw !== "string") return [];
       return raw
