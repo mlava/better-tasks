@@ -3235,6 +3235,7 @@ export default {
             void syncPillsForSurface(lastAttrSurface);
             activeDashboardController?.notifyBlockChange?.(uid);
             logCompletionDebug("completion-one-off", { uid, processedAt: completion.processedAt });
+            void notifyDependentsOfCompletion(uid);
             return { type: "one-off" };
           } catch (err) {
             console.error("[RecurringTasks] one-off completion failed", err);
@@ -3335,6 +3336,7 @@ export default {
           activeDashboardController?.notifyBlockChange?.(newUid);
         }
         logCompletionDebug("completion-recurring-spawned", { uid, nextUid: newUid, nextDue: nextDue?.toISOString?.() });
+        void notifyDependentsOfCompletion(uid);
         return { type: "recurring", nextUid: newUid };
       } catch (err) {
         console.error("[RecurringTasks] error:", err);
@@ -4175,6 +4177,46 @@ export default {
       const result = await computeBlockedState(dependsUids);
       blockedStateCache.set(taskUid, { ...result, at: now });
       return result;
+    }
+
+    async function findDependentTasks(completedUid) {
+      const attrNames = resolveAttributeNames();
+      const attrLabel = attrNames.dependsAttr;
+      if (!attrLabel) return [];
+      const safeLabel = escapeDatalogString(attrLabel);
+      const safeUid = escapeDatalogString(completedUid);
+      try {
+        const query = `
+          [:find (pull ?parent [:block/uid :block/string
+                    {:block/children [:block/uid :block/string]}
+                    {:block/page [:block/uid :node/title]}])
+           :where
+             [?attr :node/title "${safeLabel}"]
+             [?child :block/refs ?attr]
+             [?child :block/string ?str]
+             [(clojure.string/includes? ?str "((${safeUid}))")]
+             [?parent :block/children ?child]]`;
+        const rows = await window.roamAlphaAPI.q(query);
+        return (rows || []).map((r) => r?.[0]).filter(Boolean);
+      } catch (err) {
+        console.warn("[BetterTasks] findDependentTasks query failed", err);
+        return [];
+      }
+    }
+
+    async function notifyDependentsOfCompletion(completedUid) {
+      try {
+        const dependents = await findDependentTasks(completedUid);
+        if (!dependents.length) return;
+        for (const dep of dependents) {
+          invalidateBlockedState(dep.uid);
+          invalidateBlockCache(dep.uid);
+          activeDashboardController?.notifyBlockChange?.(dep.uid);
+        }
+        void syncPillsForSurface(lastAttrSurface);
+      } catch (err) {
+        console.warn("[BetterTasks] notifyDependentsOfCompletion failed", err);
+      }
     }
 
     function parseDependsValue(raw) {
