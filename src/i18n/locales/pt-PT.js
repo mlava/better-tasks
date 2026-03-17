@@ -60,7 +60,8 @@ const locale = {
     destinationOptions: [
       "DNP",
       "Mesma página",
-      "DNP sob título"
+      "DNP sob título",
+      "Página do Projeto"
     ],
     placementOptions: [
       "Topo",

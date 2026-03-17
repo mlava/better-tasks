@@ -60,7 +60,8 @@ const locale = {
     destinationOptions: [
       "DNP",
       "同じページ",
-      "DNP見出し下"
+      "DNP見出し下",
+      "プロジェクトページ"
     ],
     placementOptions: [
       "上部",

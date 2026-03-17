@@ -60,7 +60,8 @@ const locale = {
     destinationOptions: [
       "DNP",
       "Same Page",
-      "DNP under heading"
+      "DNP under heading",
+      "Project Page"
     ],
     placementOptions: [
       "Top",

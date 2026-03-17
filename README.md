@@ -37,6 +37,9 @@ If you use TODOs in Roam, Better Tasks gives you:
 
 ## ✅ Recent updates
 
+- **"Project Page" destination:** recurring tasks with a project attribute can now route their next occurrence to the project's page instead of the Daily Notes Page. Falls back to DNP gracefully when no project is set.
+- **Rich metadata carry-forward:** spawned recurring tasks now inherit all metadata (project, context, priority, energy, GTD, waiting-for) from the completed occurrence — not just scheduling attributes.
+- **Auto-inherit project from page:** creating a Better Task on a known project page automatically tags it with that project. Skips Daily Notes Pages and non-project pages.
 - **Bulk operations:** multi-select tasks in the dashboard for batch complete, snooze, and metadata updates
 - Faster and safer rendering: pill throttling, block caching, and picklist refresh optimisations
 - More resilient storage: filter versioning, cache TTLs, and attribute alias fallbacks
@@ -272,7 +275,7 @@ Toggle each button on or off in the Today Widget settings. Clicking a task title
 
 Core settings:
 - Language
-- Destination for next task
+- Destination for next task (DNP, Same Page, DNP under heading, or **Project Page**)
 - Confirm before spawning
 - First day of week
 - Inline pill checkbox threshold (performance guard)

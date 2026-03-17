@@ -471,7 +471,7 @@ export default {
           description: tr("settings.destNextTaskDescription", "Where to create the next occurrence"),
           action: {
             type: "select",
-            items: tr("settings.destinationOptions", ["DNP", "Same Page", "DNP under heading"]) || ["DNP", "Same Page", "DNP under heading"],
+            items: tr("settings.destinationOptions", ["DNP", "Same Page", "DNP under heading", "Project Page"]) || ["DNP", "Same Page", "DNP under heading", "Project Page"],
             onChange: (v) => {
               // Save destination then rebuild so rt-dnp-heading can show/hide
               const next = v?.value ?? v?.target?.value ?? v;
@@ -1748,6 +1748,14 @@ export default {
         await applyMetadataFromPrompt(fuid, promptResult, set.attrNames);
       }
 
+      // Auto-inherit project from current page if user didn't set one
+      if (!(promptResult.project || "").trim()) {
+        const inheritedProject = inferProjectFromPage(block);
+        if (inheritedProject) {
+          await setRichAttribute(fuid, "project", inheritedProject, set.attrNames);
+        }
+      }
+
       repeatOverrides.delete(fuid);
       const createdMsg = t(["toasts", "createdRecurring"], getLanguageSetting()) || "Created your Better Task";
       toast(createdMsg);
@@ -1835,6 +1843,14 @@ export default {
           },
           set.attrNames
         );
+      }
+
+      // Auto-inherit project from current page if AI didn't set one
+      if (!(parsed.project || "").trim()) {
+        const inheritedProject = inferProjectFromPage(block);
+        if (inheritedProject) {
+          await setRichAttribute(blockUid, "project", inheritedProject, set.attrNames);
+        }
       }
 
       repeatOverrides.delete(blockUid);
@@ -2391,10 +2407,10 @@ export default {
       return null;
     }
 
-    async function ensureTargetReady(anchorDate, prevBlock, set) {
+    async function ensureTargetReady(anchorDate, prevBlock, set, meta) {
       let uid = null;
       try {
-        uid = await chooseTargetPageUid(anchorDate, prevBlock, set);
+        uid = await chooseTargetPageUid(anchorDate, prevBlock, set, meta);
       } catch (err) {
         console.warn("[RecurringTasks] choose target failed (initial)", err);
       }
@@ -2411,6 +2427,14 @@ export default {
           const dnpTitle = toDnpTitle(anchorDate);
           const dnpUid = await getOrCreatePageUid(dnpTitle);
           uid = await getOrCreateChildUnderHeading(dnpUid, set.dnpHeading);
+        } else if (set.destination === "Project Page") {
+          const project = meta?.metadata?.project;
+          if (project) {
+            uid = await getOrCreatePageUid(project);
+          } else {
+            const dnpTitle = toDnpTitle(anchorDate);
+            uid = await getOrCreatePageUid(dnpTitle);
+          }
         } else if (set.destination !== "Same Page") {
           const dnpTitle = toDnpTitle(anchorDate);
           uid = await getOrCreatePageUid(dnpTitle);
@@ -2434,7 +2458,7 @@ export default {
       if (!anchorDate) return result;
       let targetUid = locationBefore.parentUid;
       if (set.destination !== "Same Page") {
-        targetUid = await ensureTargetReady(anchorDate, block, set);
+        targetUid = await ensureTargetReady(anchorDate, block, set, candidates);
       }
       if (targetUid) result.targetUid = targetUid;
       if (targetUid && targetUid !== locationBefore.parentUid) {
@@ -3280,6 +3304,7 @@ export default {
         const nextDeferDate = deferOffsetMs != null ? applyOffsetToDate(nextDue, deferOffsetMs) : null;
         const parentForSpawn = resolvedBlock || (await getBlock(uid)) || block;
         const newUid = await spawnNextOccurrence(parentForSpawn, resolvedMeta, nextDue, setWithAdvance);
+        const projectForToast = setWithAdvance.destination === "Project Page" ? resolvedMeta?.metadata?.project : null;
         registerUndoAction({
           blockUid: uid,
           snapshot,
@@ -3288,6 +3313,7 @@ export default {
           nextDue,
           nextAnchor: pickPlacementDate({ start: nextStartDate, defer: nextDeferDate, due: nextDue }) || nextDue,
           set: setWithAdvance,
+          projectPage: projectForToast || null,
           overrideEntry: overrideEntry
             ? {
               ...(overrideEntry.repeat ? { repeat: overrideEntry.repeat } : {}),
@@ -5716,6 +5742,24 @@ export default {
       }
     }
 
+    function inferProjectFromPage(block) {
+      const pageTitle = block?.page?.title;
+      if (!pageTitle || typeof pageTitle !== "string") return null;
+      // Skip Daily Notes Pages
+      const util = window.roamAlphaAPI?.util;
+      if (util?.pageTitleToDate) {
+        try {
+          const dt = util.pageTitleToDate(pageTitle);
+          if (dt instanceof Date && !Number.isNaN(dt.getTime())) return null;
+        } catch (_) { /* not a DNP */ }
+      }
+      const projects = getProjectOptions();
+      const match = projects.find(
+        (p) => p.localeCompare(pageTitle, undefined, { sensitivity: "base" }) === 0
+      );
+      return match || null;
+    }
+
     async function ensurePageAndOpen(title, options = {}) {
       const name = typeof title === "string" ? title.trim() : "";
       if (!name) return;
@@ -6071,17 +6115,25 @@ export default {
     }
 
     function showUndoToast(data) {
-      const { nextAnchor, nextDue, toastMessage } = data;
+      const { nextAnchor, nextDue, toastMessage, projectPage } = data;
       const displaySource = nextAnchor || nextDue;
       const displayDate = displaySource ? formatRoamDateTitle(displaySource) : "";
-      const message = toastMessage
-        ? toastMessage
-        : displaySource
-          ? translateString("Next occurrence scheduled for {{date}}", getLanguageSetting())?.replace(
-            "{{date}}",
-            displayDate
-          ) || `Next occurrence scheduled for ${displayDate}`
-          : translateString("Next occurrence scheduled", getLanguageSetting());
+      let message;
+      if (toastMessage) {
+        message = toastMessage;
+      } else if (projectPage && displaySource) {
+        message = (translateString("Next occurrence scheduled for {{date}} on [[{{project}}]]", getLanguageSetting())
+          ?.replace("{{date}}", displayDate)
+          ?.replace("{{project}}", projectPage))
+          || `Next occurrence scheduled for ${displayDate} on [[${projectPage}]]`;
+      } else if (displaySource) {
+        message = translateString("Next occurrence scheduled for {{date}}", getLanguageSetting())?.replace(
+          "{{date}}",
+          displayDate
+        ) || `Next occurrence scheduled for ${displayDate}`;
+      } else {
+        message = translateString("Next occurrence scheduled", getLanguageSetting());
+      }
       iziToast.show({
         theme: "light",
         color: "black",
@@ -6252,7 +6304,7 @@ export default {
 
       const placementDate =
         pickPlacementDate({ start: nextStartDate, defer: nextDeferDate, due: nextDueDate }) || nextDueDate;
-      let targetPageUid = await chooseTargetPageUid(placementDate, prevBlock, set);
+      let targetPageUid = await chooseTargetPageUid(placementDate, prevBlock, set, meta);
       let parentBlock = await getBlock(targetPageUid);
       if (!parentBlock) {
         await new Promise((resolve) => setTimeout(resolve, 80));
@@ -6268,6 +6320,17 @@ export default {
           const parent = prevBlock.page?.uid || (await getOrCreatePageUid("Misc"));
           targetPageUid = parent;
           parentBlock = await getBlock(targetPageUid);
+        } else if (set.destination === "Project Page") {
+          const project = meta?.metadata?.project;
+          if (project) {
+            targetPageUid = await getOrCreatePageUid(project);
+            parentBlock = await getBlock(targetPageUid);
+          }
+          if (!parentBlock) {
+            const dnpTitle = toDnpTitle(placementDate);
+            targetPageUid = await getOrCreatePageUid(dnpTitle);
+            parentBlock = await getBlock(targetPageUid);
+          }
         } else {
           const dnpTitle = toDnpTitle(placementDate);
           targetPageUid = await getOrCreatePageUid(dnpTitle);
@@ -6300,6 +6363,17 @@ export default {
         await enforceChildAttrOrder(newUid, set.attrNames);
       }
 
+      // Carry forward rich metadata from previous occurrence
+      const rm = meta.metadata;
+      if (rm) {
+        if (rm.project) await ensureChildAttrForType(newUid, "project", normalizeProjectValue(rm.project), set.attrNames);
+        if (rm.waitingFor) await ensureChildAttrForType(newUid, "waitingFor", rm.waitingFor, set.attrNames);
+        if (Array.isArray(rm.context) && rm.context.length) await ensureChildAttrForType(newUid, "context", rm.context.join(", "), set.attrNames);
+        if (rm.priority) await ensureChildAttrForType(newUid, "priority", formatPriorityEnergyDisplay(rm.priority), set.attrNames);
+        if (rm.energy) await ensureChildAttrForType(newUid, "energy", formatPriorityEnergyDisplay(rm.energy), set.attrNames);
+        if (rm.gtd) await ensureChildAttrForType(newUid, "gtd", formatGtdStatusDisplay(rm.gtd), set.attrNames);
+      }
+
       await updateBlockProps(newUid, {
         repeat: meta.repeat,
         due: nextDueStr,
@@ -6312,9 +6386,20 @@ export default {
     }
 
     // ========================= Destination helpers =========================
-    async function chooseTargetPageUid(anchorDate, prevBlock, set) {
+    async function chooseTargetPageUid(anchorDate, prevBlock, set, meta) {
       if (set.destination === "Same Page") {
         return prevBlock.page?.uid || (await getOrCreatePageUid("Misc"));
+      }
+      if (set.destination === "Project Page") {
+        const project = meta?.metadata?.project;
+        if (project) {
+          try {
+            return await getOrCreatePageUid(project);
+          } catch (err) {
+            console.warn("[RecurringTasks] Project Page destination failed, falling back to DNP", err);
+          }
+        }
+        // Fall through to DNP if no project or resolution failed
       }
       const targetDate = anchorDate instanceof Date && !Number.isNaN(anchorDate.getTime()) ? anchorDate : todayLocal();
       const dnpTitle = toDnpTitle(targetDate);
@@ -11424,7 +11509,7 @@ export default {
       const skipAnchor = pickPlacementDate({ start: nextStartDate, defer: nextDeferDate, due: nextDue }) || nextDue;
       const relocation = await relocateBlockForPlacement(
         block,
-        { start: nextStartDate, defer: nextDeferDate, due: nextDue },
+        meta,
         set
       );
       const dueChanged =

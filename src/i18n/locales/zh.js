@@ -60,7 +60,8 @@ const locale = {
     destinationOptions: [
       "DNP",
       "同一页面",
-      "DNP 下的标题"
+      "DNP 下的标题",
+      "项目页面"
     ],
     placementOptions: [
       "顶部",

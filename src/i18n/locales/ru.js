@@ -60,7 +60,8 @@ const locale = {
     destinationOptions: [
       "DNP",
       "Та же страница",
-      "DNP под заголовком"
+      "DNP под заголовком",
+      "Страница проекта"
     ],
     placementOptions: [
       "Сверху",

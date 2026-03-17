@@ -60,7 +60,8 @@ const locale = {
     destinationOptions: [
       "DNP",
       "نفس الصفحة",
-      "DNP تحت عنوان"
+      "DNP تحت عنوان",
+      "صفحة المشروع"
     ],
     placementOptions: [
       "أعلى",

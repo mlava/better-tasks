@@ -90,6 +90,9 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - Inline metadata pills with click-to-cycle
 - Configurable attribute names with alias support for backward compatibility
 - Picklist exclusion settings (exclude Templates, SmartBlocks, etc.)
+- "Project Page" destination option — routes next occurrence to the project's page (falls back to DNP)
+- Rich metadata carry-forward on recurrence (project, context, priority, energy, GTD, waiting-for)
+- Auto-inherit project from current page when creating a task on a known project page
 
 ---
 
@@ -265,4 +268,4 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 
 ---
 
-*Last updated: January 2026*
+*Last updated: March 2026*
