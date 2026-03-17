@@ -9438,6 +9438,9 @@ export default {
           text-decoration: line-through;
           opacity: 0.6;
         }
+        .bt-today-panel__item--blocked {
+          opacity: 0.55;
+        }
         .bt-today-panel__row-actions {
           display: flex;
           gap: 6px;
@@ -14989,10 +14992,11 @@ export default {
           if (task.isCompleted) li.classList.add("bt-today-panel__item--completed");
           const row = document.createElement("div");
           row.className = "bt-today-panel__row";
+          if (task.isBlocked) li.classList.add("bt-today-panel__item--blocked");
           const titleBtn = document.createElement("button");
           titleBtn.type = "button";
           titleBtn.className = "bt-today-panel__row-title";
-          titleBtn.textContent = task.title || todayStrings.untitled || "(Untitled)";
+          titleBtn.textContent = (task.isBlocked ? "🔒 " : "") + (task.title || todayStrings.untitled || "(Untitled)");
           titleBtn.addEventListener("click", (e) => {
             const openInSidebar = !!e?.shiftKey;
             if (openInSidebar) {
