@@ -8332,6 +8332,147 @@ export default {
     const promptForWaiting = (opts = {}) => promptForAttribute("waitingFor", { ...opts, allowMulti: false });
     const promptForContext = (opts = {}) => promptForAttribute("context", { ...opts, allowMulti: true });
 
+    async function promptForDependency(taskUid, existingDeps = []) {
+      const lang = getLanguageSetting();
+      const ps = t("dependsPicker", lang) || {};
+      const titleText = ps.title || "Select dependency tasks";
+      const placeholderText = ps.placeholder || "Search open tasks\u2026";
+      const noItemsText = ps.noItems || "No matching tasks found";
+      const cycleText = ps.cycleDetected || "Cannot add \u2014 would create circular dependency";
+      const alreadyText = ps.alreadyAdded || "Already a dependency";
+      const saveLabel = t("buttons.save", lang) || "Save";
+      const cancelLabel = t("buttons.cancel", lang) || "Cancel";
+
+      // Fetch open tasks for the picker
+      let allTasks = [];
+      try {
+        allTasks = await collectDashboardTasks({ includeCompleted: false, attachWatches: false });
+      } catch (_) { /* empty */ }
+      const exclude = new Set([taskUid, ...existingDeps]);
+
+      return new Promise((resolve) => {
+        let settled = false;
+        const selected = new Set(existingDeps);
+        let toastElement = null;
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          if (toastElement) iziToast.hide({}, toastElement);
+          resolve(value);
+        };
+
+        const inputId = `rt-dep-input-${Date.now()}`;
+        const listId = `rt-dep-list-${Date.now()}`;
+        const chipsId = `rt-dep-chips-${Date.now()}`;
+
+        const renderChips = () => {
+          const container = document.getElementById(chipsId);
+          if (!container) return;
+          container.innerHTML = "";
+          for (const uid of selected) {
+            const task = allTasks.find((t) => t.uid === uid);
+            const label = task ? (task.title || task.text || uid).slice(0, 60) : uid;
+            const chip = document.createElement("span");
+            chip.className = "rt-dep-chip";
+            chip.textContent = label;
+            const removeBtn = document.createElement("span");
+            removeBtn.className = "rt-dep-chip-remove";
+            removeBtn.textContent = " \u00d7";
+            removeBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              selected.delete(uid);
+              renderChips();
+              renderList(document.getElementById(inputId)?.value || "");
+            });
+            chip.appendChild(removeBtn);
+            container.appendChild(chip);
+          }
+        };
+
+        const renderList = (query) => {
+          const listEl = document.getElementById(listId);
+          if (!listEl) return;
+          const q = (query || "").trim().toLowerCase();
+          const matches = allTasks
+            .filter((t) => t.uid !== taskUid && !selected.has(t.uid))
+            .filter((t) => !q || (t.title || t.text || "").toLowerCase().includes(q))
+            .slice(0, 20);
+          listEl.innerHTML = "";
+          if (!matches.length) {
+            const empty = document.createElement("div");
+            empty.className = "rt-dep-empty";
+            empty.textContent = noItemsText;
+            listEl.appendChild(empty);
+            return;
+          }
+          for (const task of matches) {
+            const row = document.createElement("div");
+            row.className = "rt-dep-row";
+            const titleSpan = document.createElement("span");
+            titleSpan.textContent = (task.title || task.text || task.uid).slice(0, 60);
+            row.appendChild(titleSpan);
+            if (task.metadata?.project) {
+              const proj = document.createElement("small");
+              proj.textContent = ` \u2022 ${task.metadata.project}`;
+              row.appendChild(proj);
+            }
+            row.addEventListener("click", async () => {
+              const isCycle = await wouldCreateCycle(taskUid, task.uid);
+              if (isCycle) {
+                toast(cycleText);
+                return;
+              }
+              selected.add(task.uid);
+              renderChips();
+              renderList(document.getElementById(inputId)?.value || "");
+            });
+            listEl.appendChild(row);
+          }
+        };
+
+        const html = `
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:320px;max-width:480px">
+            <div id="${chipsId}" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+            <input id="${inputId}" type="text" placeholder="${escapeHtml(placeholderText)}"
+              style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:14px" />
+            <div id="${listId}" style="max-height:240px;overflow-y:auto;border:1px solid #eee;border-radius:4px"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+              <button class="rt-dep-cancel">${escapeHtml(cancelLabel)}</button>
+              <button class="rt-dep-save" style="font-weight:600">${escapeHtml(saveLabel)}</button>
+            </div>
+          </div>`;
+
+        iziToast.show({
+          theme: "light",
+          color: "black",
+          class: "betterTasks",
+          overlay: true,
+          timeout: false,
+          close: true,
+          closeOnEscape: true,
+          drag: false,
+          title: titleText,
+          message: html,
+          position: "center",
+          onOpening: (_instance, toastEl) => {
+            toastElement = toastEl;
+            renderChips();
+            renderList("");
+            const input = toastEl.querySelector(`#${inputId}`);
+            if (input) {
+              input.addEventListener("input", () => renderList(input.value));
+              setTimeout(() => input.focus(), 50);
+            }
+            const saveBtn = toastEl.querySelector(".rt-dep-save");
+            if (saveBtn) saveBtn.addEventListener("click", () => finish(Array.from(selected)));
+            const cancelBtn = toastEl.querySelector(".rt-dep-cancel");
+            if (cancelBtn) cancelBtn.addEventListener("click", () => finish(null));
+          },
+          onClosed: () => finish(null),
+        });
+      });
+    }
+
     function promptForDate({ title, message, initial }) {
       return new Promise((resolve) => {
         let settled = false;
@@ -9198,6 +9339,42 @@ export default {
         }
         .rt-pill-menu-btn:hover {
           background: rgba(0,0,0,0.12);
+        }
+        .rt-pill-wrap.bt-blocked {
+          opacity: 0.55;
+        }
+        .rt-pill-blocked {
+          color: #b44;
+          font-weight: 600;
+        }
+        .rt-dep-chip {
+          display: inline-flex;
+          align-items: center;
+          background: rgba(0,0,0,0.08);
+          border-radius: 12px;
+          padding: 2px 8px;
+          font-size: 12px;
+          gap: 2px;
+        }
+        .rt-dep-chip-remove {
+          cursor: pointer;
+          font-weight: bold;
+          opacity: 0.6;
+        }
+        .rt-dep-chip-remove:hover { opacity: 1; }
+        .rt-dep-row {
+          padding: 6px 8px;
+          cursor: pointer;
+          border-bottom: 1px solid rgba(0,0,0,0.05);
+          font-size: 13px;
+        }
+        .rt-dep-row:hover { background: rgba(0,0,0,0.06); }
+        .rt-dep-row small { color: rgba(0,0,0,0.5); }
+        .rt-dep-empty {
+          padding: 12px 8px;
+          color: rgba(0,0,0,0.4);
+          font-size: 13px;
+          text-align: center;
         }
       `;
       document.head.appendChild(style);
@@ -10866,6 +11043,32 @@ export default {
             }
           }
 
+          // Blocked indicator for tasks with dependencies
+          if ((metadataInfo?.depends || []).length) {
+            const blockedResult = blockedStateCache.get(uid) || null;
+            if (blockedResult?.blocked) {
+              const blockedNames = blockedResult.blockedBy.map((b) => b.title || b.uid).join(", ");
+              const span = appendMetaSpan(
+                "🔒",
+                t(["metadata", "blocked"], getLanguageSetting()) || "Blocked",
+                `${t(["metadata", "blockedBy"], getLanguageSetting()) || "Blocked by"}: ${blockedNames}`
+              );
+              if (span) {
+                span.dataset.btPillAction = "meta-depends";
+                span.classList.add("rt-pill-blocked");
+              }
+            } else if (!blockedResult) {
+              // Cache miss — compute async and schedule re-render
+              void isTaskBlocked(uid, metadataInfo.depends).then(() => {
+                void syncPillsForSurface(lastAttrSurface);
+              });
+            }
+            // Add dimmed class to the pill wrap when blocked
+            if (blockedResult?.blocked) {
+              pill.classList.add("bt-blocked");
+            }
+          }
+
           const menuBtn = document.createElement("span");
           menuBtn.className = "rt-pill-menu-btn";
           menuBtn.textContent = "⋯";
@@ -11297,6 +11500,7 @@ export default {
       const hasProject = !!metadataInfo.project;
       const hasWaiting = !!metadataInfo.waitingFor;
       const hasContext = contexts.length > 0;
+      const hasDepends = !!(metadataInfo?.depends?.length);
       const attrNamesForMenu = set.attrNames || resolveAttributeNames();
       const applyMetadataPatch = async (patch) => {
         if (!patch) return;
@@ -11323,6 +11527,10 @@ export default {
         }
         if ("gtd" in patch) {
           await setRichAttribute(uid, "gtd", patch.gtd ?? null, attrNamesForMenu);
+        }
+        if ("depends" in patch) {
+          await setRichAttribute(uid, "depends", patch.depends ?? [], attrNamesForMenu);
+          invalidateBlockedState(uid);
         }
         if (typeof window !== "undefined") {
           window.__btInlineMetaCache?.delete(uid);
@@ -11356,6 +11564,11 @@ export default {
         }
         <button data-action="meta-priority-cycle">${labelOr("cyclePriority", "Cycle priority")}</button>
         <button data-action="meta-energy-cycle">${labelOr("cycleEnergy", "Cycle energy")}</button>
+        ${hasDepends
+          ? `<button data-action="meta-depends-edit">${labelOr("editDepends", "Edit dependencies")}</button>
+             <button data-action="meta-depends-remove" data-danger="1">${labelOr("removeDepends", "Remove all dependencies")}</button>`
+          : `<button data-action="meta-depends-add">${labelOr("addDepends", "Add dependency")}</button>`
+        }
       `;
       const recurringBlock = isRecurring
         ? `
@@ -11453,6 +11666,23 @@ export default {
             const idx = order.indexOf(current);
             const next = order[(idx + 1) % order.length];
             await applyMetadataPatch({ energy: next });
+          });
+          attach('[data-action="meta-depends-add"]', async () => {
+            const result = await promptForDependency(uid, metadataInfo?.depends || []);
+            if (result && result.length) {
+              await applyMetadataPatch({ depends: result });
+              toast(t(["toasts", "dependencyAdded"], getLanguageSetting()) || "Dependency added");
+            }
+          });
+          attach('[data-action="meta-depends-edit"]', async () => {
+            const result = await promptForDependency(uid, metadataInfo?.depends || []);
+            if (result !== null) {
+              await applyMetadataPatch({ depends: result });
+            }
+          });
+          attach('[data-action="meta-depends-remove"]', async () => {
+            await applyMetadataPatch({ depends: [] });
+            toast(t(["toasts", "dependencyRemoved"], getLanguageSetting()) || "Dependency removed");
           });
         },
       });
