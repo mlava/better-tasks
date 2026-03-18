@@ -124,7 +124,7 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 
 **Mission:** Permanently differentiate Better Tasks.
 
-### Task Dependencies
+### Task Dependencies - In Progress
 - `depends-on:: [[task-uid]]` attribute
 - Blocked vs Actionable filter states
 - Auto-unblock when dependency completes

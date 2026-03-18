@@ -591,7 +591,7 @@ const locale = {
     actionable: "Eseguibile"
   },
   dependsPicker: {
-    title: "Seleziona attività di dipendenza",
+    title: "Seleziona le dipendenze",
     placeholder: "Cerca attività aperte…",
     noItems: "Nessuna attività corrispondente trovata",
     cycleDetected: "Impossibile aggiungere — creerebbe una dipendenza circolare",

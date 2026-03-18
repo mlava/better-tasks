@@ -370,7 +370,7 @@ const locale = {
       Priority: "優先級",
       Energy: "精力",
       GTD: "GTD",
-      Blocked: "已封鎖"
+      Blocked: "受阻"
     },
     filterValues: {
       recurring: "重複",
@@ -391,7 +391,7 @@ const locale = {
       "next action": "下一步行動",
       delegated: "已委派",
       someday: "某天",
-      blocked: "已封鎖",
+      blocked: "受阻",
       actionable: "可執行"
     },
     completedWithinLabel: "完成時間範圍",
@@ -586,8 +586,8 @@ const locale = {
     gtdLabel: "GTD",
     depends: "相依",
     dependsLabel: "相依於",
-    blocked: "已封鎖",
-    blockedBy: "被封鎖",
+    blocked: "受阻",
+    blockedBy: "受阻於",
     actionable: "可執行"
   },
   dependsPicker: {

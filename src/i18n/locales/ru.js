@@ -587,7 +587,7 @@ const locale = {
     depends: "Зависимости",
     dependsLabel: "Зависит от",
     blocked: "Заблокировано",
-    blockedBy: "Заблокировано",
+    blockedBy: "Заблокировано задачей",
     actionable: "Выполнимо"
   },
   dependsPicker: {

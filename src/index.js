@@ -1639,6 +1639,8 @@ export default {
       ];
       const baseWithoutAttrs = removeInlineAttributes(block.string || "", removalKeys);
       const initialTaskText = baseWithoutAttrs.replace(/^\{\{\[\[(?:TODO|DONE)\]\]\}\}\s*/i, "").trim();
+      const inheritedProject = inferProjectFromPage(block);
+      const existingMeta = parseRichMetadata(childAttrs, attrNames);
       const promptResult = await promptForRepeatAndDue({
         includeTaskText: true,
         forceTaskInput: true,
@@ -1647,6 +1649,12 @@ export default {
         due: props.due || childDueEntry?.value || inlineDueVal || "",
         start: props.start || childStartEntry?.value || inlineStartVal || "",
         defer: props.defer || childDeferEntry?.value || inlineDeferVal || "",
+        project: existingMeta.project || inheritedProject || "",
+        waitingFor: existingMeta.waitingFor || "",
+        context: existingMeta.context || "",
+        priority: existingMeta.priority || "",
+        energy: existingMeta.energy || "",
+        gtd: existingMeta.gtd || "",
       });
       if (!promptResult) return;
 
@@ -2552,11 +2560,14 @@ export default {
       const uid = deriveUidFromMutationNode(host, null);
       if (!uid) return;
       const checkbox = host.querySelector?.("input[type='checkbox']") || null;
-      // Defer to ensure class updates (rm-todo -> rm-done) have been applied
+      const wasDone = host.classList?.contains("rm-done");
+      // Defer one tick so the click has been processed
       setTimeout(() => {
-        if (!host.classList?.contains("rm-done")) return;
+        if (wasDone) return; // Was already done — this is an uncomplete, not a complete
         noteTodoRemoval(uid);
         enqueueCompletion(uid, { checkbox, userInitiated: true, detectedAt: Date.now() });
+        // Dedicated dependency notification — bypasses processTaskCompletion guards
+        void notifyDependentsOfCompletion(uid);
       }, 0);
     };
     const _onCmdEnterKey = (event) => {
@@ -2606,6 +2617,8 @@ export default {
           cmdEnterResolved = true;
           noteTodoRemoval(uid);
           enqueueCompletion(uid, { checkbox: input, userInitiated: true, detectedAt: Date.now() });
+          // Dedicated dependency notification — bypasses processTaskCompletion guards
+          void notifyDependentsOfCompletion(uid);
           return;
         }
         if (tries < 20) {
@@ -3160,6 +3173,10 @@ export default {
         const hasTimingOnly = !!meta?.hasTimingAttrs;
         if (!meta.repeat && !hasTimingOnly) {
           processedMap.delete(uid);
+          // Even non-BT tasks can be depended upon — notify dependents on completion
+          if (isBlockCompleted(block)) {
+            void notifyDependentsOfCompletion(uid);
+          }
           return null;
         }
 
@@ -3235,6 +3252,7 @@ export default {
             void syncPillsForSurface(lastAttrSurface);
             activeDashboardController?.notifyBlockChange?.(uid);
             logCompletionDebug("completion-one-off", { uid, processedAt: completion.processedAt });
+            console.warn("[BT-DEBUG] one-off completion, calling notifyDependents for", uid);
             void notifyDependentsOfCompletion(uid);
             return { type: "one-off" };
           } catch (err) {
@@ -4154,29 +4172,55 @@ export default {
       blockedStateCache.clear();
     }
 
-    async function computeBlockedState(dependsUids) {
-      if (!Array.isArray(dependsUids) || !dependsUids.length) return { blocked: false, blockedBy: [] };
+    async function computeBlockedState(dependsUids, taskUid) {
+      if (!Array.isArray(dependsUids) || !dependsUids.length) return { blocked: false, blockedBy: [], staleUids: [] };
       const blockedBy = [];
+      const staleUids = [];
       for (const uid of dependsUids) {
         const block = await getBlock(uid);
-        if (!block) continue; // deleted dependency = no longer blocking
+        if (!block) { staleUids.push(uid); continue; } // deleted dependency = no longer blocking
         if (!isBlockCompleted(block)) {
+          // Circular dependency check: if dep has a path back to taskUid, it's a cycle — skip it
+          if (taskUid && await wouldCreateCycle(taskUid, uid)) continue;
           blockedBy.push({ uid, title: formatDashboardTitle(block.string || "") });
         }
       }
-      return { blocked: blockedBy.length > 0, blockedBy };
+      return { blocked: blockedBy.length > 0, blockedBy, staleUids };
     }
 
     async function isTaskBlocked(taskUid, dependsUids) {
       if (!Array.isArray(dependsUids) || !dependsUids.length) return { blocked: false, blockedBy: [] };
+      const filtered = dependsUids.filter((u) => u !== taskUid);
+      if (!filtered.length) return { blocked: false, blockedBy: [] };
       const now = Date.now();
       const cached = blockedStateCache.get(taskUid);
       if (cached && now - cached.at < BLOCKED_CACHE_TTL_MS) {
         return { blocked: cached.blocked, blockedBy: cached.blockedBy };
       }
-      const result = await computeBlockedState(dependsUids);
-      blockedStateCache.set(taskUid, { ...result, at: now });
-      return result;
+      const result = await computeBlockedState(filtered, taskUid);
+      blockedStateCache.set(taskUid, { blocked: result.blocked, blockedBy: result.blockedBy, at: now });
+      // Clean up stale (deleted) dependency UIDs from the child block
+      if (result.staleUids?.length) {
+        void cleanupStaleDependencies(taskUid, filtered, result.staleUids);
+      }
+      return { blocked: result.blocked, blockedBy: result.blockedBy };
+    }
+
+    async function cleanupStaleDependencies(taskUid, allUids, staleUids) {
+      try {
+        const remaining = allUids.filter((u) => !staleUids.includes(u));
+        const attrNames = resolveAttributeNames();
+        invalidateBlockCache(taskUid); // ensure fresh children for removeChildAttr
+        if (remaining.length === 0) {
+          await removeChildAttrsForType(taskUid, "depends", attrNames);
+        } else {
+          await ensureChildAttrForType(taskUid, "depends", formatDependsValue(remaining), attrNames);
+        }
+        invalidateBlockCache(taskUid);
+        invalidateBlockedState(taskUid);
+      } catch (err) {
+        console.warn("[BetterTasks] cleanupStaleDependencies failed", err);
+      }
     }
 
     async function findDependentTasks(completedUid) {
@@ -4186,14 +4230,15 @@ export default {
       const safeLabel = escapeDatalogString(attrLabel);
       const safeUid = escapeDatalogString(completedUid);
       try {
+        // Use string matching for both the attribute name and the UID reference.
+        // Avoids relying on :block/refs which may not include attribute-syntax page refs.
         const query = `
           [:find (pull ?parent [:block/uid :block/string
                     {:block/children [:block/uid :block/string]}
                     {:block/page [:block/uid :node/title]}])
            :where
-             [?attr :node/title "${safeLabel}"]
-             [?child :block/refs ?attr]
              [?child :block/string ?str]
+             [(clojure.string/includes? ?str "${safeLabel}")]
              [(clojure.string/includes? ?str "((${safeUid}))")]
              [?parent :block/children ?child]]`;
         const rows = await window.roamAlphaAPI.q(query);
@@ -4206,14 +4251,39 @@ export default {
 
     async function notifyDependentsOfCompletion(completedUid) {
       try {
+        console.warn("[BT-DEBUG] notifyDependentsOfCompletion called for", completedUid);
+        // Invalidate the completed task's block cache so dependents see fresh completion state
+        invalidateBlockCache(completedUid);
         const dependents = await findDependentTasks(completedUid);
+        console.warn("[BT-DEBUG] findDependentTasks returned", dependents.length, "dependents", dependents.map(d => d?.uid));
         if (!dependents.length) return;
+        const attrNames = resolveAttributeNames();
         for (const dep of dependents) {
+          // Remove the completed UID from this dependent's depends list
+          const children = dep.children || [];
+          const childAttrMap = parseAttrsFromChildBlocks(children);
+          const dependsEntry = pickChildAttr(childAttrMap, attrNames.dependsAliases || [], { allowFallback: true });
+          const currentDeps = dependsEntry?.value ? parseDependsValue(dependsEntry.value) : [];
+          const remaining = currentDeps.filter((u) => u !== completedUid);
+          console.warn("[BT-DEBUG] dep cleanup", { depUid: dep.uid, completedUid, currentDeps, remaining, dependsEntryValue: dependsEntry?.value });
+          if (remaining.length === 0) {
+            console.warn("[BT-DEBUG] removing all depends for", dep.uid);
+            await removeChildAttrsForType(dep.uid, "depends", attrNames);
+          } else if (remaining.length < currentDeps.length) {
+            console.warn("[BT-DEBUG] updating depends for", dep.uid, "to", formatDependsValue(remaining));
+            await ensureChildAttrForType(dep.uid, "depends", formatDependsValue(remaining), attrNames);
+          }
           invalidateBlockedState(dep.uid);
           invalidateBlockCache(dep.uid);
           activeDashboardController?.notifyBlockChange?.(dep.uid);
+          // Clear pill signature cache so the pill re-renders with updated blocked state
+          if (typeof window !== "undefined" && window.__btPillSignatureCache) {
+            window.__btPillSignatureCache.delete(dep.uid);
+          }
         }
-        void syncPillsForSurface(lastAttrSurface);
+        // Delay pill refresh past the 500ms decorateBlockPills debounce window
+        // (processTaskCompletion already triggered a syncPills before we ran)
+        setTimeout(() => void syncPillsForSurface(lastAttrSurface), 600);
       } catch (err) {
         console.warn("[BetterTasks] notifyDependentsOfCompletion failed", err);
       }
@@ -4276,8 +4346,11 @@ export default {
       const priority = normalizePriorityValue(priorityEntry?.value || null);
       const energy = normalizeEnergyValue(energyEntry?.value || null);
       const gtd = normalizeGtdStatus(gtdEntry?.value || null);
-      const depends = dependsEntry?.value ? parseDependsValue(dependsEntry.value) : [];
-      return { project, waitingFor, context, priority, energy, gtd, depends };
+      const dependsRaw = dependsEntry?.value || "";
+      const depends = dependsRaw ? parseDependsValue(dependsRaw) : [];
+      // Flag when the child block has text but no valid ((uid)) refs — stale/orphaned entry
+      const _hasStaleDependsValue = !!(dependsRaw.trim() && !depends.length);
+      return { project, waitingFor, context, priority, energy, gtd, depends, _hasStaleDependsValue };
     }
 
     function escapeRegExp(str) {
@@ -8486,12 +8559,15 @@ export default {
             const input = toastEl.querySelector(`#${inputId}`);
             if (input) {
               input.addEventListener("input", () => renderList(input.value));
-              setTimeout(() => input.focus(), 50);
             }
             const saveBtn = toastEl.querySelector(".rt-dep-save");
             if (saveBtn) saveBtn.addEventListener("click", () => finish(Array.from(selected)));
             const cancelBtn = toastEl.querySelector(".rt-dep-cancel");
             if (cancelBtn) cancelBtn.addEventListener("click", () => finish(null));
+          },
+          onOpened: (_instance, toastEl) => {
+            const input = toastEl?.querySelector(`#${inputId}`);
+            input?.focus?.();
           },
           onClosed: () => finish(null),
         });
@@ -10807,6 +10883,18 @@ export default {
           const isBetterTask = isBetterTasksTask(meta);
           if (isBetterTask) enqueueDashboardNotifyBlockChange(uid);
           const metadataInfo = meta.metadata || parseRichMetadata(meta.childAttrMap || {}, attrNames);
+          // Clean up stale depends child block (ref replaced with plain text after dependency deleted)
+          if (metadataInfo._hasStaleDependsValue) {
+            void (async () => {
+              try {
+                invalidateBlockCache(uid);
+                await removeChildAttrsForType(uid, "depends", attrNames);
+                invalidateBlockCache(uid);
+                window.__btInlineMetaCache?.delete(uid);
+                window.__btPillSignatureCache?.delete(uid);
+              } catch (_) { /* ignore */ }
+            })();
+          }
           writeInlineMetaCache(uid, metadataInfo, now);
           const hasMetadataSignal =
             !!(
@@ -10888,6 +10976,11 @@ export default {
           const contextSig = Array.isArray(metadataInfo?.context)
             ? [...metadataInfo.context].sort().join(",")
             : "";
+          const dependsSig = Array.isArray(metadataInfo?.depends)
+            ? metadataInfo.depends.slice().sort().join(",")
+            : "";
+          const blockedCached = blockedStateCache.get(uid);
+          const blockedSig = blockedCached ? (blockedCached.blocked ? "B" : "U") : "?";
           const signatureParts = [
             humanRepeat || "",
             startDate instanceof Date ? startDate.getTime() : "",
@@ -10899,6 +10992,8 @@ export default {
             metadataInfo?.priority || "",
             metadataInfo?.energy || "",
             metadataInfo?.gtd || "",
+            dependsSig,
+            blockedSig,
           ];
           const signature = signatureParts.join("|");
           const existingPill = main.querySelector(".rt-pill-wrap");
@@ -11091,6 +11186,8 @@ export default {
             } else if (!blockedResult) {
               // Cache miss — compute async and schedule re-render
               void isTaskBlocked(uid, metadataInfo.depends).then(() => {
+                lastPillDecorateRun = 0; // bypass throttle for blocked-state re-render
+                window.__btPillSignatureCache?.delete(uid);
                 void syncPillsForSurface(lastAttrSurface);
               });
             }
@@ -11561,15 +11658,15 @@ export default {
         }
         if ("depends" in patch) {
           await setRichAttribute(uid, "depends", patch.depends ?? [], attrNamesForMenu);
+          invalidateBlockCache(uid);
           invalidateBlockedState(uid);
         }
         if (typeof window !== "undefined") {
           window.__btInlineMetaCache?.delete(uid);
         }
         try {
-          const notifier = activeDashboardController?.notifyBlockChange || notifyBlockChange;
-          if (typeof notifier === "function") {
-            await notifier(uid, { bypassFilters: true });
+          if (typeof activeDashboardController?.notifyBlockChange === "function") {
+            await activeDashboardController.notifyBlockChange(uid, { bypassFilters: true });
           }
         } catch (err) {
           console.warn("[BetterTasks] notifyBlockChange (menu) failed", err);
@@ -13117,21 +13214,27 @@ export default {
           if ("gtd" in patch) {
             await setRichAttribute(uid, "gtd", patch.gtd, attrNames);
           }
+          if ("depends" in patch) {
+            await setRichAttribute(uid, "depends", patch.depends ?? [], attrNames);
+            invalidateBlockCache(uid);
+            invalidateBlockedState(uid);
+          }
         } catch (err) {
           console.warn("[BetterTasks] updateMetadata failed", err);
           toast("Could not update metadata.");
         }
         if (typeof window !== "undefined") {
           window.__btInlineMetaCache?.delete(uid);
+          window.__btPillSignatureCache?.delete(uid);
         }
         try {
-          const notifier = activeDashboardController?.notifyBlockChange || notifyBlockChange;
-          if (typeof notifier === "function") {
-            await notifier(uid, { bypassFilters: true });
+          if (typeof activeDashboardController?.notifyBlockChange === "function") {
+            await activeDashboardController.notifyBlockChange(uid, { bypassFilters: true });
           }
         } catch (err) {
           console.warn("[BetterTasks] notifyBlockChange (inline meta) failed", err);
         }
+        lastPillDecorateRun = 0; // bypass throttle after metadata update
         void syncPillsForSurface(lastAttrSurface);
       }
 
@@ -13650,6 +13753,13 @@ export default {
           }
           const task = deriveDashboardTask(block, meta, set);
           if (!task) return;
+          if (task.depends.length) {
+            try {
+              const blockedResult = await isTaskBlocked(task.uid, task.depends);
+              task.isBlocked = blockedResult.blocked;
+              task.blockedBy = blockedResult.blockedBy;
+            } catch (_) { /* keep defaults */ }
+          }
           const tasks = state.tasks.slice();
           const index = tasks.findIndex((entry) => entry.uid === uid);
           if (index >= 0) {

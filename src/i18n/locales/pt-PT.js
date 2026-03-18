@@ -591,7 +591,7 @@ const locale = {
     actionable: "Acionável"
   },
   dependsPicker: {
-    title: "Selecionar tarefas de dependência",
+    title: "Selecionar dependências",
     placeholder: "Pesquisar tarefas abertas…",
     noItems: "Nenhuma tarefa correspondente encontrada",
     cycleDetected: "Não é possível adicionar — criaria uma dependência circular",

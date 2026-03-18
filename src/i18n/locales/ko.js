@@ -587,7 +587,7 @@ const locale = {
     depends: "의존성",
     dependsLabel: "의존 대상",
     blocked: "차단됨",
-    blockedBy: "차단 원인",
+    blockedBy: "차단한 작업",
     actionable: "실행 가능"
   },
   dependsPicker: {

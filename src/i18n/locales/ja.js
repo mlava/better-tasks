@@ -370,7 +370,7 @@ const locale = {
       Priority: "優先度",
       Energy: "エネルギー",
       GTD: "GTD",
-      Blocked: "ブロック中"
+      Blocked: "保留中"
     },
     filterValues: {
       recurring: "繰り返し",
@@ -391,7 +391,7 @@ const locale = {
       "next action": "次のアクション",
       delegated: "委任済み",
       someday: "いつか",
-      blocked: "ブロック中",
+      blocked: "保留中",
       actionable: "実行可能"
     },
     completedWithinLabel: "完了期間",
@@ -586,8 +586,8 @@ const locale = {
     gtdLabel: "GTD",
     depends: "依存関係",
     dependsLabel: "依存先",
-    blocked: "ブロック中",
-    blockedBy: "ブロック元",
+    blocked: "保留中",
+    blockedBy: "先行タスク",
     actionable: "実行可能"
   },
   dependsPicker: {

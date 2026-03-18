@@ -2964,6 +2964,13 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           activeValues={filters["Energy"]}
           onToggle={handleFilterToggle}
         />
+        <FilterChips
+          sectionKey="Blocked"
+          label={filterSectionLabels["Blocked"] || "Blocked"}
+          chips={filterDefs["Blocked"]}
+          activeValues={filters["Blocked"]}
+          onToggle={handleFilterToggle}
+        />
       </FullPageFilterGroup>
     </aside>
   ) : null;

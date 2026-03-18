@@ -591,7 +591,7 @@ const locale = {
     actionable: "Ejecutable"
   },
   dependsPicker: {
-    title: "Seleccionar tareas de dependencia",
+    title: "Seleccionar dependencias",
     placeholder: "Buscar tareas abiertas…",
     noItems: "No se encontraron tareas coincidentes",
     cycleDetected: "No se puede añadir — crearía una dependencia circular",

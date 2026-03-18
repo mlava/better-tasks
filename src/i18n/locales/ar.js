@@ -370,7 +370,7 @@ const locale = {
       Priority: "الأولوية",
       Energy: "الطاقة",
       GTD: "GTD",
-      Blocked: "محظور"
+      Blocked: "معطّلة"
     },
     filterValues: {
       recurring: "متكرر",
@@ -391,7 +391,7 @@ const locale = {
       "next action": "الإجراء التالي",
       delegated: "مفوّض",
       someday: "يوماً ما",
-      blocked: "محظور",
+      blocked: "معطّلة",
       actionable: "قابل للتنفيذ"
     },
     completedWithinLabel: "مكتمل خلال",
@@ -586,8 +586,8 @@ const locale = {
     gtdLabel: "GTD",
     depends: "التبعيات",
     dependsLabel: "يعتمد على",
-    blocked: "محظور",
-    blockedBy: "محظور بواسطة",
+    blocked: "معطّلة",
+    blockedBy: "معطّلة بسبب",
     actionable: "قابل للتنفيذ"
   },
   dependsPicker: {
