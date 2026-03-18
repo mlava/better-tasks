@@ -120,7 +120,7 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 
 ---
 
-## 🚀 Phase 8 — Differentiators v1 (Next)
+## 🚀 Phase 8 — Differentiators v1 (In Progress)
 
 **Mission:** Permanently differentiate Better Tasks.
 
@@ -134,14 +134,14 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - Dependencies not carried forward on recurring task spawn
 - Dependencies model task sequencing; Waiting-for remains reserved for people or external blockers.
 
-### Subtasks
+### Subtasks - Next
 - Parent/child task relationships
 - Progress indicators (3/5 subtasks done)
 - Metadata inheritance from parent
 - Optional auto-complete parent when all children done
 - Dashboard expand/collapse for subtask trees
 
-### Bulk Operations - Complete
+### Bulk Operations - Complete ✅
 - Multi-select in dashboard (checkboxes, shift-click)
 - Bulk complete/snooze/edit metadata
 - "Select all visible" / "Select all in group"
