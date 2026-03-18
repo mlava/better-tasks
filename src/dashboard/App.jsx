@@ -2767,6 +2767,13 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           activeValues={filters["Recurrence"]}
           onToggle={handleFilterToggle}
         />
+        <FilterChips
+          sectionKey="Blocked"
+          label={filterSectionLabels["Blocked"] || "Blocked"}
+          chips={filterDefs["Blocked"]}
+          activeValues={filters["Blocked"]}
+          onToggle={handleFilterToggle}
+        />
       </FullPageFilterGroup>
 
       <FullPageFilterGroup groupKey="dates" title={ui.filtersGroups.dates}>
@@ -2962,13 +2969,6 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           label={filterSectionLabels["Energy"] || "Energy"}
           chips={filterDefs["Energy"]}
           activeValues={filters["Energy"]}
-          onToggle={handleFilterToggle}
-        />
-        <FilterChips
-          sectionKey="Blocked"
-          label={filterSectionLabels["Blocked"] || "Blocked"}
-          chips={filterDefs["Blocked"]}
-          activeValues={filters["Blocked"]}
           onToggle={handleFilterToggle}
         />
       </FullPageFilterGroup>

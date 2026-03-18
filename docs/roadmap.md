@@ -124,12 +124,14 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 
 **Mission:** Permanently differentiate Better Tasks.
 
-### Task Dependencies - In Progress
-- `depends-on:: [[task-uid]]` attribute
-- Blocked vs Actionable filter states
-- Auto-unblock when dependency completes
-- Circular dependency detection
-- Visual indicator showing blocking task
+### Task Dependencies - Complete ✅
+- `BT_attrDepends:: ((task-uid))` attribute (configurable name, supports multiple UIDs)
+- Blocked vs Actionable filter states (dashboard, expanded view, Extension Tools API)
+- Auto-unblock when dependency completes (one-off and recurring; stale/deleted deps auto-cleaned)
+- Circular dependency detection (self-ref, mutual, transitive via DFS; UI picker and computeBlockedState)
+- 🔒 Blocked pill indicator, dimmed styling in dashboard and Today widget
+- Dependency picker in ⋯ pill menu (add, edit, remove all; search with chip selection)
+- Dependencies not carried forward on recurring task spawn
 - Dependencies model task sequencing; Waiting-for remains reserved for people or external blockers.
 
 ### Subtasks

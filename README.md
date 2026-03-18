@@ -31,12 +31,13 @@ If you use TODOs in Roam, Better Tasks gives you:
 - A **dashboard** for review & triage, **saved views**, and **weekly review presets**
 - **Bulk operations** to complete, snooze, or update metadata across multiple tasks
 - Optional **Today widget** (on today's DNP) and **Today badge** (left sidebar)
-- Optional metadata: **Project, Context, Waiting-for, GTD, Priority, Energy**
+- Optional metadata: **Project, Context, Waiting-for, GTD, Priority, Energy, Dependencies**
 
 ---
 
 ## ✅ Recent updates
 
+- **Task dependencies:** block tasks on other tasks with `BT_attrDepends:: ((uid))`. Blocked tasks show a 🔒 indicator in pills, dashboard, and Today widget. Circular dependency detection (self, mutual, transitive). Dependency picker in the ⋯ pill menu. Blocked/Actionable filter in dashboard. Auto-unblock on completion; stale dependencies auto-cleaned.
 - **"Project Page" destination:** recurring tasks with a project attribute can now route their next occurrence to the project's page instead of the Daily Notes Page. Falls back to DNP gracefully when no project is set.
 - **Rich metadata carry-forward:** spawned recurring tasks now inherit all metadata (project, context, priority, energy, GTD, waiting-for) from the completed occurrence — not just scheduling attributes.
 - **Auto-inherit project from page:** creating a Better Task on a known project page automatically tags it with that project. Skips Daily Notes Pages and non-project pages.
@@ -82,6 +83,7 @@ Optional attributes:
 - `BT_attrStart::` — when the task becomes available
 - `BT_attrDefer::` — when it should resurface
 - `BT_attrCompleted::` — written on completion
+- `BT_attrDepends::` — task dependencies (one or more `((uid))` refs, comma-separated)
 
 ✅ Disable Better Tasks anytime — your tasks remain plain Roam blocks.
 
@@ -105,8 +107,20 @@ Leave the repeat field blank while setting any combination of `start::`, `defer:
     - BT_attrContext:: @computer, #office
     - BT_attrPriority:: high
     - BT_attrEnergy:: medium
+    - BT_attrDepends:: ((uid1)), ((uid2))
 
 Metadata appears both inline (pill) and in the dashboard.
+
+### Task dependencies
+
+Add `BT_attrDepends:: ((task-uid))` as a child block to create a dependency. The blocked task shows a 🔒 indicator and is dimmed in the dashboard and Today widget.
+
+- **Multiple dependencies:** comma-separate UIDs — all must complete to unblock
+- **Circular detection:** self-referential, mutual, and transitive cycles are detected and ignored
+- **Auto-unblock:** completing a dependency (one-off or recurring) unblocks dependents; deleting a dependency from the graph auto-cleans the attribute
+- **Dependency picker:** use the ⋯ pill menu to add, edit, or remove dependencies with a searchable task picker
+- **Dashboard filters:** Blocked / Actionable chips filter the task list; "Blocked Tasks" preset view available
+- **Recurring tasks:** dependencies are not carried forward to the next occurrence
 
 Interactions:
 - Click → open page
@@ -148,6 +162,8 @@ Common actions:
 | Skip this occurrence | Jump to next repeat |
 | Generate next now | Create next task immediately |
 | End recurrence | Stop repeating |
+| Add / Edit dependency | Open dependency picker to search and select blocking tasks |
+| Remove all dependencies | Clear all dependencies from the task |
 
 All actions support **Undo**.
 
@@ -167,7 +183,7 @@ Open via Command Palette → **Toggle Better Tasks Dashboard**  or the top-bar i
 </p>
 
 Features:
-- Filters: recurrence, availability, due buckets, completion
+- Filters: recurrence, availability, due buckets, completion, blocked/actionable
 - Quick snooze / complete actions
 - Jump back to original blocks
 - Draggable floating panel (position remembered)
@@ -183,6 +199,7 @@ Preset views (seeded, in order):
 - Upcoming (Next 7 Days)
 - Overdue
 - Someday / Maybe
+- Blocked Tasks
 - All Open Tasks
 
 Weekly Review order:
@@ -460,9 +477,16 @@ Better Tasks registers tools on `window.RoamExtensionTools["better-tasks"]` so o
 | `bt_get_waiting_for` | List waiting-for values with optional counts |
 | `bt_get_context` | List context values with optional counts |
 | `bt_get_attributes` | Get configured attribute schema (names, types, allowed values) |
-| `bt_search` | Search tasks by status, due, project, assignee, or free text |
+| `bt_search` | Search tasks by status, due, project, assignee, blocked state, or free text |
 | `bt_create` | Create a new task (defaults to today's daily page) |
 | `bt_modify` | Update an existing task's status, text, or attributes |
+
+### `bt_search` blocked filter values
+
+| Value | Meaning |
+|-------|---------|
+| `blocked` | Only tasks blocked by incomplete dependencies |
+| `actionable` | Only tasks not blocked (no deps or all deps complete) |
 
 ### `bt_search` due filter values
 
