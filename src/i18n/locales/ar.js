@@ -355,6 +355,8 @@ const locale = {
         meta: "البيانات"
       }
     },
+    expandSubtasks: "Expand subtasks",
+    collapseSubtasks: "Collapse subtasks",
     empty: {
       loading: "جارٍ تحميل المهام…",
       error: "تعذّر تحميل المهام.",
@@ -588,7 +590,8 @@ const locale = {
     dependsLabel: "يعتمد على",
     blocked: "معطّلة",
     blockedBy: "معطّلة بسبب",
-    actionable: "قابل للتنفيذ"
+    actionable: "قابل للتنفيذ",
+    subtaskProgress: "Subtasks"
   },
   dependsPicker: {
     title: "اختر مهام التبعية",

@@ -67,6 +67,7 @@ const DEFAULT_PRIORITY_ATTR = "BT_attrPriority";
 const DEFAULT_ENERGY_ATTR = "BT_attrEnergy";
 const DEFAULT_GTD_ATTR = "BT_attrGTD";
 const DEFAULT_DEPENDS_ATTR = "BT_attrDepends";
+const DEFAULT_PARENT_ATTR = "BT_attrParent";
 const ATTR_NAMES_PUBLIC_KEY_PREFIX = "betterTasks.attributeNames";
 const ATTR_NAMES_PUBLIC_VERSION = 1;
 const EXTENSION_TOOLS_ID = "better-tasks";
@@ -2561,9 +2562,28 @@ export default {
       if (!uid) return;
       const checkbox = host.querySelector?.("input[type='checkbox']") || null;
       const wasDone = host.classList?.contains("rm-done");
+      // Immediately invalidate subtask caches so next pill render recomputes fresh
+      invalidateBlockCache(uid);
+      window.__btPillSignatureCache?.delete(uid);
+      for (const [puid] of subtaskProgressCache) {
+        subtaskProgressCache.delete(puid);
+        window.__btPillSignatureCache?.delete(puid);
+      }
       // Defer one tick so the click has been processed
       setTimeout(() => {
-        if (wasDone) return; // Was already done — this is an uncomplete, not a complete
+        if (wasDone) {
+          // Uncomplete — invalidate caches so subtask progress updates
+          invalidateBlockCache(uid);
+          window.__btPillSignatureCache?.delete(uid);
+          // Clear subtask progress caches so parents recompute
+          for (const [puid] of subtaskProgressCache) {
+            subtaskProgressCache.delete(puid);
+            window.__btPillSignatureCache?.delete(puid);
+          }
+          scheduleSurfaceSync(lastAttrSurface || "Child");
+          activeDashboardController?.notifyBlockChange?.(uid);
+          return;
+        }
         noteTodoRemoval(uid);
         enqueueCompletion(uid, { checkbox, userInitiated: true, detectedAt: Date.now() });
         // Dedicated dependency notification — bypasses processTaskCompletion guards
@@ -3155,8 +3175,10 @@ export default {
         const set = S();
         await flushChildAttrSync(uid);
         await delay(60);
+        invalidateBlockCache(uid);
         let block = await getBlock(uid);
         await delay(60);
+        invalidateBlockCache(uid);
         const refreshed = await getBlock(uid);
         if (refreshed) block = refreshed;
         if (!block) {
@@ -3252,7 +3274,6 @@ export default {
             void syncPillsForSurface(lastAttrSurface);
             activeDashboardController?.notifyBlockChange?.(uid);
             logCompletionDebug("completion-one-off", { uid, processedAt: completion.processedAt });
-            console.warn("[BT-DEBUG] one-off completion, calling notifyDependents for", uid);
             void notifyDependentsOfCompletion(uid);
             return { type: "one-off" };
           } catch (err) {
@@ -4002,6 +4023,7 @@ export default {
       const priorityAliases = new Set(attrNames.priorityAliases || []);
       const energyAliases = new Set(attrNames.energyAliases || []);
       const dependsAliases = new Set(attrNames.dependsAliases || []);
+      const parentAliases = new Set(attrNames.parentAliases || []);
       for (const child of children) {
         const text = typeof child?.string === "string" ? child.string : null;
         if (!text) continue;
@@ -4040,6 +4062,8 @@ export default {
             out.energy = out[key];
           } else if (dependsAliases.has(key) && out.depends == null) {
             out.depends = out[key];
+          } else if (parentAliases.has(key) && out.parent == null) {
+            out.parent = out[key];
           }
         }
       }
@@ -4160,6 +4184,9 @@ export default {
       return value;
     }
 
+    // ========================= Subtask progress cache (populated by collectDashboardTasks) ===
+    const subtaskProgressCache = new Map();
+
     // ========================= Dependency / blocked-state helpers =========================
     const blockedStateCache = new Map();
     const BLOCKED_CACHE_TTL_MS = 30000;
@@ -4251,11 +4278,9 @@ export default {
 
     async function notifyDependentsOfCompletion(completedUid) {
       try {
-        console.warn("[BT-DEBUG] notifyDependentsOfCompletion called for", completedUid);
         // Invalidate the completed task's block cache so dependents see fresh completion state
         invalidateBlockCache(completedUid);
         const dependents = await findDependentTasks(completedUid);
-        console.warn("[BT-DEBUG] findDependentTasks returned", dependents.length, "dependents", dependents.map(d => d?.uid));
         if (!dependents.length) return;
         const attrNames = resolveAttributeNames();
         for (const dep of dependents) {
@@ -4265,12 +4290,9 @@ export default {
           const dependsEntry = pickChildAttr(childAttrMap, attrNames.dependsAliases || [], { allowFallback: true });
           const currentDeps = dependsEntry?.value ? parseDependsValue(dependsEntry.value) : [];
           const remaining = currentDeps.filter((u) => u !== completedUid);
-          console.warn("[BT-DEBUG] dep cleanup", { depUid: dep.uid, completedUid, currentDeps, remaining, dependsEntryValue: dependsEntry?.value });
           if (remaining.length === 0) {
-            console.warn("[BT-DEBUG] removing all depends for", dep.uid);
             await removeChildAttrsForType(dep.uid, "depends", attrNames);
           } else if (remaining.length < currentDeps.length) {
-            console.warn("[BT-DEBUG] updating depends for", dep.uid, "to", formatDependsValue(remaining));
             await ensureChildAttrForType(dep.uid, "depends", formatDependsValue(remaining), attrNames);
           }
           invalidateBlockedState(dep.uid);
@@ -4339,6 +4361,7 @@ export default {
       const energyEntry = pickChildAttr(childAttrMap, attrNames.energyAliases || [], { allowFallback: true });
       const gtdEntry = pickChildAttr(childAttrMap, attrNames.gtdAliases || [], { allowFallback: true });
       const dependsEntry = pickChildAttr(childAttrMap, attrNames.dependsAliases || [], { allowFallback: true });
+      const parentEntry = pickChildAttr(childAttrMap, attrNames.parentAliases || [], { allowFallback: true });
 
       const project = projectEntry?.value ? stripLinkOrTag(projectEntry.value) || null : null;
       const waitingFor = waitingEntry?.value ? stripLinkOrTag(waitingEntry.value) || null : null;
@@ -4350,7 +4373,8 @@ export default {
       const depends = dependsRaw ? parseDependsValue(dependsRaw) : [];
       // Flag when the child block has text but no valid ((uid)) refs — stale/orphaned entry
       const _hasStaleDependsValue = !!(dependsRaw.trim() && !depends.length);
-      return { project, waitingFor, context, priority, energy, gtd, depends, _hasStaleDependsValue };
+      const parentTaskUid = parentEntry?.value ? parseDependsValue(parentEntry.value)[0] || null : null;
+      return { project, waitingFor, context, priority, energy, gtd, depends, _hasStaleDependsValue, parentTaskUid };
     }
 
     function escapeRegExp(str) {
@@ -4564,6 +4588,7 @@ export default {
       const priority = buildAttrConfig("bt-attr-priority", DEFAULT_PRIORITY_ATTR);
       const energy = buildAttrConfig("bt-attr-energy", DEFAULT_ENERGY_ATTR);
       const depends = buildAttrConfig("bt-attr-depends", DEFAULT_DEPENDS_ATTR);
+      const parent = buildAttrConfig("bt-attr-parent", DEFAULT_PARENT_ATTR);
       const attrByType = {
         repeat,
         due,
@@ -4577,6 +4602,7 @@ export default {
         priority,
         energy,
         depends,
+        parent,
       };
       return {
         repeatAttr: repeat.attr,
@@ -4627,6 +4653,10 @@ export default {
         dependsKey: depends.key,
         dependsAliases: depends.aliases,
         dependsRemovalKeys: depends.removalKeys,
+        parentAttr: parent.attr,
+        parentKey: parent.key,
+        parentAliases: parent.aliases,
+        parentRemovalKeys: parent.removalKeys,
         attrByType,
       };
     }
@@ -5013,6 +5043,10 @@ export default {
         blocked_by: Array.isArray(task?.blockedBy)
           ? task.blockedBy.map((b) => ({ uid: b.uid, title: b.title }))
           : [],
+        is_subtask: !!task?.isSubtask,
+        parent_task_uid: task?.parentTaskUid || null,
+        subtask_uids: Array.isArray(task?.subtaskUids) ? task.subtaskUids.slice() : [],
+        subtask_progress: task?.subtaskProgress || null,
       };
     }
 
@@ -9448,6 +9482,10 @@ export default {
           color: #b44;
           font-weight: 600;
         }
+        .rt-pill-subtask-progress {
+          color: #6a6;
+          font-weight: 600;
+        }
         .rt-dep-chip {
           display: inline-flex;
           align-items: center;
@@ -9479,6 +9517,25 @@ export default {
         }
         .bt-task-row--blocked {
           opacity: 0.55;
+        }
+        .bt-task-row--subtask {
+          padding-left: 36px;
+          border-left: 2px solid var(--bt-border-subtle, rgba(0,0,0,0.08));
+          margin-left: 12px;
+        }
+        .bt-task-row__subtask-toggle {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0 4px;
+          font-size: 12px;
+          opacity: 0.6;
+          margin-right: 4px;
+          color: inherit;
+          line-height: 1;
+        }
+        .bt-task-row__subtask-toggle:hover {
+          opacity: 1;
         }
       `;
       document.head.appendChild(style);
@@ -10813,6 +10870,7 @@ export default {
       let decoratedThisPass = 0;
       const MAX_DECORATIONS_PER_PASS = restrictToVisible ? 120 : 300;
       const seen = new Set();
+      const explicitSubtaskMap = new Map(); // parentUid -> [{uid, isCompleted}]
       const set = S();
       const attrNames = set.attrNames;
       ensurePillMenuStyles();
@@ -10883,6 +10941,12 @@ export default {
           const isBetterTask = isBetterTasksTask(meta);
           if (isBetterTask) enqueueDashboardNotifyBlockChange(uid);
           const metadataInfo = meta.metadata || parseRichMetadata(meta.childAttrMap || {}, attrNames);
+          // Track explicit BT_attrParent relationships for post-loop progress computation
+          if (isBetterTask && metadataInfo?.parentTaskUid) {
+            const puid = metadataInfo.parentTaskUid;
+            if (!explicitSubtaskMap.has(puid)) explicitSubtaskMap.set(puid, []);
+            explicitSubtaskMap.get(puid).push({ uid, isCompleted: isBlockCompleted(block) });
+          }
           // Clean up stale depends child block (ref replaced with plain text after dependency deleted)
           if (metadataInfo._hasStaleDependsValue) {
             void (async () => {
@@ -10981,6 +11045,54 @@ export default {
             : "";
           const blockedCached = blockedStateCache.get(uid);
           const blockedSig = blockedCached ? (blockedCached.blocked ? "B" : "U") : "?";
+          let subtaskProg = subtaskProgressCache.get(uid);
+          // Compute subtask progress on cache miss only (avoids render loops)
+          if (!subtaskProg) {
+            const todoRe = /^\{\{?\[\[(?:TODO|DONE)\]\]\}\}?/;
+            const childTodos = (block?.children || []).filter((c) => todoRe.test((c?.string || "").trim()));
+            if (childTodos.length) {
+              void (async () => {
+                try {
+                  for (const child of childTodos) invalidateBlockCache(child.uid);
+                  let total = 0;
+                  let done = 0;
+                  const redirectedParents = new Map();
+                  for (const child of childTodos) {
+                    const childBlock = await getBlock(child.uid);
+                    if (!childBlock) continue;
+                    const childMeta = await readRecurringMeta(childBlock, set);
+                    if (!isBetterTasksTask(childMeta)) continue;
+                    const childExplicitParent = childMeta.metadata?.parentTaskUid;
+                    if (childExplicitParent && childExplicitParent !== uid) {
+                      if (!redirectedParents.has(childExplicitParent)) redirectedParents.set(childExplicitParent, []);
+                      redirectedParents.get(childExplicitParent).push({ isCompleted: isBlockCompleted(childBlock) });
+                      continue;
+                    }
+                    total++;
+                    if (isBlockCompleted(childBlock)) done++;
+                  }
+                  if (total > 0) {
+                    subtaskProgressCache.set(uid, { done, total, _structDone: done, _structTotal: total });
+                  }
+                  // Update explicit parents discovered via hidden children
+                  for (const [epUid, epChildren] of redirectedParents) {
+                    const epTotal = epChildren.length;
+                    const epDone = epChildren.filter((c) => c.isCompleted).length;
+                    const epPrev = subtaskProgressCache.get(epUid);
+                    const sDone = epPrev?._structDone || 0;
+                    const sTotal = epPrev?._structTotal || 0;
+                    subtaskProgressCache.set(epUid, { done: sDone + epDone, total: sTotal + epTotal, _structDone: sDone, _structTotal: sTotal, _hasExplicit: true });
+                    window.__btPillSignatureCache?.delete(epUid);
+                  }
+                  // Schedule re-render after 500ms pill throttle window
+                  setTimeout(() => {
+                    scheduleSurfaceSync(lastAttrSurface || "Child");
+                  }, 520);
+                } catch (_) { /* ignore */ }
+              })();
+            }
+          }
+          const subtaskSig = subtaskProg ? `${subtaskProg.done}/${subtaskProg.total}` : "";
           const signatureParts = [
             humanRepeat || "",
             startDate instanceof Date ? startDate.getTime() : "",
@@ -10994,6 +11106,7 @@ export default {
             metadataInfo?.gtd || "",
             dependsSig,
             blockedSig,
+            subtaskSig,
           ];
           const signature = signatureParts.join("|");
           const existingPill = main.querySelector(".rt-pill-wrap");
@@ -11197,6 +11310,22 @@ export default {
             }
           }
 
+          // Subtask progress indicator
+          if (subtaskProg && subtaskProg.total > 0) {
+            const { done, total } = subtaskProg;
+            const progressText = `${done}/${total}`;
+            const progressLabel = t(["metadata", "subtaskProgress"], getLanguageSetting()) || "Subtasks";
+            const span = appendMetaSpan(
+              "\u{1F4CB}",
+              progressText,
+              `${progressLabel}: ${progressText}`
+            );
+            if (span) {
+              span.dataset.btPillAction = "subtask-progress";
+              span.classList.add("rt-pill-subtask-progress");
+            }
+          }
+
           const menuBtn = document.createElement("span");
           menuBtn.className = "rt-pill-menu-btn";
           menuBtn.textContent = "⋯";
@@ -11234,6 +11363,30 @@ export default {
           if (lastSeen && now - lastSeen > PILL_SIG_CACHE_TTL_MS) {
             pillSigCache.delete(uid);
           }
+        }
+      }
+      // Post-loop: compute subtask progress for visible explicit BT_attrParent relationships
+      if (explicitSubtaskMap.size) {
+        let progressChanged = false;
+        for (const [parentUid, children] of explicitSubtaskMap) {
+          const total = children.length;
+          const done = children.filter((c) => c.isCompleted).length;
+          const prev = subtaskProgressCache.get(parentUid);
+          const structDone = prev?._structDone || 0;
+          const structTotal = prev?._structTotal || 0;
+          const mergedDone = structDone + done;
+          const mergedTotal = structTotal + total;
+          if (!prev || prev.done !== mergedDone || prev.total !== mergedTotal) {
+            subtaskProgressCache.set(parentUid, { done: mergedDone, total: mergedTotal, _structDone: structDone, _structTotal: structTotal, _hasExplicit: true });
+            window.__btPillSignatureCache?.delete(parentUid);
+            progressChanged = true;
+          }
+        }
+        if (progressChanged) {
+          // Schedule after the 500ms pill throttle window expires
+          setTimeout(() => {
+            scheduleSurfaceSync(lastAttrSurface || "Child");
+          }, 520);
         }
       }
     }
@@ -12466,6 +12619,15 @@ export default {
         });
         repeatOverrides.delete(uid);
         activeDashboardController?.notifyBlockChange?.(uid);
+        // Invalidate subtask progress caches so parent pills re-render
+        invalidateBlockCache(uid);
+        window.__btPillSignatureCache?.delete(uid);
+        // Also invalidate any parent that had this task as a subtask
+        for (const [puid, prog] of subtaskProgressCache) {
+          subtaskProgressCache.delete(puid);
+          window.__btPillSignatureCache?.delete(puid);
+        }
+        scheduleSurfaceSync(lastAttrSurface || "Child");
       } catch (err) {
         console.warn("[RecurringTasks] undoTaskCompletion failed", err);
       }
@@ -13735,6 +13897,7 @@ export default {
         if (bulkOperationInProgress) return;
         try {
           const set = S();
+          invalidateBlockCache(uid);
           const block = await getBlock(uid);
           if (!block) {
             removeTask(uid);
@@ -13760,6 +13923,171 @@ export default {
               task.blockedBy = blockedResult.blockedBy;
             } catch (_) { /* keep defaults */ }
           }
+          // Recompute subtask relationships for this task
+          const existingTasks = state.tasks;
+          const existingByUid = new Map(existingTasks.map((t) => [t.uid, t]));
+          const oldTask = existingByUid.get(uid);
+          const oldParentUid = oldTask?.parentTaskUid || null;
+
+          // 0. Clean up old parent if this task was previously a subtask
+          if (oldParentUid && existingByUid.has(oldParentUid)) {
+            const oldParent = existingByUid.get(oldParentUid);
+            oldParent.subtaskUids = oldParent.subtaskUids.filter((s) => s !== uid);
+            if (oldParent.subtaskUids.length) {
+              const total = oldParent.subtaskUids.length;
+              const done = oldParent.subtaskUids.filter((s) => existingByUid.get(s)?.isCompleted).length;
+              oldParent.subtaskProgress = { done, total };
+              const lang = getLanguageSetting();
+              const metaLabels = t(["metadata"], lang) || {};
+              const progressLabel = metaLabels.subtaskProgress || "Subtasks";
+              const progressPill = {
+                type: "subtaskProgress",
+                icon: "\u{1F4CB}",
+                value: `${done}/${total}`,
+                label: `${progressLabel}: ${done}/${total}`,
+              };
+              const pillIdx = oldParent.metaPills.findIndex((p) => p.type === "subtaskProgress");
+              if (pillIdx >= 0) oldParent.metaPills[pillIdx] = progressPill;
+              else oldParent.metaPills.push(progressPill);
+              subtaskProgressCache.set(oldParentUid, { done, total });
+            } else {
+              oldParent.subtaskProgress = null;
+              oldParent.metaPills = oldParent.metaPills.filter((p) => p.type !== "subtaskProgress");
+              subtaskProgressCache.delete(oldParentUid);
+            }
+            // Invalidate old parent's inline pill cache and trigger re-render
+            window.__btPillSignatureCache?.delete(oldParentUid);
+            invalidateBlockCache(oldParentUid);
+            scheduleSurfaceSync(lastAttrSurface || "Child");
+          }
+
+          // Also clean up stale subtaskUids on the changed task itself
+          // (children may have been removed since last computation)
+          const currentChildUids = new Set((block?.children || []).map((c) => c?.uid).filter(Boolean));
+          if (oldTask?.subtaskUids?.length) {
+            const removedChildren = oldTask.subtaskUids.filter((s) => !currentChildUids.has(s));
+            for (const removedUid of removedChildren) {
+              const removedTask = existingByUid.get(removedUid);
+              if (removedTask && removedTask.parentTaskUid === uid) {
+                removedTask.parentTaskUid = null;
+                removedTask.isSubtask = false;
+              }
+            }
+          }
+
+          // 1. Detect subtasks OF this task (via block.children)
+          const children = block?.children || [];
+          for (const child of children) {
+            if (child?.uid && existingByUid.has(child.uid)) {
+              const childTask = existingByUid.get(child.uid);
+              if (!childTask.parentTaskUid || childTask.parentTaskUid === task.uid) {
+                if (!task.subtaskUids.includes(child.uid)) {
+                  task.subtaskUids.push(child.uid);
+                }
+                childTask.parentTaskUid = task.uid;
+                childTask.isSubtask = true;
+              }
+            }
+          }
+
+          // 2. Detect if this task IS a subtask (explicit BT_attrParent or structural)
+          const explicitParent = task.metadata?.parentTaskUid;
+          if (explicitParent && existingByUid.has(explicitParent) && explicitParent !== task.uid) {
+            task.parentTaskUid = explicitParent;
+            task.isSubtask = true;
+            const newParent = existingByUid.get(explicitParent);
+            if (newParent && !newParent.subtaskUids.includes(task.uid)) {
+              newParent.subtaskUids.push(task.uid);
+            }
+          } else if (oldParentUid && existingByUid.has(oldParentUid)) {
+            // Verify the old parent still has this task as a structural child
+            invalidateBlockCache(oldParentUid);
+            const oldParentBlock = await getBlock(oldParentUid);
+            const stillChild = (oldParentBlock?.children || []).some((c) => c?.uid === task.uid);
+            if (stillChild) {
+              task.parentTaskUid = oldParentUid;
+              task.isSubtask = true;
+              const parentTask = existingByUid.get(oldParentUid);
+              if (!parentTask.subtaskUids.includes(task.uid)) {
+                parentTask.subtaskUids.push(task.uid);
+              }
+            }
+          } else {
+            // Fallback: check block.parents for new relationships
+            const parents = block?.parents || [];
+            for (const p of parents) {
+              if (p?.uid && existingByUid.has(p.uid)) {
+                task.parentTaskUid = p.uid;
+                task.isSubtask = true;
+                const parentTask = existingByUid.get(p.uid);
+                if (!parentTask.subtaskUids.includes(task.uid)) {
+                  parentTask.subtaskUids.push(task.uid);
+                }
+                break;
+              }
+            }
+          }
+
+          // 3. Recompute subtask progress for this task if it has subtasks
+          if (task.subtaskUids.length) {
+            const total = task.subtaskUids.length;
+            const done = task.subtaskUids.filter((suid) => {
+              const sub = suid === task.uid ? task : existingByUid.get(suid);
+              return sub?.isCompleted;
+            }).length;
+            task.subtaskProgress = { done, total };
+            // Update progress pill
+            const existingPillIdx = task.metaPills.findIndex((p) => p.type === "subtaskProgress");
+            const lang = getLanguageSetting();
+            const metaLabels = t(["metadata"], lang) || {};
+            const progressLabel = metaLabels.subtaskProgress || "Subtasks";
+            const progressPill = {
+              type: "subtaskProgress",
+              icon: "\u{1F4CB}",
+              value: `${done}/${total}`,
+              label: `${progressLabel}: ${done}/${total}`,
+            };
+            if (existingPillIdx >= 0) {
+              task.metaPills[existingPillIdx] = progressPill;
+            } else {
+              task.metaPills.push(progressPill);
+            }
+            subtaskProgressCache.set(task.uid, { done, total });
+          }
+
+          // 4. If this task is a subtask, recompute parent's progress
+          let parentTaskModified = null;
+          if (task.isSubtask && task.parentTaskUid && existingByUid.has(task.parentTaskUid)) {
+            const parentTask = existingByUid.get(task.parentTaskUid);
+            if (parentTask.subtaskUids.length) {
+              const total = parentTask.subtaskUids.length;
+              const done = parentTask.subtaskUids.filter((suid) => {
+                const sub = suid === task.uid ? task : existingByUid.get(suid);
+                return sub?.isCompleted;
+              }).length;
+              const lang = getLanguageSetting();
+              const metaLabels = t(["metadata"], lang) || {};
+              const progressLabel = metaLabels.subtaskProgress || "Subtasks";
+              const progressPill = {
+                type: "subtaskProgress",
+                icon: "\u{1F4CB}",
+                value: `${done}/${total}`,
+                label: `${progressLabel}: ${done}/${total}`,
+              };
+              const updatedPills = parentTask.metaPills.filter((p) => p.type !== "subtaskProgress");
+              updatedPills.push(progressPill);
+              // Create a new object reference so React detects the change
+              parentTaskModified = {
+                ...parentTask,
+                subtaskProgress: { done, total },
+                metaPills: updatedPills,
+              };
+              subtaskProgressCache.set(parentTask.uid, { done, total });
+              // Invalidate parent's inline pill cache and trigger re-render
+              window.__btPillSignatureCache?.delete(parentTask.uid);
+            }
+          }
+
           const tasks = state.tasks.slice();
           const index = tasks.findIndex((entry) => entry.uid === uid);
           if (index >= 0) {
@@ -13767,12 +14095,21 @@ export default {
           } else {
             tasks.push(task);
           }
+          // Also replace the parent task entry if it was modified
+          if (parentTaskModified) {
+            const parentIdx = tasks.findIndex((entry) => entry.uid === parentTaskModified.uid);
+            if (parentIdx >= 0) tasks[parentIdx] = parentTaskModified;
+          }
           state = { ...state, tasks: sortDashboardTasksList(tasks) };
           emit();
           if (controller.isOpen()) {
             ensureDashboardWatch(uid);
           } else {
             removeDashboardWatch(uid);
+          }
+          // Re-render inline pills if parent progress changed
+          if (parentTaskModified) {
+            scheduleSurfaceSync(lastAttrSurface || "Child");
           }
           scheduleTodayBadgeRefresh(60, true);
           // When the dashboard is open, many edits can happen in quick succession.
@@ -14170,6 +14507,84 @@ export default {
           }
         }
       }
+      // === Subtask relationship detection ===
+      const taskByUid = new Map(tasks.map((t) => [t.uid, t]));
+
+      // Pass 1: structural detection via block.children (direct children only)
+      for (const task of tasks) {
+        const block = blockMap.get(task.uid);
+        const children = block?.children || [];
+        for (const child of children) {
+          if (child?.uid && taskByUid.has(child.uid)) {
+            const childTask = taskByUid.get(child.uid);
+            if (!childTask.parentTaskUid) {
+              childTask.parentTaskUid = task.uid;
+              childTask.isSubtask = true;
+              task.subtaskUids.push(child.uid);
+            }
+          }
+        }
+      }
+
+      // Pass 2: explicit BT_attrParent overrides structural if both present
+      for (const task of tasks) {
+        const explicitParent = task.metadata?.parentTaskUid;
+        if (explicitParent && taskByUid.has(explicitParent) && explicitParent !== task.uid) {
+          if (task.parentTaskUid && task.parentTaskUid !== explicitParent) {
+            const oldParent = taskByUid.get(task.parentTaskUid);
+            if (oldParent) {
+              oldParent.subtaskUids = oldParent.subtaskUids.filter((uid) => uid !== task.uid);
+            }
+          }
+          task.parentTaskUid = explicitParent;
+          task.isSubtask = true;
+          const newParent = taskByUid.get(explicitParent);
+          if (newParent && !newParent.subtaskUids.includes(task.uid)) {
+            newParent.subtaskUids.push(task.uid);
+          }
+        }
+      }
+
+      // Pass 3: compute subtask progress for parent tasks
+      for (const task of tasks) {
+        if (task.subtaskUids.length) {
+          const total = task.subtaskUids.length;
+          const done = task.subtaskUids.filter((uid) => taskByUid.get(uid)?.isCompleted).length;
+          task.subtaskProgress = { done, total };
+        }
+      }
+
+      // Pass 4: inject subtask progress pill into parent tasks
+      for (const task of tasks) {
+        if (task.subtaskProgress) {
+          const { done, total } = task.subtaskProgress;
+          const lang = getLanguageSetting();
+          const metaLabels = t(["metadata"], lang) || {};
+          const progressLabel = metaLabels.subtaskProgress || "Subtasks";
+          task.metaPills.push({
+            type: "subtaskProgress",
+            icon: "\u{1F4CB}",
+            value: `${done}/${total}`,
+            label: `${progressLabel}: ${done}/${total}`,
+          });
+        }
+      }
+
+      // Populate subtask progress cache for inline pill rendering
+      subtaskProgressCache.clear();
+      let cacheChanged = false;
+      for (const task of tasks) {
+        if (task.subtaskProgress) {
+          subtaskProgressCache.set(task.uid, task.subtaskProgress);
+          // Invalidate pill signature so inline pills pick up new progress
+          window.__btPillSignatureCache?.delete(task.uid);
+          cacheChanged = true;
+        }
+      }
+      if (cacheChanged) {
+        scheduleSurfaceSync(lastAttrSurface || "Child");
+      }
+
       return dashboardTaskCache.set(memoKey, sortDashboardTasksList(tasks));
     }
 
@@ -14208,6 +14623,7 @@ export default {
           getAttrLabel("priority", attrNames),
           getAttrLabel("energy", attrNames),
           getAttrLabel("depends", attrNames),
+          getAttrLabel("parent", attrNames),
         ].filter(Boolean)
       );
       if (!labels.size) return [];
@@ -14292,6 +14708,10 @@ export default {
         depends: richMeta.depends || [],
         isBlocked: false,
         blockedBy: [],
+        parentTaskUid: richMeta?.parentTaskUid || null,
+        subtaskUids: [],
+        subtaskProgress: null,
+        isSubtask: false,
       };
     }
 
@@ -16168,7 +16588,7 @@ function ensureDashboardWatch(uid) {
     const oldest = dashboardWatchers.keys().next().value;
     if (oldest) removeDashboardWatch(oldest);
   }
-  const pattern = "[:block/uid]";
+  const pattern = "[:block/uid {:block/children [:block/uid]}]";
   const selector = [":block/uid", uid];
   try {
     window.roamAlphaAPI.data.addPullWatch(

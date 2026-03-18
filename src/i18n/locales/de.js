@@ -355,6 +355,8 @@ const locale = {
         meta: "Metadaten"
       }
     },
+    expandSubtasks: "Expand subtasks",
+    collapseSubtasks: "Collapse subtasks",
     empty: {
       loading: "Aufgaben werden geladen…",
       error: "Aufgaben konnten nicht geladen werden.",
@@ -588,7 +590,8 @@ const locale = {
     dependsLabel: "Abhängig von",
     blocked: "Blockiert",
     blockedBy: "Blockiert durch",
-    actionable: "Umsetzbar"
+    actionable: "Umsetzbar",
+    subtaskProgress: "Subtasks"
   },
   dependsPicker: {
     title: "Abhängige Aufgaben auswählen",

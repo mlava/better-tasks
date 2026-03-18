@@ -355,6 +355,8 @@ const locale = {
         meta: "メタデータ"
       }
     },
+    expandSubtasks: "Expand subtasks",
+    collapseSubtasks: "Collapse subtasks",
     empty: {
       loading: "タスクを読み込み中…",
       error: "タスクを読み込めませんでした。",
@@ -588,7 +590,8 @@ const locale = {
     dependsLabel: "依存先",
     blocked: "保留中",
     blockedBy: "先行タスク",
-    actionable: "実行可能"
+    actionable: "実行可能",
+    subtaskProgress: "Subtasks"
   },
   dependsPicker: {
     title: "依存タスクを選択",

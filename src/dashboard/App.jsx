@@ -381,19 +381,38 @@ function groupTasks(tasks, grouping, options = {}) {
   return groups;
 }
 
-function useVirtualRows(groups, expandedMap) {
+function useVirtualRows(groups, expandedMap, expandedParentMap, filteredTaskIndex) {
   return useMemo(() => {
     const rows = [];
     for (const group of groups) {
       rows.push({ type: "group", key: `group-${group.id}`, groupId: group.id, group });
       if (expandedMap[group.id] !== false) {
         for (const task of group.items) {
+          // Skip subtasks whose parent IS in the filtered view (they nest under parent)
+          if (task.isSubtask && task.parentTaskUid && filteredTaskIndex.has(task.parentTaskUid)) continue;
+
           rows.push({ type: "task", key: `task-${task.uid}`, groupId: group.id, task });
+
+          // If expanded parent, inject subtask rows
+          if (task.subtaskUids?.length && expandedParentMap[task.uid]) {
+            for (const subUid of task.subtaskUids) {
+              const subTask = filteredTaskIndex.get(subUid);
+              if (subTask) {
+                rows.push({
+                  type: "subtask",
+                  key: `subtask-${subUid}`,
+                  groupId: group.id,
+                  task: subTask,
+                  parentUid: task.uid,
+                });
+              }
+            }
+          }
         }
       }
     }
     return rows;
-  }, [groups, expandedMap]);
+  }, [groups, expandedMap, expandedParentMap, filteredTaskIndex]);
 }
 
 function Pill({ icon, label, value, muted, onClick }) {
@@ -1044,7 +1063,7 @@ function SimpleActionsMenu({ actions, title, disabled = false }) {
   );
 }
 
-function TaskRow({ task, controller, strings, selectionActive, isSelected, onToggleSelect }) {
+function TaskRow({ task, controller, strings, selectionActive, isSelected, onToggleSelect, isSubtask, hasSubtasks, isExpanded, onToggleExpand }) {
   const checkboxLabel = task.isCompleted
     ? strings?.markOpen || "Mark as open"
     : strings?.markDone || "Mark as done";
@@ -1111,6 +1130,7 @@ function TaskRow({ task, controller, strings, selectionActive, isSelected, onTog
     menuOpen ? "bt-task-row--menu-open" : "",
     isSelected ? "bt-task-row--selected" : "",
     task.isBlocked ? "bt-task-row--blocked" : "",
+    isSubtask ? "bt-task-row--subtask" : "",
   ].filter(Boolean).join(" ");
   // In selection mode: show selection state; otherwise show completion state
   const checkboxIcon = selectionActive
@@ -1135,6 +1155,16 @@ function TaskRow({ task, controller, strings, selectionActive, isSelected, onTog
       </button>
       <div className="bt-task-row__body">
         <div className="bt-task-row__title" aria-describedby={metaDescriptionId}>
+          {hasSubtasks ? (
+            <button
+              className="bt-task-row__subtask-toggle"
+              onClick={(e) => { e.stopPropagation(); onToggleExpand?.(); }}
+              aria-expanded={!!isExpanded}
+              aria-label={isExpanded ? (strings?.collapseSubtasks || "Collapse subtasks") : (strings?.expandSubtasks || "Expand subtasks")}
+            >
+              {isExpanded ? "\u25BE" : "\u25B8"}
+            </button>
+          ) : null}
           {task.isBlocked ? "🔒 " : ""}{task.title || strings?.untitled || "(Untitled task)"}
         </div>
         <span id={metaDescriptionId} className="bt-sr-only">
@@ -1518,6 +1548,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const [grouping, setGrouping] = useState("time");
   const [query, setQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [expandedParentTasks, setExpandedParentTasks] = useState({});
   const [viewsStore, setViewsStore] = useState(() => ({ schema: 1, activeViewId: null, views: [] }));
   const [viewsLoaded, setViewsLoaded] = useState(false);
   const [reviewStartRequested, setReviewStartRequested] = useState(false);
@@ -1879,6 +1910,11 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     () => applyFilters(snapshot.tasks, filters, query),
     [snapshot.tasks, filters, query]
   );
+  const filteredTaskIndex = useMemo(() => {
+    const map = new Map();
+    for (const task of filteredTasks) map.set(task.uid, task);
+    return map;
+  }, [filteredTasks]);
   const groups = useMemo(
     () =>
       groupTasks(filteredTasks, grouping, {
@@ -1908,7 +1944,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     });
   }, [groups]);
 
-  const rows = useVirtualRows(groups, expandedGroups);
+  const rows = useVirtualRows(groups, expandedGroups, expandedParentTasks, filteredTaskIndex);
   const parentRef = useRef(null);
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
@@ -1960,7 +1996,12 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     return () => document.removeEventListener("keydown", handler);
   }, [isMobileLayout, sidebarOpen]);
   const estimateRowSize = useCallback(
-    (index) => (rows[index]?.type === "group" ? 40 : 100),
+    (index) => {
+      const row = rows[index];
+      if (row?.type === "group") return 40;
+      if (row?.type === "subtask") return 80;
+      return 100;
+    },
     [rows]
   );
   const getRowKey = useCallback((index) => rows[index]?.key ?? index, [rows]);
@@ -3232,12 +3273,35 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                       </div>
                     );
                   }
+                  if (row.type === "subtask") {
+                    return (
+                      <div style={style} key={row.key} data-index={virtualRow.index} ref={rowVirtualizer.measureElement}>
+                        <TaskRow
+                          task={row.task}
+                          controller={controller}
+                          strings={ui}
+                          isSubtask={true}
+                          selectionActive={selectionActive}
+                          isSelected={selectedUids.has(row.task.uid)}
+                          onToggleSelect={handleToggleSelect}
+                        />
+                      </div>
+                    );
+                  }
                   return (
                     <div style={style} key={row.key} data-index={virtualRow.index} ref={rowVirtualizer.measureElement}>
                       <TaskRow
                         task={row.task}
                         controller={controller}
                         strings={ui}
+                        hasSubtasks={!!(row.task.subtaskUids?.length)}
+                        isExpanded={!!expandedParentTasks[row.task.uid]}
+                        onToggleExpand={() =>
+                          setExpandedParentTasks((prev) => ({
+                            ...prev,
+                            [row.task.uid]: !prev[row.task.uid],
+                          }))
+                        }
                         selectionActive={selectionActive}
                         isSelected={selectedUids.has(row.task.uid)}
                         onToggleSelect={handleToggleSelect}

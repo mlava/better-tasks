@@ -355,6 +355,8 @@ const locale = {
         meta: "元資訊"
       }
     },
+    expandSubtasks: "Expand subtasks",
+    collapseSubtasks: "Collapse subtasks",
     empty: {
       loading: "正在載入任務…",
       error: "無法載入任務。",
@@ -588,7 +590,8 @@ const locale = {
     dependsLabel: "相依於",
     blocked: "受阻",
     blockedBy: "受阻於",
-    actionable: "可執行"
+    actionable: "可執行",
+    subtaskProgress: "Subtasks"
   },
   dependsPicker: {
     title: "選擇相依任務",

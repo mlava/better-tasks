@@ -355,6 +355,8 @@ const locale = {
         meta: "Metadati"
       }
     },
+    expandSubtasks: "Expand subtasks",
+    collapseSubtasks: "Collapse subtasks",
     empty: {
       loading: "Caricamento attività…",
       error: "Impossibile caricare le attività.",
@@ -588,7 +590,8 @@ const locale = {
     dependsLabel: "Dipende da",
     blocked: "Bloccata",
     blockedBy: "Bloccata da",
-    actionable: "Eseguibile"
+    actionable: "Eseguibile",
+    subtaskProgress: "Subtasks"
   },
   dependsPicker: {
     title: "Seleziona le dipendenze",

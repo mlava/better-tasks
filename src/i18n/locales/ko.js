@@ -355,6 +355,8 @@ const locale = {
         meta: "메타"
       }
     },
+    expandSubtasks: "Expand subtasks",
+    collapseSubtasks: "Collapse subtasks",
     empty: {
       loading: "작업 불러오는 중…",
       error: "작업을 불러오지 못했습니다.",
@@ -588,7 +590,8 @@ const locale = {
     dependsLabel: "의존 대상",
     blocked: "차단됨",
     blockedBy: "차단한 작업",
-    actionable: "실행 가능"
+    actionable: "실행 가능",
+    subtaskProgress: "Subtasks"
   },
   dependsPicker: {
     title: "의존 작업 선택",

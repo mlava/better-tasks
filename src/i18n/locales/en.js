@@ -355,6 +355,8 @@ const locale = {
         meta: "Meta"
       }
     },
+    expandSubtasks: "Expand subtasks",
+    collapseSubtasks: "Collapse subtasks",
     empty: {
       loading: "Loading tasks…",
       error: "Couldn’t load tasks.",
@@ -588,7 +590,8 @@ const locale = {
     dependsLabel: "Depends on",
     blocked: "Blocked",
     blockedBy: "Blocked by",
-    actionable: "Actionable"
+    actionable: "Actionable",
+    subtaskProgress: "Subtasks"
   },
   dependsPicker: {
     title: "Select dependency tasks",

@@ -355,6 +355,8 @@ const locale = {
         meta: "Metadados"
       }
     },
+    expandSubtasks: "Expand subtasks",
+    collapseSubtasks: "Collapse subtasks",
     empty: {
       loading: "A carregar tarefas…",
       error: "Não foi possível carregar as tarefas.",
@@ -588,7 +590,8 @@ const locale = {
     dependsLabel: "Depende de",
     blocked: "Bloqueada",
     blockedBy: "Bloqueada por",
-    actionable: "Acionável"
+    actionable: "Acionável",
+    subtaskProgress: "Subtasks"
   },
   dependsPicker: {
     title: "Selecionar dependências",

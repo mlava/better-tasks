@@ -355,6 +355,8 @@ const locale = {
         meta: "Метаданные"
       }
     },
+    expandSubtasks: "Expand subtasks",
+    collapseSubtasks: "Collapse subtasks",
     empty: {
       loading: "Загрузка задач…",
       error: "Не удалось загрузить задачи.",
@@ -588,7 +590,8 @@ const locale = {
     dependsLabel: "Зависит от",
     blocked: "Заблокировано",
     blockedBy: "Заблокировано задачей",
-    actionable: "Выполнимо"
+    actionable: "Выполнимо",
+    subtaskProgress: "Subtasks"
   },
   dependsPicker: {
     title: "Выбрать задачи-зависимости",

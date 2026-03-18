@@ -355,6 +355,8 @@ const locale = {
         meta: "元信息"
       }
     },
+    expandSubtasks: "Expand subtasks",
+    collapseSubtasks: "Collapse subtasks",
     empty: {
       loading: "正在加载任务…",
       error: "无法加载任务。",
@@ -588,7 +590,8 @@ const locale = {
     dependsLabel: "依赖于",
     blocked: "已阻塞",
     blockedBy: "被阻塞",
-    actionable: "可执行"
+    actionable: "可执行",
+    subtaskProgress: "Subtasks"
   },
   dependsPicker: {
     title: "选择依赖任务",

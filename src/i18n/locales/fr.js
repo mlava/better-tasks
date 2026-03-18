@@ -355,6 +355,8 @@ const locale = {
         meta: "Métadonnées"
       }
     },
+    expandSubtasks: "Expand subtasks",
+    collapseSubtasks: "Collapse subtasks",
     empty: {
       loading: "Chargement des tâches…",
       error: "Impossible de charger les tâches.",
@@ -588,7 +590,8 @@ const locale = {
     dependsLabel: "Dépend de",
     blocked: "Bloquée",
     blockedBy: "Bloquée par",
-    actionable: "Actionnable"
+    actionable: "Actionnable",
+    subtaskProgress: "Subtasks"
   },
   dependsPicker: {
     title: "Sélectionner les dépendances",
