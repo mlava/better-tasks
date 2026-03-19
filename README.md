@@ -5,7 +5,7 @@
 Turn native TODOs into **scheduled and recurring tasks** with **inline pills**, a **powerful dashboard**, and optional **Today widget/badge** — all stored as plain Roam blocks.
 <BR><BR>
 
-> ✅ Roam-native storage (child blocks) • ✅ Recurring + one-off scheduled tasks • ✅ Actively maintained
+> ✅ Roam-native storage (child blocks) • ✅ Recurring + one-off scheduled tasks • ✅ Subtasks & dependencies • ✅ Actively maintained
 
 <BR>
 **Support / bugs:** Please message me in the Roam Slack (include repro steps + any console output if relevant):  
@@ -31,12 +31,14 @@ If you use TODOs in Roam, Better Tasks gives you:
 - A **dashboard** for review & triage, **saved views**, and **weekly review presets**
 - **Bulk operations** to complete, snooze, or update metadata across multiple tasks
 - Optional **Today widget** (on today's DNP) and **Today badge** (left sidebar)
+- **Subtasks** with progress indicators, structural nesting or explicit cross-graph linking
 - Optional metadata: **Project, Context, Waiting-for, GTD, Priority, Energy, Dependencies**
 
 ---
 
 ## ✅ Recent updates
 
+- **Subtasks:** nest BT tasks under a parent for automatic subtask detection with 📋 progress indicators (e.g. 1/3 done). Dashboard shows expand/collapse trees. Explicit `BT_attrParent:: ((uid))` links subtasks across the graph, overriding structural nesting. Progress tracks completion in real time. Extension Tools API includes `is_subtask`, `parent_task_uid`, `subtask_uids`, `subtask_progress`.
 - **Task dependencies:** block tasks on other tasks with `BT_attrDepends:: ((uid))`. Blocked tasks show a 🔒 indicator in pills, dashboard, and Today widget. Circular dependency detection (self, mutual, transitive). Dependency picker in the ⋯ pill menu. Blocked/Actionable filter in dashboard. Auto-unblock on completion; stale dependencies auto-cleaned.
 - **"Project Page" destination:** recurring tasks with a project attribute can now route their next occurrence to the project's page instead of the Daily Notes Page. Falls back to DNP gracefully when no project is set.
 - **Rich metadata carry-forward:** spawned recurring tasks now inherit all metadata (project, context, priority, energy, GTD, waiting-for) from the completed occurrence — not just scheduling attributes.
@@ -84,6 +86,7 @@ Optional attributes:
 - `BT_attrDefer::` — when it should resurface
 - `BT_attrCompleted::` — written on completion
 - `BT_attrDepends::` — task dependencies (one or more `((uid))` refs, comma-separated)
+- `BT_attrParent::` — explicit subtask link to a parent task (`((uid))`)
 
 ✅ Disable Better Tasks anytime — your tasks remain plain Roam blocks.
 
@@ -121,6 +124,18 @@ Add `BT_attrDepends:: ((task-uid))` as a child block to create a dependency. The
 - **Dependency picker:** use the ⋯ pill menu to add, edit, or remove dependencies with a searchable task picker
 - **Dashboard filters:** Blocked / Actionable chips filter the task list; "Blocked Tasks" preset view available
 - **Recurring tasks:** dependencies are not carried forward to the next occurrence
+
+### Subtasks
+
+Nest a Better Task under another Better Task to create a subtask relationship automatically. The parent shows a 📋 progress indicator (e.g. `1/3`) inline and in the dashboard.
+
+- **Structural detection:** any `{{[[TODO]]}}` or `{{[[DONE]]}}` block with BT attributes nested directly under another BT task is detected as a subtask
+- **Explicit linking:** add `BT_attrParent:: ((parent-uid))` to link a subtask to a parent anywhere in the graph — overrides structural nesting
+- **Progress indicators:** parent tasks show `📋 done/total` in inline pills and dashboard
+- **Dashboard expand/collapse:** parent tasks show a ▸ caret; click to expand and see subtasks nested below
+- **Per-level counting:** each parent counts its direct children only (not recursive grandchildren)
+- **Drag-in/out:** moving a block in or out of a parent updates the relationship in real time
+- **Recurring parents:** subtask relationships are not carried forward to spawned occurrences
 
 Interactions:
 - Click → open page
@@ -477,7 +492,7 @@ Better Tasks registers tools on `window.RoamExtensionTools["better-tasks"]` so o
 | `bt_get_waiting_for` | List waiting-for values with optional counts |
 | `bt_get_context` | List context values with optional counts |
 | `bt_get_attributes` | Get configured attribute schema (names, types, allowed values) |
-| `bt_search` | Search tasks by status, due, project, assignee, blocked state, or free text |
+| `bt_search` | Search tasks by status, due, project, assignee, blocked state, or free text. Results include `is_subtask`, `parent_task_uid`, `subtask_uids`, `subtask_progress`. |
 | `bt_create` | Create a new task (defaults to today's daily page) |
 | `bt_modify` | Update an existing task's status, text, or attributes |
 

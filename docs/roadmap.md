@@ -134,12 +134,15 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - Dependencies not carried forward on recurring task spawn
 - Dependencies model task sequencing; Waiting-for remains reserved for people or external blockers.
 
-### Subtasks - Next
-- Parent/child task relationships
-- Progress indicators (3/5 subtasks done)
-- Metadata inheritance from parent
-- Optional auto-complete parent when all children done
-- Dashboard expand/collapse for subtask trees
+### Subtasks — Core Complete ✅ / Inheritance & Auto-complete Deferred
+- ✅ Parent/child task relationships (structural nesting + explicit `BT_attrParent:: ((uid))`)
+- ✅ Progress indicators (📋 0/1 inline pills + dashboard pills)
+- ✅ Dashboard expand/collapse for subtask trees (panel + full-page modes)
+- ✅ Explicit `BT_attrParent` overrides structural nesting
+- ✅ Pull watch on `:block/children` for drag-in/out detection
+- ✅ Extension Tools API: `is_subtask`, `parent_task_uid`, `subtask_uids`, `subtask_progress`
+- ⏳ Metadata inheritance from parent (deferred — project-only, next phase)
+- ⏳ Optional auto-complete parent when all children done (deferred)
 
 ### Bulk Operations - Complete ✅
 - Multi-select in dashboard (checkboxes, shift-click)
