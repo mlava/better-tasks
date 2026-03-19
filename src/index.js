@@ -11045,7 +11045,44 @@ export default {
             : "";
           const blockedCached = blockedStateCache.get(uid);
           const blockedSig = blockedCached ? (blockedCached.blocked ? "B" : "U") : "?";
-          const subtaskProg = subtaskProgressCache.get(uid);
+          let subtaskProg = subtaskProgressCache.get(uid);
+          // Compute structural subtask progress on cache miss (skip if collectDashboardTasks recently ran)
+          const recentCollect = subtaskProgressCache._lastCollectAt && (Date.now() - subtaskProgressCache._lastCollectAt < 5000);
+          if (!subtaskProg && !recentCollect) {
+            const todoRe = /^\{\{?\[\[(?:TODO|DONE)\]\]\}\}?/;
+            const childTodos = (block?.children || []).filter((c) => todoRe.test((c?.string || "").trim()));
+            if (childTodos.length) {
+              void (async () => {
+                try {
+                  for (const child of childTodos) invalidateBlockCache(child.uid);
+                  let total = 0;
+                  let done = 0;
+                  for (const child of childTodos) {
+                    const childBlock = await getBlock(child.uid);
+                    if (!childBlock) continue;
+                    const childMeta = await readRecurringMeta(childBlock, set);
+                    if (!isBetterTasksTask(childMeta)) continue;
+                    const childExplicitParent = childMeta.metadata?.parentTaskUid;
+                    if (childExplicitParent && childExplicitParent !== uid) continue;
+                    total++;
+                    if (isBlockCompleted(childBlock)) done++;
+                  }
+                  const prev = subtaskProgressCache.get(uid);
+                  if (total > 0) {
+                    if (!prev || prev.done !== done || prev.total !== total) {
+                      subtaskProgressCache.set(uid, { done, total });
+                      window.__btPillSignatureCache?.delete(uid);
+                      setTimeout(() => scheduleSurfaceSync(lastAttrSurface || "Child"), 520);
+                    }
+                  } else if (prev && !prev._hasExplicit) {
+                    subtaskProgressCache.delete(uid);
+                    window.__btPillSignatureCache?.delete(uid);
+                    setTimeout(() => scheduleSurfaceSync(lastAttrSurface || "Child"), 520);
+                  }
+                } catch (_) { /* ignore */ }
+              })();
+            }
+          }
           const subtaskSig = subtaskProg ? `${subtaskProg.done}/${subtaskProg.total}` : "";
           const signatureParts = [
             humanRepeat || "",
