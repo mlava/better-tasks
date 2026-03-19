@@ -3808,6 +3808,21 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                 </div>
               );
             }
+            if (row.type === "subtask") {
+              return (
+                <div style={style} key={row.key} data-index={virtualRow.index} ref={rowVirtualizer.measureElement}>
+                  <TaskRow
+                    task={row.task}
+                    controller={controller}
+                    strings={ui}
+                    isSubtask={true}
+                    selectionActive={selectionActive}
+                    isSelected={selectedUids.has(row.task.uid)}
+                    onToggleSelect={handleToggleSelect}
+                  />
+                </div>
+              );
+            }
             return (
               <div
                 style={style}
@@ -3819,6 +3834,14 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                   task={row.task}
                   controller={controller}
                   strings={ui}
+                  hasSubtasks={!!(row.task.subtaskUids?.length)}
+                  isExpanded={!!expandedParentTasks[row.task.uid]}
+                  onToggleExpand={() =>
+                    setExpandedParentTasks((prev) => ({
+                      ...prev,
+                      [row.task.uid]: !prev[row.task.uid],
+                    }))
+                  }
                   selectionActive={selectionActive}
                   isSelected={selectedUids.has(row.task.uid)}
                   onToggleSelect={handleToggleSelect}
