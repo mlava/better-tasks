@@ -97,6 +97,8 @@ const locale = {
     energyAttrDescription: "Etichetta dell'attributo energia",
     dependsAttr: "Nome attributo dipendenze",
     dependsAttrDescription: "Etichetta dell'attributo dipendenze attività (blocco figlio)",
+    parentAttr: "Nome attributo attività padre",
+    parentAttrDescription: "Etichetta dell'attributo attività padre (blocco figlio)",
     confirmBeforeSpawn: "Conferma prima di generare la prossima attività",
     confirmBeforeSpawnDescription: "Chiedi conferma prima di generare la prossima occorrenza quando una Better Task ricorrente viene completata",
     weekStart: "Primo giorno della settimana",
@@ -355,8 +357,8 @@ const locale = {
         meta: "Metadati"
       }
     },
-    expandSubtasks: "Expand subtasks",
-    collapseSubtasks: "Collapse subtasks",
+    expandSubtasks: "Espandi sotto-attività",
+    collapseSubtasks: "Comprimi sotto-attività",
     empty: {
       loading: "Caricamento attività…",
       error: "Impossibile caricare le attività.",
@@ -591,7 +593,7 @@ const locale = {
     blocked: "Bloccata",
     blockedBy: "Bloccata da",
     actionable: "Eseguibile",
-    subtaskProgress: "Subtasks"
+    subtaskProgress: "Sotto-attività"
   },
   dependsPicker: {
     title: "Seleziona le dipendenze",

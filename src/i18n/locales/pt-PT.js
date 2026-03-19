@@ -97,6 +97,8 @@ const locale = {
     energyAttrDescription: "Rótulo para o atributo de energia",
     dependsAttr: "Nome do atributo de dependências",
     dependsAttrDescription: "Rótulo para o atributo de dependências de tarefa (bloco filho)",
+    parentAttr: "Nome do atributo de tarefa pai",
+    parentAttrDescription: "Rótulo para o atributo de tarefa pai (bloco filho)",
     confirmBeforeSpawn: "Confirmar antes de gerar próxima tarefa",
     confirmBeforeSpawnDescription: "Pedir confirmação antes de gerar quando uma Better Task recorrente é concluída",
     weekStart: "Primeiro dia da semana",
@@ -355,8 +357,8 @@ const locale = {
         meta: "Meta"
       }
     },
-    expandSubtasks: "Expand subtasks",
-    collapseSubtasks: "Collapse subtasks",
+    expandSubtasks: "Expandir subtarefas",
+    collapseSubtasks: "Recolher subtarefas",
     empty: {
       loading: "A carregar tarefas…",
       error: "Não foi possível carregar as tarefas.",
@@ -591,7 +593,7 @@ const locale = {
     blocked: "Bloqueada",
     blockedBy: "Bloqueada por",
     actionable: "Acionável",
-    subtaskProgress: "Subtasks"
+    subtaskProgress: "Subtarefas"
   },
   dependsPicker: {
     title: "Selecionar dependências",

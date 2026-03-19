@@ -97,6 +97,8 @@ const locale = {
     energyAttrDescription: "精力屬性的標籤",
     dependsAttr: "相依屬性名稱",
     dependsAttrDescription: "任務相依屬性的標籤（子區塊）",
+    parentAttr: "父任務屬性名稱",
+    parentAttrDescription: "父任務屬性的標籤（子區塊）",
     confirmBeforeSpawn: "生成下一個任務前需確認",
     confirmBeforeSpawnDescription: "在重複任務完成時生成下一次前提示確認",
     weekStart: "每週的第一天",
@@ -355,8 +357,8 @@ const locale = {
         meta: "元資訊"
       }
     },
-    expandSubtasks: "Expand subtasks",
-    collapseSubtasks: "Collapse subtasks",
+    expandSubtasks: "展開子任務",
+    collapseSubtasks: "收合子任務",
     empty: {
       loading: "正在載入任務…",
       error: "無法載入任務。",
@@ -372,7 +374,7 @@ const locale = {
       Priority: "優先級",
       Energy: "精力",
       GTD: "GTD",
-      Blocked: "受阻"
+      Blocked: "已封鎖"
     },
     filterValues: {
       recurring: "重複",
@@ -393,7 +395,7 @@ const locale = {
       "next action": "下一步行動",
       delegated: "已委派",
       someday: "某天",
-      blocked: "受阻",
+      blocked: "已封鎖",
       actionable: "可執行"
     },
     completedWithinLabel: "完成時間範圍",
@@ -589,9 +591,9 @@ const locale = {
     depends: "相依",
     dependsLabel: "相依於",
     blocked: "受阻",
-    blockedBy: "受阻於",
+    blockedBy: "阻礙任務",
     actionable: "可執行",
-    subtaskProgress: "Subtasks"
+    subtaskProgress: "子任務"
   },
   dependsPicker: {
     title: "選擇相依任務",

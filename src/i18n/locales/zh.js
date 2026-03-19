@@ -97,6 +97,8 @@ const locale = {
     energyAttrDescription: "精力属性的标签",
     dependsAttr: "依赖属性名称",
     dependsAttrDescription: "任务依赖属性的标签（子块）",
+    parentAttr: "父任务属性名称",
+    parentAttrDescription: "父任务属性的标签（子块）",
     confirmBeforeSpawn: "生成下一个任务前需要确认",
     confirmBeforeSpawnDescription: "在重复任务完成时生成下一次前提示确认",
     weekStart: "每周的第一天",
@@ -355,8 +357,8 @@ const locale = {
         meta: "元信息"
       }
     },
-    expandSubtasks: "Expand subtasks",
-    collapseSubtasks: "Collapse subtasks",
+    expandSubtasks: "展开子任务",
+    collapseSubtasks: "折叠子任务",
     empty: {
       loading: "正在加载任务…",
       error: "无法加载任务。",
@@ -588,10 +590,10 @@ const locale = {
     gtdLabel: "GTD",
     depends: "依赖",
     dependsLabel: "依赖于",
-    blocked: "已阻塞",
-    blockedBy: "被阻塞",
+    blocked: "受阻",
+    blockedBy: "阻碍任务",
     actionable: "可执行",
-    subtaskProgress: "Subtasks"
+    subtaskProgress: "子任务"
   },
   dependsPicker: {
     title: "选择依赖任务",

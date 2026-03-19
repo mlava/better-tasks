@@ -97,6 +97,8 @@ const locale = {
     energyAttrDescription: "에너지 속성 라벨",
     dependsAttr: "의존성 속성 이름",
     dependsAttrDescription: "작업 의존성 속성 라벨 (하위 블록)",
+    parentAttr: "상위 작업 속성 이름",
+    parentAttrDescription: "상위 작업 속성 라벨 (하위 블록)",
     confirmBeforeSpawn: "다음 작업 생성 전 확인",
     confirmBeforeSpawnDescription: "반복 Better Task 완료 시 다음 발생 생성 전에 확인 요청",
     weekStart: "한 주의 시작 요일",
@@ -355,8 +357,8 @@ const locale = {
         meta: "메타"
       }
     },
-    expandSubtasks: "Expand subtasks",
-    collapseSubtasks: "Collapse subtasks",
+    expandSubtasks: "하위 작업 펼치기",
+    collapseSubtasks: "하위 작업 접기",
     empty: {
       loading: "작업 불러오는 중…",
       error: "작업을 불러오지 못했습니다.",
@@ -591,7 +593,7 @@ const locale = {
     blocked: "차단됨",
     blockedBy: "차단한 작업",
     actionable: "실행 가능",
-    subtaskProgress: "Subtasks"
+    subtaskProgress: "하위 작업"
   },
   dependsPicker: {
     title: "의존 작업 선택",

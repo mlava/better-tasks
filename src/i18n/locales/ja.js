@@ -97,6 +97,8 @@ const locale = {
     energyAttrDescription: "エネルギー属性のラベル",
     dependsAttr: "依存関係属性名",
     dependsAttrDescription: "タスク依存関係属性のラベル（子ブロック）",
+    parentAttr: "親タスク属性名",
+    parentAttrDescription: "親タスク属性のラベル（子ブロック）",
     confirmBeforeSpawn: "次のタスク生成前に確認",
     confirmBeforeSpawnDescription: "繰り返しBetter Taskの完了時に次の発生を生成する前に確認を求める",
     weekStart: "週の最初の曜日",
@@ -355,8 +357,8 @@ const locale = {
         meta: "メタデータ"
       }
     },
-    expandSubtasks: "Expand subtasks",
-    collapseSubtasks: "Collapse subtasks",
+    expandSubtasks: "サブタスクを展開",
+    collapseSubtasks: "サブタスクを折りたたむ",
     empty: {
       loading: "タスクを読み込み中…",
       error: "タスクを読み込めませんでした。",
@@ -372,7 +374,7 @@ const locale = {
       Priority: "優先度",
       Energy: "エネルギー",
       GTD: "GTD",
-      Blocked: "保留中"
+      Blocked: "ブロック中"
     },
     filterValues: {
       recurring: "繰り返し",
@@ -393,7 +395,7 @@ const locale = {
       "next action": "次のアクション",
       delegated: "委任済み",
       someday: "いつか",
-      blocked: "保留中",
+      blocked: "ブロック中",
       actionable: "実行可能"
     },
     completedWithinLabel: "完了期間",
@@ -588,13 +590,13 @@ const locale = {
     gtdLabel: "GTD",
     depends: "依存関係",
     dependsLabel: "依存先",
-    blocked: "保留中",
-    blockedBy: "先行タスク",
+    blocked: "依存待ち",
+    blockedBy: "依存先タスク",
     actionable: "実行可能",
-    subtaskProgress: "Subtasks"
+    subtaskProgress: "サブタスク"
   },
   dependsPicker: {
-    title: "依存タスクを選択",
+    title: "依存先タスクを選択",
     placeholder: "未完了タスクを検索…",
     noItems: "一致するタスクが見つかりません",
     cycleDetected: "追加できません — 循環依存が発生します",

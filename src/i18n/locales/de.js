@@ -97,6 +97,8 @@ const locale = {
     energyAttrDescription: "Beschriftung des Energieattributs",
     dependsAttr: "Name des Abhängigkeitsattributs",
     dependsAttrDescription: "Beschriftung des Aufgabenabhängigkeits-Attributs (Unterblock)",
+    parentAttr: "Name des Elternaufgaben-Attributs",
+    parentAttrDescription: "Beschriftung des Elternaufgaben-Attributs (Unterblock)",
     confirmBeforeSpawn: "Vor der Erzeugung der nächsten Aufgabe bestätigen",
     confirmBeforeSpawnDescription: "Bestätigung anfordern, bevor die nächste Wiederholung beim Erledigen einer wiederkehrenden Aufgabe erzeugt wird",
     weekStart: "Erster Tag der Woche",
@@ -355,8 +357,8 @@ const locale = {
         meta: "Metadaten"
       }
     },
-    expandSubtasks: "Expand subtasks",
-    collapseSubtasks: "Collapse subtasks",
+    expandSubtasks: "Unteraufgaben aufklappen",
+    collapseSubtasks: "Unteraufgaben zuklappen",
     empty: {
       loading: "Aufgaben werden geladen…",
       error: "Aufgaben konnten nicht geladen werden.",
@@ -591,10 +593,10 @@ const locale = {
     blocked: "Blockiert",
     blockedBy: "Blockiert durch",
     actionable: "Umsetzbar",
-    subtaskProgress: "Subtasks"
+    subtaskProgress: "Unteraufgaben"
   },
   dependsPicker: {
-    title: "Abhängige Aufgaben auswählen",
+    title: "Abhängigkeiten auswählen",
     placeholder: "Offene Aufgaben suchen…",
     noItems: "Keine passenden Aufgaben gefunden",
     cycleDetected: "Kann nicht hinzugefügt werden — würde zirkuläre Abhängigkeit erzeugen",

@@ -689,6 +689,12 @@ export default {
           description: tr("settings.dependsAttrDescription", "Label for task dependencies attribute (child block)"),
           action: { type: "input", placeholder: "BT_attrDepends", onChange: handleAttributeNameChange },
         },
+        {
+          id: "bt-attr-parent",
+          name: tr("settings.parentAttr", "Parent task attribute name"),
+          description: tr("settings.parentAttrDescription", "Label for the parent task attribute (child block)"),
+          action: { type: "input", placeholder: "BT_attrParent", onChange: handleAttributeNameChange },
+        },
       ];
 
       const dashboardAdvancedToggle = [
@@ -4475,6 +4481,7 @@ export default {
         { type: "priority", settingId: "bt-attr-priority" },
         { type: "energy", settingId: "bt-attr-energy" },
         { type: "depends", settingId: "bt-attr-depends" },
+        { type: "parent", settingId: "bt-attr-parent" },
       ];
       map.forEach(({ type, settingId }) => {
         const prevLabel = prev?.[`${type}Attr`];

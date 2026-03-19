@@ -97,6 +97,8 @@ const locale = {
     energyAttrDescription: "Label for energy attribute",
     dependsAttr: "Dependencies attribute name",
     dependsAttrDescription: "Label for task dependencies attribute (child block)",
+    parentAttr: "Parent task attribute name",
+    parentAttrDescription: "Label for the parent task attribute (child block)",
     confirmBeforeSpawn: "Confirm before spawning next task",
     confirmBeforeSpawnDescription: "Ask for confirmation before spawning when a repeating Better Task is completed",
     weekStart: "First day of the week",

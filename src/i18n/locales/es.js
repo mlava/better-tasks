@@ -97,6 +97,8 @@ const locale = {
     energyAttrDescription: "Etiqueta del atributo de energía",
     dependsAttr: "Nombre del atributo de dependencias",
     dependsAttrDescription: "Etiqueta del atributo de dependencias de tarea (bloque hijo)",
+    parentAttr: "Nombre del atributo de tarea padre",
+    parentAttrDescription: "Etiqueta del atributo de tarea padre (bloque hijo)",
     confirmBeforeSpawn: "Confirmar antes de generar la siguiente tarea",
     confirmBeforeSpawnDescription: "Pedir confirmación antes de generar la siguiente ocurrencia al completar una tarea recurrente",
     weekStart: "Primer día de la semana",
@@ -355,8 +357,8 @@ const locale = {
         meta: "Metadatos"
       }
     },
-    expandSubtasks: "Expand subtasks",
-    collapseSubtasks: "Collapse subtasks",
+    expandSubtasks: "Expandir subtareas",
+    collapseSubtasks: "Contraer subtareas",
     empty: {
       loading: "Cargando tareas…",
       error: "No se pudieron cargar las tareas.",
@@ -591,7 +593,7 @@ const locale = {
     blocked: "Bloqueada",
     blockedBy: "Bloqueada por",
     actionable: "Ejecutable",
-    subtaskProgress: "Subtasks"
+    subtaskProgress: "Subtareas"
   },
   dependsPicker: {
     title: "Seleccionar dependencias",

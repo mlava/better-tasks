@@ -97,6 +97,8 @@ const locale = {
     energyAttrDescription: "Метка атрибута энергии",
     dependsAttr: "Имя атрибута зависимостей",
     dependsAttrDescription: "Метка атрибута зависимостей задачи (дочерний блок)",
+    parentAttr: "Имя атрибута родительской задачи",
+    parentAttrDescription: "Метка атрибута родительской задачи (дочерний блок)",
     confirmBeforeSpawn: "Подтверждать перед созданием следующей задачи",
     confirmBeforeSpawnDescription: "Запрашивать подтверждение перед созданием следующего повторения при завершении повторяющейся Better Task",
     weekStart: "Первый день недели",
@@ -355,8 +357,8 @@ const locale = {
         meta: "Метаданные"
       }
     },
-    expandSubtasks: "Expand subtasks",
-    collapseSubtasks: "Collapse subtasks",
+    expandSubtasks: "Развернуть подзадачи",
+    collapseSubtasks: "Свернуть подзадачи",
     empty: {
       loading: "Загрузка задач…",
       error: "Не удалось загрузить задачи.",
@@ -591,7 +593,7 @@ const locale = {
     blocked: "Заблокировано",
     blockedBy: "Заблокировано задачей",
     actionable: "Выполнимо",
-    subtaskProgress: "Subtasks"
+    subtaskProgress: "Подзадачи"
   },
   dependsPicker: {
     title: "Выбрать задачи-зависимости",

@@ -97,6 +97,8 @@ const locale = {
     energyAttrDescription: "Libellé de l'attribut d'énergie",
     dependsAttr: "Nom de l'attribut de dépendances",
     dependsAttrDescription: "Libellé de l'attribut de dépendances de tâche (bloc enfant)",
+    parentAttr: "Nom de l'attribut de tâche parente",
+    parentAttrDescription: "Libellé de l'attribut de tâche parente (bloc enfant)",
     confirmBeforeSpawn: "Confirmer avant de générer la tâche suivante",
     confirmBeforeSpawnDescription: "Demander confirmation avant de générer la prochaine occurrence lors de la complétion d'une Better Task récurrente",
     weekStart: "Premier jour de la semaine",
@@ -355,8 +357,8 @@ const locale = {
         meta: "Métadonnées"
       }
     },
-    expandSubtasks: "Expand subtasks",
-    collapseSubtasks: "Collapse subtasks",
+    expandSubtasks: "Déplier les sous-tâches",
+    collapseSubtasks: "Replier les sous-tâches",
     empty: {
       loading: "Chargement des tâches…",
       error: "Impossible de charger les tâches.",
@@ -591,7 +593,7 @@ const locale = {
     blocked: "Bloquée",
     blockedBy: "Bloquée par",
     actionable: "Actionnable",
-    subtaskProgress: "Subtasks"
+    subtaskProgress: "Sous-tâches"
   },
   dependsPicker: {
     title: "Sélectionner les dépendances",

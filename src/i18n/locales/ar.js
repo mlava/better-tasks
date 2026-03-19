@@ -97,6 +97,8 @@ const locale = {
     energyAttrDescription: "تسمية سمة الطاقة",
     dependsAttr: "اسم سمة التبعيات",
     dependsAttrDescription: "تسمية سمة تبعيات المهمة (بلوك فرعي)",
+    parentAttr: "اسم سمة المهمة الأصلية",
+    parentAttrDescription: "تسمية سمة المهمة الأصلية (بلوك فرعي)",
     confirmBeforeSpawn: "تأكيد قبل إنشاء المهمة التالية",
     confirmBeforeSpawnDescription: "طلب التأكيد قبل الإنشاء عند إكمال مهمة Better Tasks متكررة",
     weekStart: "أول يوم في الأسبوع",
@@ -355,8 +357,8 @@ const locale = {
         meta: "البيانات"
       }
     },
-    expandSubtasks: "Expand subtasks",
-    collapseSubtasks: "Collapse subtasks",
+    expandSubtasks: "توسيع المهام الفرعية",
+    collapseSubtasks: "طي المهام الفرعية",
     empty: {
       loading: "جارٍ تحميل المهام…",
       error: "تعذّر تحميل المهام.",
@@ -393,7 +395,7 @@ const locale = {
       "next action": "الإجراء التالي",
       delegated: "مفوّض",
       someday: "يوماً ما",
-      blocked: "معطّلة",
+      blocked: "متوقفة",
       actionable: "قابل للتنفيذ"
     },
     completedWithinLabel: "مكتمل خلال",
@@ -588,10 +590,10 @@ const locale = {
     gtdLabel: "GTD",
     depends: "التبعيات",
     dependsLabel: "يعتمد على",
-    blocked: "معطّلة",
-    blockedBy: "معطّلة بسبب",
+    blocked: "متوقفة",
+    blockedBy: "متوقفة بسبب",
     actionable: "قابل للتنفيذ",
-    subtaskProgress: "Subtasks"
+    subtaskProgress: "المهام الفرعية"
   },
   dependsPicker: {
     title: "اختر مهام التبعية",
