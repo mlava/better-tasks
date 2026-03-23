@@ -589,7 +589,30 @@ const locale = {
     setDepends: "의존성 설정",
     editDepends: "의존성 편집",
     removeDepends: "의존성 제거",
-    metaHeading: "메타데이터"
+    metaHeading: "메타데이터",
+    viewSeries: "시리즈 보기"
+  },
+  series: {
+    title: "반복 시리즈",
+    close: "닫기",
+    current: "현재",
+    completed: "완료됨",
+    upcoming: "예정",
+    onTime: "정시",
+    late: "지연",
+    streak: "현재 연속",
+    longestStreak: "최장 연속",
+    completionRate: "완료율",
+    onTimeRate: "정시 완료율",
+    noHistory: "아직 과거 완료가 없습니다.",
+    projectionCount: "다음 표시",
+    showOlder: "이전 표시…",
+    skipped: "건너뜀",
+    exceptions: "예외",
+    addException: "예외 추가",
+    removeException: "삭제",
+    skipNext: "다음 발생 건너뛰기",
+    modifyNext: "다음 발생 수정"
   },
   metadata: {
     repeat: "반복",

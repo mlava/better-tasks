@@ -4028,6 +4028,7 @@ export default {
         processedTs: processedTs || null,
         rtId: rt.id || null,
         rtParent: rt.parent || null,
+        exceptions: Array.isArray(rt.exceptions) ? rt.exceptions : [],
         pageUid: block.page?.uid || null,
         props,
         advanceFrom,
@@ -4122,6 +4123,7 @@ export default {
       fallbackMeta.childAttrMap = metaCandidate?.childAttrMap || baseMeta?.childAttrMap || {};
       fallbackMeta.rtId = metaCandidate?.rtId || baseMeta?.rtId || null;
       fallbackMeta.rtParent = metaCandidate?.rtParent || baseMeta?.rtParent || null;
+      fallbackMeta.exceptions = metaCandidate?.exceptions || baseMeta?.exceptions || [];
       fallbackMeta.props = metaCandidate?.props || baseMeta?.props || {};
       return { meta: fallbackMeta, block: lastBlock };
     }
@@ -4348,6 +4350,10 @@ export default {
 
     // ========================= Subtask progress cache (populated by collectDashboardTasks) ===
     const subtaskProgressCache = new Map();
+
+    // ========================= Recurring series index (populated by collectDashboardTasks) ===
+    // Map<seriesId, { members: DashboardTask[] }> — groups tasks sharing the same rt.parent / rt.id
+    let dashboardSeriesIndex = new Map();
 
     // ========================= Dependency / blocked-state helpers =========================
     const blockedStateCache = new Map();
@@ -6747,7 +6753,7 @@ export default {
       ];
       const prevText = removeInlineAttributes(prevBlock.string || "", removalKeys);
 
-      const seriesId = meta.rtId || shortId();
+      const seriesId = meta.rtParent || meta.rtId || shortId();
       if (!meta.rtId) await updateBlockProps(prevBlock.uid, { rt: { id: seriesId, tz: set.timezone } });
 
       const placementDate =
@@ -6822,12 +6828,20 @@ export default {
         if (rm.gtd) await ensureChildAttrForType(newUid, "gtd", formatGtdStatusDisplay(rm.gtd), set.attrNames);
       }
 
+      // Carry forward future exceptions, pruning dates in the past
+      const todayRef = todayLocal();
+      const todayIso = `${todayRef.getFullYear()}-${String(todayRef.getMonth() + 1).padStart(2, "0")}-${String(todayRef.getDate()).padStart(2, "0")}`;
+      const futureExceptions = Array.isArray(meta.exceptions)
+        ? meta.exceptions.filter((d) => typeof d === "string" && d >= todayIso)
+        : [];
+      const rtProps = { id: shortId(), parent: seriesId, tz: set.timezone };
+      if (futureExceptions.length) rtProps.exceptions = futureExceptions;
       await updateBlockProps(newUid, {
         repeat: meta.repeat,
         due: nextDueStr,
         start: nextStartStr || undefined,
         defer: nextDeferStr || undefined,
-        rt: { id: shortId(), parent: seriesId, tz: set.timezone },
+        rt: rtProps,
       });
 
       return newUid;
@@ -7327,6 +7341,14 @@ export default {
           next = null;
       }
       if (!next) return null;
+      // Skip exception dates (holidays, etc.) stored in rt.exceptions
+      if (meta.exceptions?.length && depth < 36) {
+        const nextIso = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
+        const exSet = meta._exceptionSet || (meta._exceptionSet = new Set(meta.exceptions));
+        if (exSet.has(nextIso)) {
+          return computeNextDue({ ...meta, due: next }, set, depth + 1, ruleOverride);
+        }
+      }
       const today = todayLocal();
       if (next < today && depth < 36) {
         const updatedMeta = { ...meta, due: next };
@@ -9535,6 +9557,7 @@ export default {
         childAttrMap: clonePlain(meta.childAttrMap || {}),
         props: clonePlain(meta.props || {}),
         advanceFrom: meta.advanceFrom || null,
+        exceptions: meta.exceptions ? [...meta.exceptions] : [],
       };
     }
 
@@ -12405,6 +12428,7 @@ export default {
         delete props.rt.lastCompleted;
         delete props.rt.processed;
         delete props.rt.tz;
+        delete props.rt.exceptions;
       }
       await setBlockProps(uid, props);
       const childMap = parseAttrsFromChildBlocks(block.children || []);
@@ -12953,6 +12977,13 @@ export default {
         getArchivedProjects,
         subscribeArchivedProjects: subscribeToArchivedProjects,
         getTaskMetadata,
+        getSeriesData,
+        getSeriesFutureProjections,
+        computeSeriesStreaks,
+        addSeriesException,
+        removeSeriesException,
+        skipNextOccurrence,
+        getSeriesExceptions,
         isOpen: () => !!root,
         editRepeat,
         editDate,
@@ -13087,6 +13118,111 @@ export default {
         if (!uid) return null;
         const task = state.tasks.find((entry) => entry.uid === uid);
         return task?.metadata || null;
+      }
+
+      function getSeriesData(seriesId) {
+        if (!seriesId) return null;
+        const entry = dashboardSeriesIndex.get(seriesId);
+        if (!entry) return null;
+        const members = entry.members || [];
+        const currentTask = members.find((m) => !m.isCompleted) || null;
+        return { members, currentTask };
+      }
+
+      async function getSeriesFutureProjections(uid, count = 10) {
+        if (!uid) return [];
+        const block = await getBlock(uid);
+        if (!block) return [];
+        const set = S();
+        const meta = await readRecurringMeta(block, set);
+        if (!meta?.repeat) return [];
+        const limit = Math.min(Math.max(count, 1), 20);
+        return previewOccurrences(meta, set, limit);
+      }
+
+      function computeSeriesStreaks(members) {
+        if (!Array.isArray(members) || !members.length) {
+          return { currentStreak: 0, longestStreak: 0, completionRate: 0, totalCompleted: 0, totalOccurrences: 0 };
+        }
+        const completed = members.filter((m) => m.isCompleted);
+        const withDue = completed.filter((m) => m.dueAt instanceof Date && m.completedAt instanceof Date);
+        // Sort by due date descending (most recent first) for streak walk
+        const sorted = withDue.slice().sort((a, b) => b.dueAt.getTime() - a.dueAt.getTime());
+        let currentStreak = 0;
+        let longestStreak = 0;
+        let streak = 0;
+        for (const m of sorted) {
+          const dueDay = new Date(m.dueAt.getFullYear(), m.dueAt.getMonth(), m.dueAt.getDate());
+          const compDay = new Date(m.completedAt.getFullYear(), m.completedAt.getMonth(), m.completedAt.getDate());
+          if (compDay <= dueDay) {
+            streak++;
+            if (streak > longestStreak) longestStreak = streak;
+          } else {
+            if (currentStreak === 0) currentStreak = streak;
+            streak = 0;
+          }
+        }
+        if (currentStreak === 0) currentStreak = streak;
+        if (streak > longestStreak) longestStreak = streak;
+        const totalCompleted = completed.length;
+        const onTimeCount = withDue.filter((m) => {
+          const dueDay = new Date(m.dueAt.getFullYear(), m.dueAt.getMonth(), m.dueAt.getDate());
+          const compDay = new Date(m.completedAt.getFullYear(), m.completedAt.getMonth(), m.completedAt.getDate());
+          return compDay <= dueDay;
+        }).length;
+        const onTimeRate = withDue.length > 0 ? Math.round((onTimeCount / withDue.length) * 100) : (totalCompleted > 0 ? 100 : 0);
+        return { currentStreak, longestStreak, onTimeRate, totalCompleted, totalWithDue: withDue.length };
+      }
+
+      function extractRtFromBlock(block) {
+        const props = parseProps(block?.props);
+        const raw = props?.rt || props?.[":rt"] || {};
+        const out = {};
+        for (const [k, v] of Object.entries(raw)) {
+          out[typeof k === "string" ? k.replace(/^:/, "") : k] = v;
+        }
+        return out;
+      }
+
+      async function addSeriesException(uid, isoDateStr) {
+        if (!uid || typeof isoDateStr !== "string") return;
+        const block = await getBlock(uid);
+        if (!block) return;
+        const rt = extractRtFromBlock(block);
+        const exceptions = Array.isArray(rt.exceptions) ? [...rt.exceptions] : [];
+        if (!exceptions.includes(isoDateStr)) exceptions.push(isoDateStr);
+        exceptions.sort();
+        await updateBlockProps(uid, { rt: { exceptions } });
+      }
+
+      async function removeSeriesException(uid, isoDateStr) {
+        if (!uid || typeof isoDateStr !== "string") return;
+        const block = await getBlock(uid);
+        if (!block) return;
+        const rt = extractRtFromBlock(block);
+        const exceptions = Array.isArray(rt.exceptions) ? rt.exceptions.filter((d) => d !== isoDateStr) : [];
+        await updateBlockProps(uid, { rt: { exceptions: exceptions.length ? exceptions : undefined } });
+      }
+
+      async function skipNextOccurrence(uid) {
+        if (!uid) return;
+        const block = await getBlock(uid);
+        if (!block) return;
+        const set = S();
+        const meta = await readRecurringMeta(block, set);
+        if (!meta?.repeat) return;
+        const nextDate = computeNextDue(meta, set);
+        if (!(nextDate instanceof Date)) return;
+        const nextIso = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}-${String(nextDate.getDate()).padStart(2, "0")}`;
+        await addSeriesException(uid, nextIso);
+      }
+
+      async function getSeriesExceptions(uid) {
+        if (!uid) return [];
+        const block = await getBlock(uid);
+        if (!block) return [];
+        const rt = extractRtFromBlock(block);
+        return Array.isArray(rt.exceptions) ? rt.exceptions : [];
       }
 
       function ensureInitialLoad() {
@@ -14759,6 +14895,18 @@ export default {
         }
       }
 
+      // Pass 5: build recurring series index
+      dashboardSeriesIndex = new Map();
+      for (const task of tasks) {
+        const sid = task.rtParent || task.rtId;
+        if (!sid) continue;
+        if (!dashboardSeriesIndex.has(sid)) dashboardSeriesIndex.set(sid, { members: [] });
+        dashboardSeriesIndex.get(sid).members.push(task);
+      }
+      for (const entry of dashboardSeriesIndex.values()) {
+        entry.members.sort((a, b) => ((a.dueAt || 0) - (b.dueAt || 0)) || ((a.completedAt || 0) - (b.completedAt || 0)));
+      }
+
       // Populate subtask progress cache for inline pill rendering
       subtaskProgressCache.clear();
       // Clear ALL pill signatures — subtask relationships may have changed for any task
@@ -14917,6 +15065,8 @@ export default {
         subtaskUids: [],
         subtaskProgress: null,
         isSubtask: false,
+        rtId: meta?.rtId || null,
+        rtParent: meta?.rtParent || null,
       };
     }
 

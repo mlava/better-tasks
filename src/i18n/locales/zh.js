@@ -589,7 +589,30 @@ const locale = {
     setDepends: "设置依赖",
     editDepends: "编辑依赖",
     removeDepends: "移除依赖",
-    metaHeading: "元数据"
+    metaHeading: "元数据",
+    viewSeries: "查看系列"
+  },
+  series: {
+    title: "重复系列",
+    close: "关闭",
+    current: "当前",
+    completed: "已完成",
+    upcoming: "即将到来",
+    onTime: "按时",
+    late: "逾期",
+    streak: "当前连续",
+    longestStreak: "最佳连续",
+    completionRate: "完成率",
+    onTimeRate: "按时完成率",
+    noHistory: "暂无过去的完成记录。",
+    projectionCount: "显示下一个",
+    showOlder: "显示更早的…",
+    skipped: "已跳过",
+    exceptions: "例外",
+    addException: "添加例外",
+    removeException: "移除",
+    skipNext: "跳过下次",
+    modifyNext: "修改下次"
   },
   metadata: {
     repeat: "重复",

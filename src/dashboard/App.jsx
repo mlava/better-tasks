@@ -705,6 +705,18 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
       });
     }
 
+    // View recurring series — only for recurring tasks with series linking
+    if (task.isRecurring && (task.rtId || task.rtParent)) {
+      list.push({
+        key: "view-series",
+        label: tm.viewSeries || "View series",
+        handler: () => {
+          setOpenState(false);
+          controller._onSeriesViewRequest?.(task);
+        },
+      });
+    }
+
     pushDateActions("start", hasStart);
     pushDateActions("defer", hasDefer);
     pushDateActions("due", hasDue);
@@ -1279,6 +1291,321 @@ function TaskRow({ task, controller, strings, selectionActive, isSelected, onTog
   );
 }
 
+// ========================= Recurring Series View Panel =========================
+
+function SeriesViewPanel({ task, controller, language, onClose }) {
+  const [projections, setProjections] = useState([]);
+  const [projectionCount, setProjectionCount] = useState(10);
+  const [loading, setLoading] = useState(true);
+  const [showAllPast, setShowAllPast] = useState(false);
+  const [exceptions, setExceptions] = useState([]);
+  const [exceptionInput, setExceptionInput] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const panelRef = useRef(null);
+
+  const lang = I18N_MAP[language] ? language : "en";
+  const s = useMemo(() => {
+    const base = tPath(["series"], lang) || {};
+    const en = tPath(["series"], "en") || {};
+    return { ...en, ...base };
+  }, [lang]);
+
+  const seriesId = task.rtParent || task.rtId;
+  const seriesData = useMemo(
+    () => controller?.getSeriesData?.(seriesId) || { members: [], currentTask: null },
+    [controller, seriesId]
+  );
+
+  const pastMembers = useMemo(
+    () => seriesData.members.filter((m) => m.isCompleted).sort((a, b) => ((a.dueAt || 0) - (b.dueAt || 0))),
+    [seriesData.members]
+  );
+  const currentMember = useMemo(
+    () => seriesData.members.find((m) => !m.isCompleted) || task,
+    [seriesData.members, task]
+  );
+  const streaks = useMemo(
+    () => controller?.computeSeriesStreaks?.(seriesData.members) || { currentStreak: 0, longestStreak: 0, onTimeRate: 0, totalCompleted: 0, totalWithDue: 0 },
+    [controller, seriesData.members]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    const uid = currentMember?.uid || task.uid;
+    controller?.getSeriesFutureProjections?.(uid, projectionCount)
+      ?.then((dates) => { if (!cancelled) setProjections(dates || []); })
+      ?.catch(() => { if (!cancelled) setProjections([]); })
+      ?.finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [controller, currentMember?.uid, task.uid, projectionCount, refreshKey]);
+
+  // Load exceptions via controller (handles Clojure key normalisation)
+  useEffect(() => {
+    let cancelled = false;
+    const uid = currentMember?.uid || task.uid;
+    controller?.getSeriesExceptions?.(uid)
+      ?.then((ex) => { if (!cancelled) setExceptions(ex || []); })
+      ?.catch(() => { if (!cancelled) setExceptions([]); });
+    return () => { cancelled = true; };
+  }, [controller, currentMember?.uid, task.uid, refreshKey]);
+
+  const handleAddException = async () => {
+    const trimmed = exceptionInput.trim();
+    if (!trimmed) return;
+    // Accept YYYY-MM-DD format
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return;
+    const uid = currentMember?.uid || task.uid;
+    await controller?.addSeriesException?.(uid, trimmed);
+    setExceptionInput("");
+    setRefreshKey((k) => k + 1);
+  };
+
+  const handleRemoveException = async (dateStr) => {
+    const uid = currentMember?.uid || task.uid;
+    await controller?.removeSeriesException?.(uid, dateStr);
+    setRefreshKey((k) => k + 1);
+  };
+
+  const handleSkipDate = async (date) => {
+    if (!(date instanceof Date)) return;
+    const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const uid = currentMember?.uid || task.uid;
+    await controller?.addSeriesException?.(uid, iso);
+    setRefreshKey((k) => k + 1);
+  };
+
+  // Close on Escape
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  // Close on click outside panel
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) onClose?.();
+    };
+    // Delay to avoid catching the click that opened the panel
+    const timer = setTimeout(() => document.addEventListener("mousedown", handleClick), 50);
+    return () => { clearTimeout(timer); document.removeEventListener("mousedown", handleClick); };
+  }, [onClose]);
+
+  const INITIAL_PAST_LIMIT = 50;
+  const visiblePast = showAllPast ? pastMembers : pastMembers.slice(-INITIAL_PAST_LIMIT);
+  const hasHiddenPast = pastMembers.length > INITIAL_PAST_LIMIT && !showAllPast;
+
+  const formatDateSafe = (d) => {
+    if (!(d instanceof Date) || Number.isNaN(d.getTime())) return "—";
+    try {
+      return new Intl.DateTimeFormat(lang !== "en" ? lang : undefined, {
+        weekday: "short", day: "numeric", month: "short", year: "numeric",
+      }).format(d);
+    } catch { return d.toLocaleDateString(); }
+  };
+
+  const portalRoot = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const el = document.createElement("div");
+    el.className = "bt-series-portal";
+    el.setAttribute("data-bt-portal", "series-view");
+    return el;
+  }, []);
+
+  useEffect(() => {
+    if (!portalRoot) return undefined;
+    const host = document.querySelector(".bt-dashboard-host") || document.body;
+    host.appendChild(portalRoot);
+    return () => portalRoot.remove();
+  }, [portalRoot]);
+
+  if (!portalRoot) return null;
+
+  return createPortal(
+    <div className="bt-series-overlay" role="dialog" aria-label={s.title || "Recurring Series"}>
+      <div className="bt-series-overlay__backdrop" onClick={onClose} />
+      <div className="bt-series-overlay__panel" ref={panelRef}>
+        {/* Header */}
+        <div className="bt-series-header">
+          <div className="bt-series-header__info">
+            <h3 className="bt-series-header__title">{task.title || tPath(["dashboard", "untitled"], lang) || "(Untitled task)"}</h3>
+            {task.repeatText && (
+              <span className="bt-series-header__rule">↻ {task.repeatText}</span>
+            )}
+          </div>
+          <button
+            type="button"
+            className="bt-series-header__close bp3-button bp3-minimal bp3-small"
+            onClick={onClose}
+            aria-label={s.close || "Close"}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Streak Banner */}
+        {streaks.totalCompleted > 0 && (
+          <div className="bt-series-streak">
+            <div className="bt-series-streak__item">
+              <span className="bt-series-streak__value">{streaks.currentStreak}</span>
+              <span className="bt-series-streak__label">{s.streak || "Current streak"}</span>
+            </div>
+            <div className="bt-series-streak__item">
+              <span className="bt-series-streak__value">{streaks.longestStreak}</span>
+              <span className="bt-series-streak__label">{s.longestStreak || "Best streak"}</span>
+            </div>
+            <div className="bt-series-streak__item">
+              <span className="bt-series-streak__value">{streaks.onTimeRate}%</span>
+              <span className="bt-series-streak__label">{s.onTimeRate || "On-time rate"}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Timeline */}
+        <div className="bt-series-timeline">
+          {/* Past completions */}
+          {pastMembers.length === 0 && (
+            <div className="bt-series-timeline__empty">{s.noHistory || "No past completions yet."}</div>
+          )}
+          {hasHiddenPast && (
+            <button
+              type="button"
+              className="bt-series-timeline__show-more"
+              onClick={() => setShowAllPast(true)}
+            >
+              {s.showOlder || `Show ${pastMembers.length - INITIAL_PAST_LIMIT} older…`}
+            </button>
+          )}
+          {visiblePast.map((m) => {
+            const isOnTime = m.dueAt && m.completedAt && m.completedAt <= m.dueAt;
+            const isLate = m.dueAt && m.completedAt && m.completedAt > m.dueAt;
+            return (
+              <div key={m.uid} className="bt-series-timeline-item bt-series-timeline-item--past">
+                <div className="bt-series-timeline-item__dot bt-series-timeline-item__dot--completed" />
+                <div className="bt-series-timeline-item__content">
+                  <span className="bt-series-timeline-item__date">
+                    {formatDateSafe(m.dueAt || m.completedAt)}
+                  </span>
+                  {isOnTime && (
+                    <span className="bt-series-timeline-item__badge bt-series-timeline-item__badge--ontime">
+                      {s.onTime || "On time"}
+                    </span>
+                  )}
+                  {isLate && (
+                    <span className="bt-series-timeline-item__badge bt-series-timeline-item__badge--late">
+                      {s.late || "Late"}
+                    </span>
+                  )}
+                  {m.completedAt && m.dueAt && m.completedAt !== m.dueAt && (
+                    <span className="bt-series-timeline-item__completed-date">
+                      {s.completed || "Completed"}: {formatDateSafe(m.completedAt)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Current occurrence */}
+          <div className="bt-series-timeline-item bt-series-timeline-item--current">
+            <div className="bt-series-timeline-item__dot bt-series-timeline-item__dot--current" />
+            <div className="bt-series-timeline-item__content">
+              <span className="bt-series-timeline-item__date">
+                {currentMember?.dueAt ? formatDateSafe(currentMember.dueAt) : "—"}
+              </span>
+              <span className="bt-series-timeline-item__badge bt-series-timeline-item__badge--current">
+                {s.current || "Current"}
+              </span>
+            </div>
+          </div>
+
+          {/* Future projections */}
+          {loading && projections.length === 0 && (
+            <div className="bt-series-timeline__loading">…</div>
+          )}
+          {projections.map((d, i) => (
+            <div key={`future-${i}`} className="bt-series-timeline-item bt-series-timeline-item--future">
+              <div className="bt-series-timeline-item__dot bt-series-timeline-item__dot--future" />
+              <div className="bt-series-timeline-item__content">
+                <span className="bt-series-timeline-item__date">{formatDateSafe(d)}</span>
+                <span className="bt-series-timeline-item__badge bt-series-timeline-item__badge--upcoming">
+                  {s.upcoming || "Upcoming"}
+                </span>
+                <button
+                  type="button"
+                  className="bt-series-timeline-item__skip"
+                  onClick={() => handleSkipDate(d)}
+                  title={s.skipNext || "Skip this occurrence"}
+                >
+                  {s.skipped ? `${s.skipped.charAt(0).toUpperCase()}${s.skipped.slice(1, 4)}…` : "Skip"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Exceptions */}
+        {exceptions.length > 0 && (
+          <div className="bt-series-exceptions">
+            <span className="bt-series-exceptions__label">{s.exceptions || "Exceptions"}</span>
+            <div className="bt-series-exceptions__list">
+              {exceptions.map((dateStr) => (
+                <div key={dateStr} className="bt-series-exceptions__item">
+                  <span>{dateStr}</span>
+                  <button
+                    type="button"
+                    className="bt-series-exceptions__remove"
+                    onClick={() => handleRemoveException(dateStr)}
+                    title={s.removeException || "Remove"}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Add exception */}
+        <div className="bt-series-exceptions-add">
+          <input
+            type="date"
+            className="bt-series-exceptions-add__input"
+            value={exceptionInput}
+            onChange={(e) => setExceptionInput(e.target.value || "")}
+            placeholder="YYYY-MM-DD"
+          />
+          <button
+            type="button"
+            className="bt-series-exceptions-add__btn bp3-button bp3-small"
+            onClick={handleAddException}
+            disabled={!exceptionInput.trim()}
+          >
+            {s.addException || "Add exception"}
+          </button>
+        </div>
+
+        {/* Projection count control */}
+        <div className="bt-series-projections">
+          <span className="bt-series-projections__label">{s.projectionCount || "Show next"}</span>
+          {[5, 10, 20].map((n) => (
+            <button
+              key={n}
+              type="button"
+              className={`bt-series-projections__chip${projectionCount === n ? " bt-series-projections__chip--active" : ""}`}
+              onClick={() => setProjectionCount(n)}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>,
+    portalRoot
+  );
+}
+
 function BulkActionBar({ selectedUids, tasks, controller, strings, onClearSelection, onCancel, isMobileLayout }) {
   const [metaMenuOpen, setMetaMenuOpen] = useState(false);
   const [activeSubmenu, setActiveSubmenu] = useState(null); // "priority" | "energy" | "gtd" | null
@@ -1595,6 +1922,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     new Set(controller?.getArchivedContexts?.() || [])
   );
   const [showArchivedContexts, setShowArchivedContexts] = useState(false);
+  const [seriesViewTask, setSeriesViewTask] = useState(null);
   const initialViewAppliedRef = useRef(false);
   const defaultStatePersistTimerRef = useRef(null);
   const lastDefaultStateSigRef = useRef(null);
@@ -2143,6 +2471,13 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     const store = controller.loadViewsStore();
     setViewsStore(store);
     setViewsLoaded(true);
+  }, [controller]);
+
+  // Set up series view request callback on controller
+  useEffect(() => {
+    if (!controller) return undefined;
+    controller._onSeriesViewRequest = (task) => setSeriesViewTask(task);
+    return () => { delete controller._onSeriesViewRequest; };
   }, [controller]);
 
   useEffect(() => {
@@ -3441,6 +3776,14 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           onCancel={cancelSelection}
           isMobileLayout={isMobileLayout}
         />
+        {seriesViewTask && (
+          <SeriesViewPanel
+            task={seriesViewTask}
+            controller={controller}
+            language={language}
+            onClose={() => setSeriesViewTask(null)}
+          />
+        )}
       </div>
     );
   }
@@ -4023,6 +4366,14 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
         onCancel={cancelSelection}
         isMobileLayout={isMobileLayout}
       />
+      {seriesViewTask && (
+        <SeriesViewPanel
+          task={seriesViewTask}
+          controller={controller}
+          language={language}
+          onClose={() => setSeriesViewTask(null)}
+        />
+      )}
     </div>
   );
 }

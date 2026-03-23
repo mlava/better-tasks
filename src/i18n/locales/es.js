@@ -589,7 +589,30 @@ const locale = {
     setDepends: "Establecer dependencia",
     editDepends: "Editar dependencias",
     removeDepends: "Eliminar dependencias",
-    metaHeading: "Metadatos"
+    metaHeading: "Metadatos",
+    viewSeries: "Ver serie"
+  },
+  series: {
+    title: "Serie recurrente",
+    close: "Cerrar",
+    current: "Actual",
+    completed: "Completado",
+    upcoming: "Próximo",
+    onTime: "A tiempo",
+    late: "Atrasada",
+    streak: "Racha actual",
+    longestStreak: "Mejor racha",
+    completionRate: "Tasa de finalización",
+    onTimeRate: "Tasa de puntualidad",
+    noHistory: "Sin completaciones anteriores.",
+    projectionCount: "Mostrar siguientes",
+    showOlder: "Mostrar anteriores…",
+    skipped: "Omitido",
+    exceptions: "Excepciones",
+    addException: "Añadir excepción",
+    removeException: "Eliminar",
+    skipNext: "Omitir siguiente ocurrencia",
+    modifyNext: "Modificar siguiente ocurrencia"
   },
   metadata: {
     repeat: "Repetir",

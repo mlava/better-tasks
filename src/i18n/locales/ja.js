@@ -589,7 +589,30 @@ const locale = {
     setDepends: "依存関係を設定",
     editDepends: "依存関係を編集",
     removeDepends: "依存関係を削除",
-    metaHeading: "メタデータ"
+    metaHeading: "メタデータ",
+    viewSeries: "シリーズを表示"
+  },
+  series: {
+    title: "繰り返しシリーズ",
+    close: "閉じる",
+    current: "現在",
+    completed: "完了",
+    upcoming: "今後",
+    onTime: "期限内",
+    late: "遅延",
+    streak: "現在の連続",
+    longestStreak: "最長連続",
+    completionRate: "完了率",
+    onTimeRate: "期限内完了率",
+    noHistory: "過去の完了はまだありません。",
+    projectionCount: "次を表示",
+    showOlder: "以前を表示…",
+    skipped: "スキップ済み",
+    exceptions: "例外",
+    addException: "例外を追加",
+    removeException: "削除",
+    skipNext: "次の発生をスキップ",
+    modifyNext: "次の発生を変更"
   },
   metadata: {
     repeat: "繰り返し",

@@ -589,7 +589,30 @@ const locale = {
     setDepends: "設定相依",
     editDepends: "編輯相依",
     removeDepends: "移除相依",
-    metaHeading: "中繼資料"
+    metaHeading: "中繼資料",
+    viewSeries: "查看系列"
+  },
+  series: {
+    title: "重複系列",
+    close: "關閉",
+    current: "目前",
+    completed: "已完成",
+    upcoming: "即將到來",
+    onTime: "準時",
+    late: "逾期",
+    streak: "目前連續",
+    longestStreak: "最佳連續",
+    completionRate: "完成率",
+    onTimeRate: "準時完成率",
+    noHistory: "尚無過去的完成記錄。",
+    projectionCount: "顯示下一個",
+    showOlder: "顯示更早的…",
+    skipped: "已跳過",
+    exceptions: "例外",
+    addException: "新增例外",
+    removeException: "移除",
+    skipNext: "跳過下次",
+    modifyNext: "修改下次"
   },
   metadata: {
     repeat: "重複",

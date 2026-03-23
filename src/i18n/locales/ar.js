@@ -589,7 +589,30 @@ const locale = {
     setDepends: "تعيين تبعية",
     editDepends: "تعديل التبعيات",
     removeDepends: "إزالة التبعيات",
-    metaHeading: "البيانات الوصفية"
+    metaHeading: "البيانات الوصفية",
+    viewSeries: "عرض السلسلة"
+  },
+  series: {
+    title: "سلسلة متكررة",
+    close: "إغلاق",
+    current: "الحالي",
+    completed: "مكتمل",
+    upcoming: "قادم",
+    onTime: "في الوقت",
+    late: "متأخر",
+    streak: "السلسلة الحالية",
+    longestStreak: "أفضل سلسلة",
+    completionRate: "معدل الإنجاز",
+    onTimeRate: "معدل الإنجاز في الوقت",
+    noHistory: "لا توجد إنجازات سابقة بعد.",
+    projectionCount: "إظهار التالي",
+    showOlder: "إظهار الأقدم…",
+    skipped: "تم التخطي",
+    exceptions: "استثناءات",
+    addException: "إضافة استثناء",
+    removeException: "إزالة",
+    skipNext: "تخطي الحدث التالي",
+    modifyNext: "تعديل الحدث التالي"
   },
   metadata: {
     repeat: "التكرار",

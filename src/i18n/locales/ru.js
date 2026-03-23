@@ -589,7 +589,30 @@ const locale = {
     setDepends: "Задать зависимость",
     editDepends: "Изменить зависимости",
     removeDepends: "Удалить зависимости",
-    metaHeading: "Метаданные"
+    metaHeading: "Метаданные",
+    viewSeries: "Просмотр серии"
+  },
+  series: {
+    title: "Повторяющаяся серия",
+    close: "Закрыть",
+    current: "Текущий",
+    completed: "Завершено",
+    upcoming: "Предстоящий",
+    onTime: "Вовремя",
+    late: "С опозданием",
+    streak: "Текущая серия",
+    longestStreak: "Лучшая серия",
+    completionRate: "Процент выполнения",
+    onTimeRate: "Процент выполнения в срок",
+    noHistory: "Пока нет завершённых задач.",
+    projectionCount: "Показать следующие",
+    showOlder: "Показать старые…",
+    skipped: "Пропущено",
+    exceptions: "Исключения",
+    addException: "Добавить исключение",
+    removeException: "Удалить",
+    skipNext: "Пропустить следующее",
+    modifyNext: "Изменить следующее"
   },
   metadata: {
     repeat: "Повтор",
