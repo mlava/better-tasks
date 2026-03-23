@@ -126,6 +126,14 @@ const REVIEW_STEP_COMPLETED_7D_SETTING = "bt-review-step-completed-7d";
 const REVIEW_STEP_UPCOMING_7D_SETTING = "bt-review-step-upcoming-7d";
 const REVIEW_STEP_OVERDUE_SETTING = "bt-review-step-overdue";
 const REVIEW_STEP_SOMEDAY_SETTING = "bt-review-step-someday";
+const DAILY_REVIEW_STEP_DUE_TODAY_SETTING = "bt-daily-review-step-due-today";
+const DAILY_REVIEW_STEP_COMPLETED_YESTERDAY_SETTING = "bt-daily-review-step-completed-yesterday";
+const DAILY_REVIEW_STEP_OVERDUE_SETTING = "bt-daily-review-step-overdue";
+const MONTHLY_REVIEW_STEP_COMPLETED_30D_SETTING = "bt-monthly-review-step-completed-30d";
+const MONTHLY_REVIEW_STEP_STALLED_SETTING = "bt-monthly-review-step-stalled";
+const MONTHLY_REVIEW_STEP_SOMEDAY_SETTING = "bt-monthly-review-step-someday";
+const MONTHLY_REVIEW_STEP_OVERDUE_SETTING = "bt-monthly-review-step-overdue";
+const STALLED_DAYS_SETTING = "bt-stalled-days";
 const TODAY_WIDGET_ANCHOR_TEXT_DEFAULT = "Better Tasks - Today";
 const TODAY_WIDGET_ANCHOR_TEXT_LEGACY = ["BetterTasks Today Widget", "Better Tasks - Today"];
 const TODAY_WIDGET_PANEL_CHILD_TEXT = "";
@@ -596,6 +604,105 @@ export default {
             },
           },
         },
+        {
+          id: DAILY_REVIEW_STEP_DUE_TODAY_SETTING,
+          name: tr("settings.reviewStepDueToday", "Daily Review: Due Today"),
+          description: reviewStepDescription,
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(DAILY_REVIEW_STEP_DUE_TODAY_SETTING, normalized, null, { notifyReviewSteps: true });
+            },
+          },
+        },
+        {
+          id: DAILY_REVIEW_STEP_COMPLETED_YESTERDAY_SETTING,
+          name: tr("settings.reviewStepCompletedYesterday", "Daily Review: Completed Yesterday"),
+          description: reviewStepDescription,
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(DAILY_REVIEW_STEP_COMPLETED_YESTERDAY_SETTING, normalized, null, { notifyReviewSteps: true });
+            },
+          },
+        },
+        {
+          id: DAILY_REVIEW_STEP_OVERDUE_SETTING,
+          name: tr("settings.reviewStepDailyOverdue", "Daily Review: Overdue"),
+          description: reviewStepDescription,
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(DAILY_REVIEW_STEP_OVERDUE_SETTING, normalized, null, { notifyReviewSteps: true });
+            },
+          },
+        },
+        {
+          id: MONTHLY_REVIEW_STEP_COMPLETED_30D_SETTING,
+          name: tr("settings.reviewStepCompleted30d", "Monthly Review: Completed (Last 30 Days)"),
+          description: reviewStepDescription,
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(MONTHLY_REVIEW_STEP_COMPLETED_30D_SETTING, normalized, null, { notifyReviewSteps: true });
+            },
+          },
+        },
+        {
+          id: MONTHLY_REVIEW_STEP_STALLED_SETTING,
+          name: tr("settings.reviewStepStalled", "Monthly Review: Stalled Tasks"),
+          description: reviewStepDescription,
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(MONTHLY_REVIEW_STEP_STALLED_SETTING, normalized, null, { notifyReviewSteps: true });
+            },
+          },
+        },
+        {
+          id: MONTHLY_REVIEW_STEP_SOMEDAY_SETTING,
+          name: tr("settings.reviewStepMonthlySomeday", "Monthly Review: Someday / Maybe"),
+          description: reviewStepDescription,
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(MONTHLY_REVIEW_STEP_SOMEDAY_SETTING, normalized, null, { notifyReviewSteps: true });
+            },
+          },
+        },
+        {
+          id: MONTHLY_REVIEW_STEP_OVERDUE_SETTING,
+          name: tr("settings.reviewStepMonthlyOverdue", "Monthly Review: Overdue"),
+          description: reviewStepDescription,
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              setAndRebuild(MONTHLY_REVIEW_STEP_OVERDUE_SETTING, normalized, null, { notifyReviewSteps: true });
+            },
+          },
+        },
+        {
+          id: STALLED_DAYS_SETTING,
+          name: tr("settings.stalledDaysName", "Stalled task threshold (days)"),
+          description: tr("settings.stalledDaysDesc", "Tasks not edited for this many days are marked as stalled."),
+          action: {
+            type: "input",
+            placeholder: "14",
+            onChange: (v) => {
+              const num = parseInt(String(v), 10);
+              if (Number.isFinite(num) && num > 0) {
+                extensionAPI.settings.set(STALLED_DAYS_SETTING, num);
+              }
+            },
+          },
+        },
       ];
 
       const attributeSettingsToggle = [
@@ -1055,6 +1162,27 @@ export default {
     if (extensionAPI.settings.get(REVIEW_STEP_SOMEDAY_SETTING) == null) {
       extensionAPI.settings.set(REVIEW_STEP_SOMEDAY_SETTING, true);
     }
+    if (extensionAPI.settings.get(DAILY_REVIEW_STEP_DUE_TODAY_SETTING) == null) {
+      extensionAPI.settings.set(DAILY_REVIEW_STEP_DUE_TODAY_SETTING, true);
+    }
+    if (extensionAPI.settings.get(DAILY_REVIEW_STEP_COMPLETED_YESTERDAY_SETTING) == null) {
+      extensionAPI.settings.set(DAILY_REVIEW_STEP_COMPLETED_YESTERDAY_SETTING, true);
+    }
+    if (extensionAPI.settings.get(DAILY_REVIEW_STEP_OVERDUE_SETTING) == null) {
+      extensionAPI.settings.set(DAILY_REVIEW_STEP_OVERDUE_SETTING, true);
+    }
+    if (extensionAPI.settings.get(MONTHLY_REVIEW_STEP_COMPLETED_30D_SETTING) == null) {
+      extensionAPI.settings.set(MONTHLY_REVIEW_STEP_COMPLETED_30D_SETTING, true);
+    }
+    if (extensionAPI.settings.get(MONTHLY_REVIEW_STEP_STALLED_SETTING) == null) {
+      extensionAPI.settings.set(MONTHLY_REVIEW_STEP_STALLED_SETTING, true);
+    }
+    if (extensionAPI.settings.get(MONTHLY_REVIEW_STEP_SOMEDAY_SETTING) == null) {
+      extensionAPI.settings.set(MONTHLY_REVIEW_STEP_SOMEDAY_SETTING, true);
+    }
+    if (extensionAPI.settings.get(MONTHLY_REVIEW_STEP_OVERDUE_SETTING) == null) {
+      extensionAPI.settings.set(MONTHLY_REVIEW_STEP_OVERDUE_SETTING, true);
+    }
     lastAttrNames = resolveAttributeNames();
     syncPublicAttrNames(lastAttrNames);
 
@@ -1225,9 +1353,37 @@ export default {
           if (!activeDashboardController?.isOpen?.()) {
             activeDashboardController?.open?.();
           }
-          activeDashboardController?.requestStartDashReview?.();
+          activeDashboardController?.requestStartDashReview?.("weekly");
         } catch (err) {
           console.warn("[BetterTasks] start review command failed", err);
+          toast(t(["toasts", "dashReviewStartFailed"], getLanguageSetting()) || "Unable to start review.");
+        }
+      },
+    });
+    extensionAPI.ui.commandPalette.addCommand({
+      label: t(["commands", "startDailyReview"], getLanguageSetting()) || "Better Tasks: Daily Review",
+      callback: async () => {
+        try {
+          if (!activeDashboardController?.isOpen?.()) {
+            activeDashboardController?.open?.();
+          }
+          activeDashboardController?.requestStartDashReview?.("daily");
+        } catch (err) {
+          console.warn("[BetterTasks] start daily review command failed", err);
+          toast(t(["toasts", "dashReviewStartFailed"], getLanguageSetting()) || "Unable to start review.");
+        }
+      },
+    });
+    extensionAPI.ui.commandPalette.addCommand({
+      label: t(["commands", "startMonthlyReview"], getLanguageSetting()) || "Better Tasks: Monthly Review",
+      callback: async () => {
+        try {
+          if (!activeDashboardController?.isOpen?.()) {
+            activeDashboardController?.open?.();
+          }
+          activeDashboardController?.requestStartDashReview?.("monthly");
+        } catch (err) {
+          console.warn("[BetterTasks] start monthly review command failed", err);
           toast(t(["toasts", "dashReviewStartFailed"], getLanguageSetting()) || "Unable to start review.");
         }
       },
@@ -12633,14 +12789,27 @@ export default {
 
     function createDashboardController(extensionAPI) {
       const DASHBOARD_FULLPAGE_KEY_BASE = "betterTasks.dashboard.fullPage";
-      const reviewStepSettingMap = [
-        { viewId: "bt_preset_next_actions", settingId: REVIEW_STEP_NEXT_ACTIONS_SETTING },
-        { viewId: "bt_preset_waiting_for", settingId: REVIEW_STEP_WAITING_FOR_SETTING },
-        { viewId: "bt_preset_completed_7d", settingId: REVIEW_STEP_COMPLETED_7D_SETTING },
-        { viewId: "bt_preset_upcoming_7d", settingId: REVIEW_STEP_UPCOMING_7D_SETTING },
-        { viewId: "bt_preset_overdue", settingId: REVIEW_STEP_OVERDUE_SETTING },
-        { viewId: "bt_preset_someday", settingId: REVIEW_STEP_SOMEDAY_SETTING },
-      ];
+      const reviewStepSettingMap = {
+        weekly: [
+          { viewId: "bt_preset_next_actions", settingId: REVIEW_STEP_NEXT_ACTIONS_SETTING },
+          { viewId: "bt_preset_waiting_for", settingId: REVIEW_STEP_WAITING_FOR_SETTING },
+          { viewId: "bt_preset_completed_7d", settingId: REVIEW_STEP_COMPLETED_7D_SETTING },
+          { viewId: "bt_preset_upcoming_7d", settingId: REVIEW_STEP_UPCOMING_7D_SETTING },
+          { viewId: "bt_preset_overdue", settingId: REVIEW_STEP_OVERDUE_SETTING },
+          { viewId: "bt_preset_someday", settingId: REVIEW_STEP_SOMEDAY_SETTING },
+        ],
+        daily: [
+          { viewId: "bt_preset_due_today", settingId: DAILY_REVIEW_STEP_DUE_TODAY_SETTING },
+          { viewId: "bt_preset_completed_yesterday", settingId: DAILY_REVIEW_STEP_COMPLETED_YESTERDAY_SETTING },
+          { viewId: "bt_preset_overdue", settingId: DAILY_REVIEW_STEP_OVERDUE_SETTING },
+        ],
+        monthly: [
+          { viewId: "bt_preset_completed_30d", settingId: MONTHLY_REVIEW_STEP_COMPLETED_30D_SETTING },
+          { viewId: "bt_preset_stalled", settingId: MONTHLY_REVIEW_STEP_STALLED_SETTING },
+          { viewId: "bt_preset_someday", settingId: MONTHLY_REVIEW_STEP_SOMEDAY_SETTING },
+          { viewId: "bt_preset_overdue", settingId: MONTHLY_REVIEW_STEP_OVERDUE_SETTING },
+        ],
+      };
       const getDashboardFullPageKey = () => {
         if (typeof window === "undefined") return DASHBOARD_FULLPAGE_KEY_BASE;
         let graphName = "default";
@@ -12680,11 +12849,18 @@ export default {
       };
       const getReviewStepSettings = () => {
         const out = {};
-        reviewStepSettingMap.forEach(({ viewId, settingId }) => {
-          const raw = extensionAPI?.settings?.get?.(settingId);
-          out[viewId] = raw == null ? true : normalizeBooleanSetting(raw);
-        });
+        for (const [type, entries] of Object.entries(reviewStepSettingMap)) {
+          for (const { viewId, settingId } of entries) {
+            const raw = extensionAPI?.settings?.get?.(settingId);
+            out[`${type}:${viewId}`] = raw == null ? true : normalizeBooleanSetting(raw);
+          }
+        }
         return out;
+      };
+      const getStalledDays = () => {
+        const raw = extensionAPI?.settings?.get?.(STALLED_DAYS_SETTING);
+        const num = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+        return Number.isFinite(num) && num > 0 ? num : 14;
       };
 
       let isFullPage = typeof window !== "undefined" ? readDashboardFullPageSetting() : false;
@@ -12792,6 +12968,7 @@ export default {
         reportDashViewState,
         getDashViewState,
         getReviewStepSettings,
+        getStalledDays,
         subscribeDashReviewRequests,
         subscribeReviewStepSettings,
         notifyReviewStepSettingsChanged,
@@ -12895,11 +13072,11 @@ export default {
         });
       }
 
-      function requestStartDashReview() {
+      function requestStartDashReview(reviewType) {
         dashReviewStartPending = true;
         dashReviewRequestSubscribers.forEach((listener) => {
           try {
-            listener({ type: "start" });
+            listener({ type: "start", reviewType: reviewType || "weekly" });
           } catch (err) {
             console.warn("[BetterTasks] dashboard review request subscriber failed", err);
           }
@@ -14725,7 +14902,9 @@ export default {
         availabilityLabel,
         isCompleted,
         completedAt,
-        editedAt: typeof block?.["edit/time"] === "number" ? block["edit/time"] : null,
+        editedAt: typeof block?.time === "number" ? block.time :
+          typeof block?.[":edit/time"] === "number" ? block[":edit/time"] :
+          typeof block?.["edit/time"] === "number" ? block["edit/time"] : null,
         startDisplay: formatDateDisplay(startAt, set),
         deferDisplay: formatDateDisplay(deferUntil, set),
         dueDisplay: formatDateDisplay(dueAt, set),

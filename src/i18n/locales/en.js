@@ -45,14 +45,23 @@ const locale = {
     pillThreshold: "Inline pill checkbox threshold",
     pillThresholdDescription: "Max checkbox count before Better Tasks inline pills skip initial rendering (default 100). Higher values will render but the page may be slower.",
     advancedDashboard: "Advanced Dashboard options",
-    advancedDashboardDescription: "Show settings for Weekly Review steps.",
-    reviewStepDescription: "Include this step in the Weekly Review flow (order is fixed).",
+    advancedDashboardDescription: "Show settings for review steps (Daily, Weekly, Monthly).",
+    reviewStepDescription: "Include this step in the review flow (order is fixed).",
     reviewStepNextActions: "Weekly Review: Next Actions",
     reviewStepWaitingFor: "Weekly Review: Waiting For",
     reviewStepCompleted7d: "Weekly Review: Completed (Last 7 Days)",
     reviewStepUpcoming7d: "Weekly Review: Upcoming (Next 7 Days)",
     reviewStepOverdue: "Weekly Review: Overdue",
     reviewStepSomeday: "Weekly Review: Someday / Maybe",
+    reviewStepDueToday: "Daily Review: Due Today",
+    reviewStepCompletedYesterday: "Daily Review: Completed Yesterday",
+    reviewStepDailyOverdue: "Daily Review: Overdue",
+    reviewStepCompleted30d: "Monthly Review: Completed (Last 30 Days)",
+    reviewStepStalled: "Monthly Review: Stalled Tasks",
+    reviewStepMonthlySomeday: "Monthly Review: Someday / Maybe",
+    reviewStepMonthlyOverdue: "Monthly Review: Overdue",
+    stalledDaysName: "Stalled task threshold (days)",
+    stalledDaysDesc: "Tasks not edited for this many days are marked as stalled.",
     destNextTask: "Destination for next task",
     destNextTaskDescription: "Where to create the next occurrence",
     dnpHeading: "DNP heading",
@@ -138,6 +147,8 @@ const locale = {
   commands: {
     reinstallPresetDashViews: "Better Tasks: Reinstall preset dashboard views",
     startReview: "Better Tasks: Weekly Review",
+    startDailyReview: "Better Tasks: Daily Review",
+    startMonthlyReview: "Better Tasks: Monthly Review",
     toggleDashboardFullPage: "Toggle Better Tasks Dashboard (Full page)"
   },
   prompts: {
@@ -305,6 +316,15 @@ const locale = {
     review: {
       button: "Weekly Review",
       label: "Weekly Review",
+      dailyButton: "Daily",
+      dailyLabel: "Daily Review",
+      weeklyButton: "Weekly",
+      monthlyButton: "Monthly",
+      monthlyLabel: "Monthly Review",
+      projectSweepButton: "Project Sweep",
+      projectSweepLabel: "Project Sweep",
+      selectProject: "Select project…",
+      menuAriaLabel: "Review options",
       of: "of",
       back: "← Back",
       next: "Next →",
@@ -335,7 +355,11 @@ const locale = {
       upcoming7d: "Upcoming (Next 7 Days)",
       overdue: "Overdue",
       someday: "Someday / Maybe",
-      allOpen: "All Open Tasks"
+      allOpen: "All Open Tasks",
+      dueToday: "Due Today",
+      completedYesterday: "Completed Yesterday",
+      stalled: "Stalled Tasks",
+      completed30d: "Completed (Last 30 Days)"
     },
     quickAddPlaceholder: "Add a Better Task",
     quickAddButton: "OK",
@@ -374,7 +398,8 @@ const locale = {
       Priority: "Priority",
       Energy: "Energy",
       GTD: "GTD",
-      Blocked: "Blocked"
+      Blocked: "Blocked",
+      Stalled: "Stalled"
     },
     filterValues: {
       recurring: "Recurring",
@@ -396,7 +421,9 @@ const locale = {
       delegated: "Delegated",
       someday: "Someday",
       blocked: "Blocked",
-      actionable: "Actionable"
+      actionable: "Actionable",
+      stalled: "Stalled",
+      active: "Active"
     },
     completedWithinLabel: "Completed within",
     completedWithinOptions: {

@@ -45,14 +45,23 @@ const locale = {
     pillThreshold: "Порог чекбоксов для инлайн-тегов",
     pillThresholdDescription: "Максимальное число чекбоксов до пропуска начальной отрисовки инлайн-тегов Better Tasks (по умолчанию 100). Большее значение рендерится, но может замедлить страницу.",
     advancedDashboard: "Расширенные опции панели",
-    advancedDashboardDescription: "Показать настройки шагов Еженедельного обзора.",
-    reviewStepDescription: "Включить этот шаг в Еженедельный обзор (порядок фиксированный).",
+    advancedDashboardDescription: "Показать настройки шагов обзора (Ежедневный, Еженедельный, Ежемесячный).",
+    reviewStepDescription: "Включить этот шаг в поток обзора (порядок фиксированный).",
     reviewStepNextActions: "Еженедельный обзор: Следующие действия",
     reviewStepWaitingFor: "Еженедельный обзор: Ожидание",
     reviewStepCompleted7d: "Еженедельный обзор: Выполнено (последние 7 дней)",
     reviewStepUpcoming7d: "Еженедельный обзор: Предстоит (следующие 7 дней)",
     reviewStepOverdue: "Еженедельный обзор: Просрочено",
     reviewStepSomeday: "Еженедельный обзор: Когда-нибудь / Может быть",
+    reviewStepDueToday: "Ежедневный обзор: Срок сегодня",
+    reviewStepCompletedYesterday: "Ежедневный обзор: Выполнено вчера",
+    reviewStepDailyOverdue: "Ежедневный обзор: Просрочено",
+    reviewStepCompleted30d: "Ежемесячный обзор: Выполнено (последние 30 дней)",
+    reviewStepStalled: "Ежемесячный обзор: Застойные задачи",
+    reviewStepMonthlySomeday: "Ежемесячный обзор: Когда-нибудь / Может быть",
+    reviewStepMonthlyOverdue: "Ежемесячный обзор: Просрочено",
+    stalledDaysName: "Порог застоя задач (дней)",
+    stalledDaysDesc: "Задачи, не редактировавшиеся столько дней, помечаются как застойные.",
     destNextTask: "Куда создавать следующую задачу",
     destNextTaskDescription: "Где создать следующее повторение",
     dnpHeading: "Заголовок DNP",
@@ -138,6 +147,8 @@ const locale = {
   commands: {
     reinstallPresetDashViews: "Better Tasks: Переустановить предустановленные виды панели",
     startReview: "Better Tasks: Еженедельный обзор",
+    startDailyReview: "Better Tasks: Ежедневный обзор",
+    startMonthlyReview: "Better Tasks: Ежемесячный обзор",
     toggleDashboardFullPage: "Переключить панель Better Tasks (полная страница)"
   },
   prompts: {
@@ -305,6 +316,15 @@ const locale = {
     review: {
       button: "Еженедельный обзор",
       label: "Еженедельный обзор",
+      dailyButton: "Ежедневный",
+      dailyLabel: "Ежедневный обзор",
+      weeklyButton: "Еженедельный",
+      monthlyButton: "Ежемесячный",
+      monthlyLabel: "Ежемесячный обзор",
+      projectSweepButton: "Обзор проекта",
+      projectSweepLabel: "Обзор проекта",
+      selectProject: "Выберите проект…",
+      menuAriaLabel: "Параметры обзора",
       of: "из",
       back: "← Назад",
       next: "Далее →",
@@ -335,7 +355,11 @@ const locale = {
       upcoming7d: "Предстоит (следующие 7 дней)",
       overdue: "Просрочено",
       someday: "Когда-нибудь / Может быть",
-      allOpen: "Все открытые задачи"
+      allOpen: "Все открытые задачи",
+      dueToday: "Срок сегодня",
+      completedYesterday: "Выполнено вчера",
+      stalled: "Застойные задачи",
+      completed30d: "Выполнено (последние 30 дней)"
     },
     quickAddPlaceholder: "Добавить Better Task",
     quickAddButton: "OK",
@@ -374,7 +398,8 @@ const locale = {
       Priority: "Приоритет",
       Energy: "Энергия",
       GTD: "GTD",
-      Blocked: "Заблокировано"
+      Blocked: "Заблокировано",
+      Stalled: "Застой"
     },
     filterValues: {
       recurring: "Повторяющаяся",
@@ -396,7 +421,9 @@ const locale = {
       delegated: "Делегировано",
       someday: "Когда-нибудь",
       blocked: "Заблокировано",
-      actionable: "Выполнимо"
+      actionable: "Выполнимо",
+      stalled: "Застой",
+      active: "Активна"
     },
     completedWithinLabel: "Выполнено за",
     completedWithinOptions: {

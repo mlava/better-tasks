@@ -45,14 +45,23 @@ const locale = {
     pillThreshold: "Limiar de caixas de verificação para pastilhas inline",
     pillThresholdDescription: "Número máximo de caixas de verificação antes de as pastilhas inline do Better Tasks saltarem a renderização inicial (omissão 100). Valores mais altos renderizam mas a página pode ficar mais lenta.",
     advancedDashboard: "Opções avançadas do painel",
-    advancedDashboardDescription: "Mostrar definições para os passos da Revisão Semanal.",
-    reviewStepDescription: "Incluir este passo no fluxo de Revisão Semanal (ordem fixa).",
+    advancedDashboardDescription: "Mostrar definições para os passos de revisão (Diária, Semanal, Mensal).",
+    reviewStepDescription: "Incluir este passo no fluxo de revisão (ordem fixa).",
     reviewStepNextActions: "Revisão Semanal: Próximas ações",
     reviewStepWaitingFor: "Revisão Semanal: A aguardar",
     reviewStepCompleted7d: "Revisão Semanal: Concluídas (últimos 7 dias)",
     reviewStepUpcoming7d: "Revisão Semanal: Próximas (próximos 7 dias)",
     reviewStepOverdue: "Revisão Semanal: Em atraso",
     reviewStepSomeday: "Revisão Semanal: Um dia / Talvez",
+    reviewStepDueToday: "Revisão Diária: Vence Hoje",
+    reviewStepCompletedYesterday: "Revisão Diária: Concluídas Ontem",
+    reviewStepDailyOverdue: "Revisão Diária: Em Atraso",
+    reviewStepCompleted30d: "Revisão Mensal: Concluídas (Últimos 30 Dias)",
+    reviewStepStalled: "Revisão Mensal: Tarefas Estagnadas",
+    reviewStepMonthlySomeday: "Revisão Mensal: Um dia / Talvez",
+    reviewStepMonthlyOverdue: "Revisão Mensal: Em Atraso",
+    stalledDaysName: "Limiar de tarefas estagnadas (dias)",
+    stalledDaysDesc: "Tarefas não editadas durante este número de dias são marcadas como estagnadas.",
     destNextTask: "Destino da próxima tarefa",
     destNextTaskDescription: "Onde criar a próxima ocorrência",
     dnpHeading: "Título DNP",
@@ -138,6 +147,8 @@ const locale = {
   commands: {
     reinstallPresetDashViews: "Better Tasks: Reinstalar vistas predefinidas do painel",
     startReview: "Better Tasks: Revisão Semanal",
+    startDailyReview: "Better Tasks: Revisão Diária",
+    startMonthlyReview: "Better Tasks: Revisão Mensal",
     toggleDashboardFullPage: "Alternar painel Better Tasks (página inteira)"
   },
   prompts: {
@@ -305,6 +316,15 @@ const locale = {
     review: {
       button: "Revisão Semanal",
       label: "Revisão Semanal",
+      dailyButton: "Diária",
+      dailyLabel: "Revisão Diária",
+      weeklyButton: "Semanal",
+      monthlyButton: "Mensal",
+      monthlyLabel: "Revisão Mensal",
+      projectSweepButton: "Revisão de Projeto",
+      projectSweepLabel: "Revisão de Projeto",
+      selectProject: "Selecionar projeto…",
+      menuAriaLabel: "Opções de revisão",
       of: "de",
       back: "← Voltar",
       next: "Seguinte →",
@@ -335,7 +355,11 @@ const locale = {
       upcoming7d: "Próximas (próximos 7 dias)",
       overdue: "Em atraso",
       someday: "Um dia / Talvez",
-      allOpen: "Todas as tarefas abertas"
+      allOpen: "Todas as tarefas abertas",
+      dueToday: "Vence Hoje",
+      completedYesterday: "Concluídas Ontem",
+      stalled: "Tarefas Estagnadas",
+      completed30d: "Concluídas (Últimos 30 Dias)"
     },
     quickAddPlaceholder: "Adicionar uma Better Task",
     quickAddButton: "OK",
@@ -374,7 +398,8 @@ const locale = {
       Priority: "Prioridade",
       Energy: "Energia",
       GTD: "GTD",
-      Blocked: "Bloqueada"
+      Blocked: "Bloqueada",
+      Stalled: "Estagnada"
     },
     filterValues: {
       recurring: "Recorrente",
@@ -396,7 +421,9 @@ const locale = {
       delegated: "Delegada",
       someday: "Um dia",
       blocked: "Bloqueada",
-      actionable: "Acionável"
+      actionable: "Acionável",
+      stalled: "Estagnada",
+      active: "Ativa"
     },
     completedWithinLabel: "Concluídas em",
     completedWithinOptions: {

@@ -45,14 +45,23 @@ const locale = {
     pillThreshold: "Schwellenwert für Inline-Pill-Kontrollkästchen",
     pillThresholdDescription: "Maximale Anzahl von Kontrollkästchen, bevor Inline-Pills das initiale Rendering überspringen (Standard 100). Höhere Werte werden gerendert, aber die Seite kann langsamer sein.",
     advancedDashboard: "Erweiterte Dashboard-Optionen",
-    advancedDashboardDescription: "Einstellungen für die Schritte der Wochenrückschau anzeigen.",
-    reviewStepDescription: "Diesen Schritt in den Ablauf der Wochenrückschau aufnehmen (Reihenfolge ist fest).",
+    advancedDashboardDescription: "Einstellungen für Rückschau-Schritte (Täglich, Wöchentlich, Monatlich) anzeigen.",
+    reviewStepDescription: "Diesen Schritt in den Rückschau-Ablauf aufnehmen (Reihenfolge ist fest).",
     reviewStepNextActions: "Wochenrückschau: Nächste Aktionen",
     reviewStepWaitingFor: "Wochenrückschau: Warten auf",
     reviewStepCompleted7d: "Wochenrückschau: Erledigt (Letzte 7 Tage)",
     reviewStepUpcoming7d: "Wochenrückschau: Anstehend (Nächste 7 Tage)",
     reviewStepOverdue: "Wochenrückschau: Überfällig",
     reviewStepSomeday: "Wochenrückschau: Irgendwann / Vielleicht",
+    reviewStepDueToday: "Tägliche Rückschau: Heute fällig",
+    reviewStepCompletedYesterday: "Tägliche Rückschau: Gestern erledigt",
+    reviewStepDailyOverdue: "Tägliche Rückschau: Überfällig",
+    reviewStepCompleted30d: "Monatliche Rückschau: Erledigt (Letzte 30 Tage)",
+    reviewStepStalled: "Monatliche Rückschau: Stockende Aufgaben",
+    reviewStepMonthlySomeday: "Monatliche Rückschau: Irgendwann / Vielleicht",
+    reviewStepMonthlyOverdue: "Monatliche Rückschau: Überfällig",
+    stalledDaysName: "Schwellenwert für stockende Aufgaben (Tage)",
+    stalledDaysDesc: "Aufgaben, die seit dieser Anzahl von Tagen nicht bearbeitet wurden, werden als stockend markiert.",
     destNextTask: "Ziel für die nächste Aufgabe",
     destNextTaskDescription: "Wo die nächste Wiederholung erstellt werden soll",
     dnpHeading: "DNP-Überschrift",
@@ -138,6 +147,8 @@ const locale = {
   commands: {
     reinstallPresetDashViews: "Better Tasks: Voreingestellte Dashboard-Ansichten neu installieren",
     startReview: "Better Tasks: Wochenrückschau",
+    startDailyReview: "Better Tasks: Tägliche Rückschau",
+    startMonthlyReview: "Better Tasks: Monatliche Rückschau",
     toggleDashboardFullPage: "Better Tasks Dashboard umschalten (Vollseite)"
   },
   prompts: {
@@ -305,6 +316,15 @@ const locale = {
     review: {
       button: "Wochenrückschau",
       label: "Wochenrückschau",
+      dailyButton: "Täglich",
+      dailyLabel: "Tägliche Rückschau",
+      weeklyButton: "Wöchentlich",
+      monthlyButton: "Monatlich",
+      monthlyLabel: "Monatliche Rückschau",
+      projectSweepButton: "Projekt-Durchsicht",
+      projectSweepLabel: "Projekt-Durchsicht",
+      selectProject: "Projekt auswählen…",
+      menuAriaLabel: "Rückschau-Optionen",
       of: "von",
       back: "← Zurück",
       next: "Weiter →",
@@ -335,7 +355,11 @@ const locale = {
       upcoming7d: "Anstehend (Nächste 7 Tage)",
       overdue: "Überfällig",
       someday: "Irgendwann / Vielleicht",
-      allOpen: "Alle offenen Aufgaben"
+      allOpen: "Alle offenen Aufgaben",
+      dueToday: "Heute fällig",
+      completedYesterday: "Gestern erledigt",
+      stalled: "Stockende Aufgaben",
+      completed30d: "Erledigt (Letzte 30 Tage)"
     },
     quickAddPlaceholder: "Better Task hinzufügen",
     quickAddButton: "OK",
@@ -374,7 +398,8 @@ const locale = {
       Priority: "Priorität",
       Energy: "Energie",
       GTD: "GTD",
-      Blocked: "Blockiert"
+      Blocked: "Blockiert",
+      Stalled: "Stockend"
     },
     filterValues: {
       recurring: "Wiederkehrend",
@@ -396,7 +421,9 @@ const locale = {
       delegated: "Delegiert",
       someday: "Irgendwann",
       blocked: "Blockiert",
-      actionable: "Umsetzbar"
+      actionable: "Umsetzbar",
+      stalled: "Stockend",
+      active: "Aktiv"
     },
     completedWithinLabel: "Erledigt innerhalb",
     completedWithinOptions: {

@@ -45,14 +45,23 @@ const locale = {
     pillThreshold: "Soglia checkbox per badge inline",
     pillThresholdDescription: "Numero massimo di checkbox prima che i badge inline di Better Tasks saltino il rendering iniziale (default 100). Valori più alti verranno renderizzati ma la pagina può rallentare.",
     advancedDashboard: "Opzioni avanzate Dashboard",
-    advancedDashboardDescription: "Mostra impostazioni dei passaggi della Revisione Settimanale.",
-    reviewStepDescription: "Includi questo passaggio nel flusso della Revisione Settimanale (ordine fisso).",
+    advancedDashboardDescription: "Mostra impostazioni dei passaggi di revisione (Giornaliera, Settimanale, Mensile).",
+    reviewStepDescription: "Includi questo passaggio nel flusso di revisione (ordine fisso).",
     reviewStepNextActions: "Revisione Settimanale: Prossime Azioni",
     reviewStepWaitingFor: "Revisione Settimanale: In attesa",
     reviewStepCompleted7d: "Revisione Settimanale: Completate (Ultimi 7 Giorni)",
     reviewStepUpcoming7d: "Revisione Settimanale: In arrivo (Prossimi 7 Giorni)",
     reviewStepOverdue: "Revisione Settimanale: In ritardo",
     reviewStepSomeday: "Revisione Settimanale: Un giorno / Forse",
+    reviewStepDueToday: "Revisione Giornaliera: In scadenza oggi",
+    reviewStepCompletedYesterday: "Revisione Giornaliera: Completate ieri",
+    reviewStepDailyOverdue: "Revisione Giornaliera: In ritardo",
+    reviewStepCompleted30d: "Revisione Mensile: Completate (Ultimi 30 Giorni)",
+    reviewStepStalled: "Revisione Mensile: Attività in stallo",
+    reviewStepMonthlySomeday: "Revisione Mensile: Un giorno / Forse",
+    reviewStepMonthlyOverdue: "Revisione Mensile: In ritardo",
+    stalledDaysName: "Soglia attività in stallo (giorni)",
+    stalledDaysDesc: "Le attività non modificate per questo numero di giorni vengono contrassegnate come in stallo.",
     destNextTask: "Destinazione della prossima attività",
     destNextTaskDescription: "Dove creare la prossima occorrenza",
     dnpHeading: "Intestazione DNP",
@@ -138,6 +147,8 @@ const locale = {
   commands: {
     reinstallPresetDashViews: "Better Tasks: Reinstalla viste predefinite dashboard",
     startReview: "Better Tasks: Revisione Settimanale",
+    startDailyReview: "Better Tasks: Revisione Giornaliera",
+    startMonthlyReview: "Better Tasks: Revisione Mensile",
     toggleDashboardFullPage: "Attiva/disattiva Dashboard Better Tasks (pagina intera)"
   },
   prompts: {
@@ -305,6 +316,15 @@ const locale = {
     review: {
       button: "Revisione Settimanale",
       label: "Revisione Settimanale",
+      dailyButton: "Giornaliera",
+      dailyLabel: "Revisione Giornaliera",
+      weeklyButton: "Settimanale",
+      monthlyButton: "Mensile",
+      monthlyLabel: "Revisione Mensile",
+      projectSweepButton: "Revisione Progetto",
+      projectSweepLabel: "Revisione Progetto",
+      selectProject: "Seleziona progetto…",
+      menuAriaLabel: "Opzioni di revisione",
       of: "di",
       back: "← Indietro",
       next: "Avanti →",
@@ -335,7 +355,11 @@ const locale = {
       upcoming7d: "In arrivo (Prossimi 7 Giorni)",
       overdue: "In ritardo",
       someday: "Un giorno / Forse",
-      allOpen: "Tutte le attività non completate"
+      allOpen: "Tutte le attività non completate",
+      dueToday: "In scadenza oggi",
+      completedYesterday: "Completate ieri",
+      stalled: "Attività in stallo",
+      completed30d: "Completate (Ultimi 30 Giorni)"
     },
     quickAddPlaceholder: "Aggiungi una Better Task",
     quickAddButton: "OK",
@@ -374,7 +398,8 @@ const locale = {
       Priority: "Priorità",
       Energy: "Energia",
       GTD: "GTD",
-      Blocked: "Bloccata"
+      Blocked: "Bloccata",
+      Stalled: "In stallo"
     },
     filterValues: {
       recurring: "Ricorrente",
@@ -396,7 +421,9 @@ const locale = {
       delegated: "Delegata",
       someday: "Un giorno",
       blocked: "Bloccata",
-      actionable: "Eseguibile"
+      actionable: "Eseguibile",
+      stalled: "In stallo",
+      active: "Attiva"
     },
     completedWithinLabel: "Completate entro",
     completedWithinOptions: {

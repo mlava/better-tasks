@@ -45,14 +45,23 @@ const locale = {
     pillThreshold: "Umbral de casillas para píldoras en línea",
     pillThresholdDescription: "Cantidad máxima de casillas antes de que las píldoras en línea omitan el renderizado inicial (por defecto 100). Valores más altos se renderizan pero la página puede ser más lenta.",
     advancedDashboard: "Opciones avanzadas del panel",
-    advancedDashboardDescription: "Mostrar ajustes de los pasos de la Revisión Semanal.",
-    reviewStepDescription: "Incluir este paso en el flujo de Revisión Semanal (el orden es fijo).",
+    advancedDashboardDescription: "Mostrar ajustes de los pasos de revisión (Diaria, Semanal, Mensual).",
+    reviewStepDescription: "Incluir este paso en el flujo de revisión (el orden es fijo).",
     reviewStepNextActions: "Revisión Semanal: Próximas Acciones",
     reviewStepWaitingFor: "Revisión Semanal: En Espera",
     reviewStepCompleted7d: "Revisión Semanal: Completadas (Últimos 7 Días)",
     reviewStepUpcoming7d: "Revisión Semanal: Próximas (Siguientes 7 Días)",
     reviewStepOverdue: "Revisión Semanal: Atrasadas",
     reviewStepSomeday: "Revisión Semanal: Algún Día / Quizá",
+    reviewStepDueToday: "Revisión Diaria: Vence Hoy",
+    reviewStepCompletedYesterday: "Revisión Diaria: Completadas Ayer",
+    reviewStepDailyOverdue: "Revisión Diaria: Atrasadas",
+    reviewStepCompleted30d: "Revisión Mensual: Completadas (Últimos 30 Días)",
+    reviewStepStalled: "Revisión Mensual: Tareas Estancadas",
+    reviewStepMonthlySomeday: "Revisión Mensual: Algún Día / Quizá",
+    reviewStepMonthlyOverdue: "Revisión Mensual: Atrasadas",
+    stalledDaysName: "Umbral de tareas estancadas (días)",
+    stalledDaysDesc: "Las tareas que no se editan durante esta cantidad de días se marcan como estancadas.",
     destNextTask: "Destino de la próxima tarea",
     destNextTaskDescription: "Dónde crear la siguiente ocurrencia",
     dnpHeading: "Encabezado de DNP",
@@ -138,6 +147,8 @@ const locale = {
   commands: {
     reinstallPresetDashViews: "Better Tasks: Reinstalar vistas predefinidas del panel",
     startReview: "Better Tasks: Revisión Semanal",
+    startDailyReview: "Better Tasks: Revisión Diaria",
+    startMonthlyReview: "Better Tasks: Revisión Mensual",
     toggleDashboardFullPage: "Alternar Panel de Better Tasks (Página completa)"
   },
   prompts: {
@@ -305,6 +316,15 @@ const locale = {
     review: {
       button: "Revisión Semanal",
       label: "Revisión Semanal",
+      dailyButton: "Diaria",
+      dailyLabel: "Revisión Diaria",
+      weeklyButton: "Semanal",
+      monthlyButton: "Mensual",
+      monthlyLabel: "Revisión Mensual",
+      projectSweepButton: "Revisión de Proyecto",
+      projectSweepLabel: "Revisión de Proyecto",
+      selectProject: "Seleccionar proyecto…",
+      menuAriaLabel: "Opciones de revisión",
       of: "de",
       back: "← Atrás",
       next: "Siguiente →",
@@ -335,7 +355,11 @@ const locale = {
       upcoming7d: "Próximas (Siguientes 7 Días)",
       overdue: "Atrasadas",
       someday: "Algún Día / Quizá",
-      allOpen: "Todas las Tareas Abiertas"
+      allOpen: "Todas las Tareas Abiertas",
+      dueToday: "Vence Hoy",
+      completedYesterday: "Completadas Ayer",
+      stalled: "Tareas Estancadas",
+      completed30d: "Completadas (Últimos 30 Días)"
     },
     quickAddPlaceholder: "Añadir una Better Task",
     quickAddButton: "OK",
@@ -374,7 +398,8 @@ const locale = {
       Priority: "Prioridad",
       Energy: "Energía",
       GTD: "GTD",
-      Blocked: "Bloqueada"
+      Blocked: "Bloqueada",
+      Stalled: "Estancada"
     },
     filterValues: {
       recurring: "Recurrente",
@@ -396,7 +421,9 @@ const locale = {
       delegated: "Delegada",
       someday: "Algún día",
       blocked: "Bloqueada",
-      actionable: "Ejecutable"
+      actionable: "Ejecutable",
+      stalled: "Estancada",
+      active: "Activa"
     },
     completedWithinLabel: "Completadas en",
     completedWithinOptions: {

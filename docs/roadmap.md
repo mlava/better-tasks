@@ -176,12 +176,17 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - Progress indicator (3 of 12 tasks done)
 - Optional Pomodoro timer integration
 
-### Expanded Reviews
-- Daily review: What's due today? Yesterday's completions
-- Monthly review: Archive completed, review someday/maybe
-- Review history and completion stats
-- "Stalled tasks" detection and preset view
-- Project sweep (per-project review flow)
+### Expanded Reviews — Complete ✅
+- ✅ Daily review: Due Today → Completed Yesterday → Overdue (3-step flow)
+- ✅ Monthly review: Completed 30d → Stalled → Someday/Maybe → Overdue (4-step flow)
+- ✅ "Stalled tasks" detection via `:edit/time` with configurable threshold (default 14 days)
+- ✅ Stalled/Active filter chips in dashboard sidebar
+- ✅ Project sweep: select a project, cycle through Open → Overdue → Stalled → Completed 30d
+- ✅ Review menu dropdown (Daily/Weekly/Monthly + Project Sweep) replaces single button
+- ✅ Per-type step toggles in settings (independent enable/disable per review type)
+- ✅ 4 new preset views: Due Today, Completed Yesterday, Stalled Tasks, Completed (Last 30 Days)
+- ✅ Commands: Daily Review, Monthly Review (Weekly unchanged)
+- ⏳ Review history and completion stats (deferred — needs storage mechanism)
 
 ### Notes & Activity Log
 - `notes::` attribute or dedicated child blocks

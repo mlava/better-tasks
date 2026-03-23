@@ -45,14 +45,23 @@ const locale = {
     pillThreshold: "Seuil de cases pour les pastilles en ligne",
     pillThresholdDescription: "Nombre maximal de cases avant que les pastilles en ligne ne sautent le rendu initial (par défaut 100). Des valeurs plus élevées seront rendues mais la page peut être plus lente.",
     advancedDashboard: "Options avancées du tableau de bord",
-    advancedDashboardDescription: "Afficher les réglages des étapes de la Revue Hebdomadaire.",
-    reviewStepDescription: "Inclure cette étape dans le flux de la Revue Hebdomadaire (l'ordre est fixe).",
+    advancedDashboardDescription: "Afficher les réglages des étapes de revue (Quotidienne, Hebdomadaire, Mensuelle).",
+    reviewStepDescription: "Inclure cette étape dans le flux de revue (l'ordre est fixe).",
     reviewStepNextActions: "Revue Hebdomadaire : Prochaines Actions",
     reviewStepWaitingFor: "Revue Hebdomadaire : En Attente",
     reviewStepCompleted7d: "Revue Hebdomadaire : Terminées (7 Derniers Jours)",
     reviewStepUpcoming7d: "Revue Hebdomadaire : À Venir (7 Prochains Jours)",
     reviewStepOverdue: "Revue Hebdomadaire : En Retard",
     reviewStepSomeday: "Revue Hebdomadaire : Un Jour / Peut-être",
+    reviewStepDueToday: "Revue Quotidienne : Échéance Aujourd'hui",
+    reviewStepCompletedYesterday: "Revue Quotidienne : Terminées Hier",
+    reviewStepDailyOverdue: "Revue Quotidienne : En Retard",
+    reviewStepCompleted30d: "Revue Mensuelle : Terminées (30 Derniers Jours)",
+    reviewStepStalled: "Revue Mensuelle : Tâches en Stagnation",
+    reviewStepMonthlySomeday: "Revue Mensuelle : Un Jour / Peut-être",
+    reviewStepMonthlyOverdue: "Revue Mensuelle : En Retard",
+    stalledDaysName: "Seuil de stagnation des tâches (jours)",
+    stalledDaysDesc: "Les tâches non modifiées depuis ce nombre de jours sont marquées comme en stagnation.",
     destNextTask: "Destination de la prochaine tâche",
     destNextTaskDescription: "Où créer la prochaine occurrence",
     dnpHeading: "Titre de la DNP",
@@ -138,6 +147,8 @@ const locale = {
   commands: {
     reinstallPresetDashViews: "Better Tasks : Réinstaller les vues prédéfinies du tableau de bord",
     startReview: "Better Tasks : Revue Hebdomadaire",
+    startDailyReview: "Better Tasks : Revue Quotidienne",
+    startMonthlyReview: "Better Tasks : Revue Mensuelle",
     toggleDashboardFullPage: "Basculer le Tableau de Bord Better Tasks (Pleine page)"
   },
   prompts: {
@@ -305,6 +316,15 @@ const locale = {
     review: {
       button: "Revue Hebdomadaire",
       label: "Revue Hebdomadaire",
+      dailyButton: "Quotidienne",
+      dailyLabel: "Revue Quotidienne",
+      weeklyButton: "Hebdomadaire",
+      monthlyButton: "Mensuelle",
+      monthlyLabel: "Revue Mensuelle",
+      projectSweepButton: "Revue de Projet",
+      projectSweepLabel: "Revue de Projet",
+      selectProject: "Sélectionner un projet…",
+      menuAriaLabel: "Options de revue",
       of: "sur",
       back: "← Retour",
       next: "Suivant →",
@@ -335,7 +355,11 @@ const locale = {
       upcoming7d: "À Venir (7 Prochains Jours)",
       overdue: "En Retard",
       someday: "Un Jour / Peut-être",
-      allOpen: "Toutes les Tâches Ouvertes"
+      allOpen: "Toutes les Tâches Ouvertes",
+      dueToday: "Échéance Aujourd'hui",
+      completedYesterday: "Terminées Hier",
+      stalled: "Tâches en Stagnation",
+      completed30d: "Terminées (30 Derniers Jours)"
     },
     quickAddPlaceholder: "Ajouter une Better Task",
     quickAddButton: "OK",
@@ -374,7 +398,8 @@ const locale = {
       Priority: "Priorité",
       Energy: "Énergie",
       GTD: "GTD",
-      Blocked: "Bloquée"
+      Blocked: "Bloquée",
+      Stalled: "En stagnation"
     },
     filterValues: {
       recurring: "Récurrente",
@@ -396,7 +421,9 @@ const locale = {
       delegated: "Déléguée",
       someday: "Un jour",
       blocked: "Bloquée",
-      actionable: "Actionnable"
+      actionable: "Actionnable",
+      stalled: "En stagnation",
+      active: "Active"
     },
     completedWithinLabel: "Terminées dans",
     completedWithinOptions: {

@@ -20,6 +20,9 @@ import {
   setLastDefaultState,
   DASHBOARD_PRESET_IDS,
   DASHBOARD_REVIEW_PRESET_IDS,
+  DASHBOARD_DAILY_REVIEW_PRESET_IDS,
+  DASHBOARD_MONTHLY_REVIEW_PRESET_IDS,
+  DASHBOARD_PROJECT_SWEEP_PRESET_IDS,
 } from "./viewsStore";
 
 function resolvePath(obj, parts = []) {
@@ -80,6 +83,7 @@ const DEFAULT_FILTERS = {
   Energy: [],
   GTD: [],
   Blocked: [],
+  Stalled: [],
   projectText: "",
   waitingText: "",
   contextText: "",
@@ -261,7 +265,7 @@ function applyFilters(tasks, filters, query) {
     startOfToday.setHours(0, 0, 0, 0);
     const dayMs = 24 * 60 * 60 * 1000;
     const days =
-      range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 90 : null;
+      range === "1d" ? 1 : range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 90 : null;
     if (!days) return true;
     const threshold = new Date(startOfToday.getTime() - (days - 1) * dayMs);
     return date >= threshold;
@@ -305,6 +309,19 @@ function applyFilters(tasks, filters, query) {
     if (blockedFilter.size) {
       const value = task.isBlocked ? "blocked" : "actionable";
       if (!blockedFilter.has(value)) return false;
+    }
+    const stalledFilter = new Set(filters.Stalled || []);
+    if (stalledFilter.size) {
+      const stalledDays = typeof filters.stalledDays === "number" ? filters.stalledDays : 14;
+      const now = new Date();
+      const startOfTodayStalled = new Date(now.getTime());
+      startOfTodayStalled.setHours(0, 0, 0, 0);
+      const stalledThreshold = startOfTodayStalled.getTime() - stalledDays * 24 * 60 * 60 * 1000;
+      const hasEditTime = typeof task.editedAt === "number" && task.editedAt > 0;
+      const isStalled = !task.isCompleted &&
+        (!hasEditTime || task.editedAt < stalledThreshold);
+      if (stalledFilter.has("stalled") && !isStalled) return false;
+      if (stalledFilter.has("active") && isStalled) return false;
     }
     if (projectText) {
       const hay = (meta.project || "").trim();
@@ -1551,8 +1568,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const [expandedParentTasks, setExpandedParentTasks] = useState({});
   const [viewsStore, setViewsStore] = useState(() => ({ schema: 1, activeViewId: null, views: [] }));
   const [viewsLoaded, setViewsLoaded] = useState(false);
-  const [reviewStartRequested, setReviewStartRequested] = useState(false);
-  const [reviewState, setReviewState] = useState(() => ({ active: false, index: 0 }));
+  const [reviewStartRequested, setReviewStartRequested] = useState(null);
+  const [reviewState, setReviewState] = useState(() => ({ active: false, type: "weekly", index: 0, projectFilter: null }));
+  const [reviewMenuOpen, setReviewMenuOpen] = useState(false);
   const preReviewActiveViewIdRef = useRef(null);
   // NOTE: We only store activeViewId here.
   // If null, exiting review relies on existing Default → lastDefaultState restore logic.
@@ -1633,11 +1651,20 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     sync();
     return unsub;
   }, [controller]);
+  const REVIEW_TYPE_PRESETS = useMemo(() => ({
+    daily: DASHBOARD_DAILY_REVIEW_PRESET_IDS,
+    weekly: DASHBOARD_REVIEW_PRESET_IDS,
+    monthly: DASHBOARD_MONTHLY_REVIEW_PRESET_IDS,
+    "project-sweep": DASHBOARD_PROJECT_SWEEP_PRESET_IDS,
+  }), []);
   const effectiveReviewIds = useMemo(() => {
-    const ids = Array.isArray(DASHBOARD_REVIEW_PRESET_IDS) ? DASHBOARD_REVIEW_PRESET_IDS : [];
+    const type = reviewState.type || "weekly";
+    const settingsType = type === "project-sweep" ? "monthly" : type;
+    const ids = REVIEW_TYPE_PRESETS[type] || DASHBOARD_REVIEW_PRESET_IDS;
+    const safeIds = Array.isArray(ids) ? ids : [];
     const existing = new Set((viewsStore?.views || []).map((v) => v.id));
-    return ids.filter((id) => existing.has(id) && reviewStepSettings[id] !== false);
-  }, [viewsStore, reviewStepSettings]);
+    return safeIds.filter((id) => existing.has(id) && reviewStepSettings[`${settingsType}:${id}`] !== false);
+  }, [viewsStore, reviewStepSettings, reviewState.type, REVIEW_TYPE_PRESETS]);
   const activeReviewView = useMemo(() => {
     if (!reviewState.active) return null;
     const id = effectiveReviewIds[reviewState.index] || null;
@@ -1742,6 +1769,10 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
         { value: "actionable", label: fv("actionable") },
         { value: "blocked", label: fv("blocked") },
       ],
+      Stalled: [
+        { value: "stalled", label: fv("stalled") },
+        { value: "active", label: fv("active") },
+      ],
     };
   }, [tt, fallbackCapitalize]);
   const filterSectionLabels = useMemo(
@@ -1755,6 +1786,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       Energy: tt(["dashboard", "filterSections", "Energy"], "Energy"),
       GTD: tt(["dashboard", "filterSections", "GTD"], "GTD"),
       Blocked: tt(["dashboard", "filterSections", "Blocked"], "Blocked"),
+      Stalled: tt(["dashboard", "filterSections", "Stalled"], "Stalled"),
     }),
     [tt]
   );
@@ -1879,6 +1911,15 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       upcomingWithin90d: tt(["dashboard", "upcomingWithinOptions", "90d"], "Next 90 days"),
       reviewButton: tt(["dashboard", "review", "button"], "Weekly Review"),
       reviewLabel: tt(["dashboard", "review", "label"], "Weekly Review"),
+      dailyReviewButton: tt(["dashboard", "review", "dailyButton"], "Daily"),
+      dailyReviewLabel: tt(["dashboard", "review", "dailyLabel"], "Daily Review"),
+      weeklyReviewButton: tt(["dashboard", "review", "weeklyButton"], "Weekly"),
+      monthlyReviewButton: tt(["dashboard", "review", "monthlyButton"], "Monthly"),
+      monthlyReviewLabel: tt(["dashboard", "review", "monthlyLabel"], "Monthly Review"),
+      projectSweepButton: tt(["dashboard", "review", "projectSweepButton"], "Project Sweep"),
+      projectSweepLabel: tt(["dashboard", "review", "projectSweepLabel"], "Project Sweep"),
+      reviewSelectProject: tt(["dashboard", "review", "selectProject"], "Select project…"),
+      reviewMenuAriaLabel: tt(["dashboard", "review", "menuAriaLabel"], "Review options"),
       reviewOf: tt(["dashboard", "review", "of"], "of"),
       reviewBack: tt(["dashboard", "review", "back"], "← Back"),
       reviewNext: tt(["dashboard", "review", "next"], "Next →"),
@@ -1906,9 +1947,16 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     [tt, groupingOptions, groupLabels, metaLabels, taskMenuStrings]
   );
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const stalledDays = controller?.getStalledDays?.() || 14;
+  const effectiveFilters = useMemo(() => {
+    if (typeof stalledDays === "number" && stalledDays !== 14) {
+      return { ...filters, stalledDays };
+    }
+    return filters;
+  }, [filters, stalledDays]);
   const filteredTasks = useMemo(
-    () => applyFilters(snapshot.tasks, filters, query),
-    [snapshot.tasks, filters, query]
+    () => applyFilters(snapshot.tasks, effectiveFilters, query),
+    [snapshot.tasks, effectiveFilters, query]
   );
   const filteredTaskIndex = useMemo(() => {
     const map = new Map();
@@ -2126,7 +2174,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   useEffect(() => {
     if (!controller?.subscribeDashReviewRequests) return undefined;
     const unsub = controller.subscribeDashReviewRequests((req) => {
-      if (req?.type === "start") setReviewStartRequested(true);
+      if (req?.type === "start") setReviewStartRequested(req.reviewType || "weekly");
     });
     return unsub;
   }, [controller]);
@@ -2134,8 +2182,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   useEffect(() => {
     if (!reviewStartRequested) return;
     if (!viewsLoaded) return;
-    setReviewStartRequested(false);
-    startReview();
+    const reqType = typeof reviewStartRequested === "string" ? reviewStartRequested : "weekly";
+    setReviewStartRequested(null);
+    startReview(reqType);
   }, [reviewStartRequested, viewsLoaded, startReview]);
 
   useEffect(() => {
@@ -2575,26 +2624,38 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     [viewsStore, persistDefaultState, getDashViewState, applyDashViewState, persistViewsStore]
   );
 
-  const startReview = useCallback(() => {
-    if (!effectiveReviewIds.length) {
+  const startReview = useCallback((type = "weekly", options = {}) => {
+    const ids = REVIEW_TYPE_PRESETS[type] || DASHBOARD_REVIEW_PRESET_IDS;
+    const safeIds = Array.isArray(ids) ? ids : [];
+    const existing = new Set((viewsStore?.views || []).map((v) => v.id));
+    const settingsType = type === "project-sweep" ? "monthly" : type;
+    const effective = safeIds.filter((id) => existing.has(id) && reviewStepSettings[`${settingsType}:${id}`] !== false);
+    if (!effective.length) {
       notifyToast(ui.reviewNoPresetsToast);
       return;
     }
     preReviewActiveViewIdRef.current = viewsStore?.activeViewId || null;
-    setReviewState({ active: true, index: 0 });
-    applySavedViewById(effectiveReviewIds[0]);
+    setReviewState({ active: true, type, index: 0, projectFilter: options.projectFilter || null });
+    setReviewMenuOpen(false);
+    applySavedViewById(effective[0]);
+    if (options.projectFilter) {
+      setTimeout(() => dispatchFilters({ type: "setText", section: "projectText", value: options.projectFilter }), 50);
+    }
   }, [
-    effectiveReviewIds,
+    REVIEW_TYPE_PRESETS,
+    reviewStepSettings,
     notifyToast,
     ui.reviewNoPresetsToast,
-    viewsStore?.activeViewId,
+    viewsStore,
     applySavedViewById,
+    dispatchFilters,
   ]);
 
   const exitReview = useCallback(() => {
     const priorId = preReviewActiveViewIdRef.current;
     preReviewActiveViewIdRef.current = null;
-    setReviewState({ active: false, index: 0 });
+    setReviewState({ active: false, type: "weekly", index: 0, projectFilter: null });
+    setReviewMenuOpen(false);
     if (priorId) {
       applySavedViewById(priorId);
       return;
@@ -2609,8 +2670,13 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     const nextIndex = reviewState.index + 1;
     setReviewState((prev) => ({ ...prev, index: nextIndex }));
     const id = effectiveReviewIds[nextIndex];
-    if (id) applySavedViewById(id);
-  }, [reviewState.active, reviewState.index, effectiveReviewIds, applySavedViewById]);
+    if (id) {
+      applySavedViewById(id);
+      if (reviewState.projectFilter) {
+        setTimeout(() => dispatchFilters({ type: "setText", section: "projectText", value: reviewState.projectFilter }), 50);
+      }
+    }
+  }, [reviewState.active, reviewState.index, reviewState.projectFilter, effectiveReviewIds, applySavedViewById, dispatchFilters]);
 
   const goReviewBack = useCallback(() => {
     if (!reviewState.active) return;
@@ -2618,13 +2684,18 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     const nextIndex = reviewState.index - 1;
     setReviewState((prev) => ({ ...prev, index: nextIndex }));
     const id = effectiveReviewIds[nextIndex];
-    if (id) applySavedViewById(id);
-  }, [reviewState.active, reviewState.index, effectiveReviewIds, applySavedViewById]);
+    if (id) {
+      applySavedViewById(id);
+      if (reviewState.projectFilter) {
+        setTimeout(() => dispatchFilters({ type: "setText", section: "projectText", value: reviewState.projectFilter }), 50);
+      }
+    }
+  }, [reviewState.active, reviewState.index, reviewState.projectFilter, effectiveReviewIds, applySavedViewById, dispatchFilters]);
 
   const handleViewSelectChange = useCallback(
     (e) => {
       if (reviewState.active) {
-        setReviewState({ active: false, index: 0 });
+        setReviewState({ active: false, type: "weekly", index: 0, projectFilter: null });
         preReviewActiveViewIdRef.current = null;
       }
       const id = e?.target?.value || null;
@@ -2813,6 +2884,13 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           label={filterSectionLabels["Blocked"] || "Blocked"}
           chips={filterDefs["Blocked"]}
           activeValues={filters["Blocked"]}
+          onToggle={handleFilterToggle}
+        />
+        <FilterChips
+          sectionKey="Stalled"
+          label={filterSectionLabels["Stalled"] || "Stalled"}
+          chips={filterDefs["Stalled"]}
+          activeValues={filters["Stalled"]}
           onToggle={handleFilterToggle}
         />
       </FullPageFilterGroup>
@@ -3091,16 +3169,50 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             <SimpleActionsMenu actions={viewMenuActions} title={ui.viewsOptions} disabled={!activeView} />
           </div>
           <div className="bt-toolbar__right">
-            <button
-              type="button"
-              className={`bp3-button bp3-small bt-weekly-review-button${
-                reviewState.active ? " bt-weekly-review-button--inactive" : ""
-              }`}
-              onClick={startReview}
-              disabled={reviewState.active || !effectiveReviewIds.length}
-            >
-              {ui.reviewButton}
-            </button>
+            <div className="bt-review-menu" style={{ position: "relative" }}>
+              <button
+                type="button"
+                className={`bp3-button bp3-small bt-weekly-review-button${
+                  reviewState.active ? " bt-weekly-review-button--inactive" : ""
+                }`}
+                onClick={() => startReview("weekly")}
+                disabled={reviewState.active}
+              >
+                {ui.weeklyReviewButton || ui.reviewButton}
+              </button>
+              <button
+                type="button"
+                className="bp3-button bp3-small bt-review-menu__caret"
+                onClick={() => setReviewMenuOpen((p) => !p)}
+                disabled={reviewState.active}
+                aria-label={ui.reviewMenuAriaLabel}
+              >
+                ▾
+              </button>
+              {reviewMenuOpen && (
+                <div className="bt-review-menu__popover">
+                  <button onClick={() => startReview("daily")}>{ui.dailyReviewButton}</button>
+                  <button onClick={() => startReview("weekly")}>{ui.weeklyReviewButton || ui.reviewButton}</button>
+                  <button onClick={() => startReview("monthly")}>{ui.monthlyReviewButton}</button>
+                  <hr style={{ margin: "4px 0", border: "none", borderTop: "1px solid var(--bt-border-subtle, rgba(0,0,0,0.1))" }} />
+                  <div style={{ padding: "4px 8px", fontSize: "11px", fontWeight: 600, color: "var(--bt-muted)", textTransform: "uppercase" }}>
+                    {ui.projectSweepButton}
+                  </div>
+                  <select
+                    style={{ width: "100%", margin: "2px 0 4px", fontSize: "12px" }}
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) startReview("project-sweep", { projectFilter: e.target.value });
+                    }}
+                  >
+                    <option value="">{ui.reviewSelectProject}</option>
+                    {visibleProjectOptions.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -3201,7 +3313,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
               <div className="bt-dashboard__reviewbar">
                 <div className="bt-reviewbar__left">
                   <span className="bt-reviewbar__title">
-                    {ui.reviewLabel} · {Math.min(reviewState.index + 1, effectiveReviewIds.length)} {ui.reviewOf}{" "}
+                    {reviewState.type === "daily" ? ui.dailyReviewLabel : reviewState.type === "monthly" ? ui.monthlyReviewLabel : reviewState.type === "project-sweep" ? `${ui.projectSweepLabel} · ${reviewState.projectFilter || ""}` : ui.reviewLabel} · {Math.min(reviewState.index + 1, effectiveReviewIds.length)} {ui.reviewOf}{" "}
                     {effectiveReviewIds.length}
                   </span>
                   {activeReviewView?.name ? <span className="bt-reviewbar__current">{activeReviewView.name}</span> : null}
@@ -3395,16 +3507,50 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
 	          />
 	        </div>
 	        <div className="bt-toolbar__right">
-	          <button
-	            type="button"
-	            className={`bp3-button bp3-small bt-weekly-review-button${
-	              reviewState.active ? " bt-weekly-review-button--inactive" : ""
-	            }`}
-	            onClick={startReview}
-	            disabled={reviewState.active || !effectiveReviewIds.length}
-	          >
-	            {ui.reviewButton}
-	          </button>
+            <div className="bt-review-menu" style={{ position: "relative" }}>
+              <button
+                type="button"
+                className={`bp3-button bp3-small bt-weekly-review-button${
+                  reviewState.active ? " bt-weekly-review-button--inactive" : ""
+                }`}
+                onClick={() => startReview("weekly")}
+                disabled={reviewState.active}
+              >
+                {ui.weeklyReviewButton || ui.reviewButton}
+              </button>
+              <button
+                type="button"
+                className="bp3-button bp3-small bt-review-menu__caret"
+                onClick={() => setReviewMenuOpen((p) => !p)}
+                disabled={reviewState.active}
+                aria-label={ui.reviewMenuAriaLabel}
+              >
+                ▾
+              </button>
+              {reviewMenuOpen && (
+                <div className="bt-review-menu__popover">
+                  <button onClick={() => startReview("daily")}>{ui.dailyReviewButton}</button>
+                  <button onClick={() => startReview("weekly")}>{ui.weeklyReviewButton || ui.reviewButton}</button>
+                  <button onClick={() => startReview("monthly")}>{ui.monthlyReviewButton}</button>
+                  <hr style={{ margin: "4px 0", border: "none", borderTop: "1px solid var(--bt-border-subtle, rgba(0,0,0,0.1))" }} />
+                  <div style={{ padding: "4px 8px", fontSize: "11px", fontWeight: 600, color: "var(--bt-muted)", textTransform: "uppercase" }}>
+                    {ui.projectSweepButton}
+                  </div>
+                  <select
+                    style={{ width: "100%", margin: "2px 0 4px", fontSize: "12px" }}
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) startReview("project-sweep", { projectFilter: e.target.value });
+                    }}
+                  >
+                    <option value="">{ui.reviewSelectProject}</option>
+                    {visibleProjectOptions.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
 	        </div>
 	      </div>
 
@@ -3538,6 +3684,14 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                 label={filterSectionLabels["Blocked"] || "Blocked"}
                 chips={filterDefs["Blocked"]}
                 activeValues={filters["Blocked"]}
+                onToggle={handleFilterToggle}
+              />
+              <FilterChips
+                key="Stalled"
+                sectionKey="Stalled"
+                label={filterSectionLabels["Stalled"] || "Stalled"}
+                chips={filterDefs["Stalled"]}
+                activeValues={filters["Stalled"]}
                 onToggle={handleFilterToggle}
               />
               <div className="bt-filter-text-row">
@@ -3726,7 +3880,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
 	        <div className="bt-dashboard__reviewbar">
 	          <div className="bt-reviewbar__left">
 	            <span className="bt-reviewbar__title">
-	              {ui.reviewLabel} · {Math.min(reviewState.index + 1, effectiveReviewIds.length)} {ui.reviewOf}{" "}
+	              {reviewState.type === "daily" ? ui.dailyReviewLabel : reviewState.type === "monthly" ? ui.monthlyReviewLabel : reviewState.type === "project-sweep" ? `${ui.projectSweepLabel} · ${reviewState.projectFilter || ""}` : ui.reviewLabel} · {Math.min(reviewState.index + 1, effectiveReviewIds.length)} {ui.reviewOf}{" "}
 	              {effectiveReviewIds.length}
 	            </span>
 	            {activeReviewView?.name ? (

@@ -45,14 +45,23 @@ const locale = {
     pillThreshold: "حد عدد مربعات الاختيار للشارات المضمنة",
     pillThresholdDescription: "الحد الأقصى لعدد مربعات الاختيار قبل أن تتخطى شارات Better Tasks المضمنة العرض الأولي (الافتراضي 100). القيم الأعلى ستُعرض لكن قد تُبطئ الصفحة.",
     advancedDashboard: "خيارات متقدمة للوحة التحكم",
-    advancedDashboardDescription: "إظهار إعدادات خطوات المراجعة الأسبوعية.",
-    reviewStepDescription: "تضمين هذه الخطوة في مسار المراجعة الأسبوعية (الترتيب ثابت).",
+    advancedDashboardDescription: "إظهار إعدادات خطوات المراجعة (اليومية، الأسبوعية، الشهرية).",
+    reviewStepDescription: "تضمين هذه الخطوة في مسار المراجعة (الترتيب ثابت).",
     reviewStepNextActions: "مراجعة أسبوعية: الإجراءات التالية",
     reviewStepWaitingFor: "مراجعة أسبوعية: قيد الانتظار",
     reviewStepCompleted7d: "مراجعة أسبوعية: مكتمل (آخر 7 أيام)",
     reviewStepUpcoming7d: "مراجعة أسبوعية: قادم (الـ 7 أيام القادمة)",
     reviewStepOverdue: "مراجعة أسبوعية: متأخر",
     reviewStepSomeday: "مراجعة أسبوعية: يوماً ما / ربما",
+    reviewStepDueToday: "مراجعة يومية: المستحق اليوم",
+    reviewStepCompletedYesterday: "مراجعة يومية: المكتمل بالأمس",
+    reviewStepDailyOverdue: "مراجعة يومية: متأخر",
+    reviewStepCompleted30d: "مراجعة شهرية: مكتمل (آخر 30 يوماً)",
+    reviewStepStalled: "مراجعة شهرية: مهام متوقفة",
+    reviewStepMonthlySomeday: "مراجعة شهرية: يوماً ما / ربما",
+    reviewStepMonthlyOverdue: "مراجعة شهرية: متأخر",
+    stalledDaysName: "حد أيام توقف المهمة",
+    stalledDaysDesc: "المهام التي لم تُحرَّر لهذا العدد من الأيام تُعتبر متوقفة.",
     destNextTask: "وجهة المهمة التالية",
     destNextTaskDescription: "مكان إنشاء التكرار التالي",
     dnpHeading: "عنوان DNP",
@@ -138,6 +147,8 @@ const locale = {
   commands: {
     reinstallPresetDashViews: "Better Tasks: إعادة تثبيت عروض لوحة التحكم الافتراضية",
     startReview: "Better Tasks: المراجعة الأسبوعية",
+    startDailyReview: "Better Tasks: المراجعة اليومية",
+    startMonthlyReview: "Better Tasks: المراجعة الشهرية",
     toggleDashboardFullPage: "تبديل لوحة Better Tasks (صفحة كاملة)"
   },
   prompts: {
@@ -305,6 +316,15 @@ const locale = {
     review: {
       button: "المراجعة الأسبوعية",
       label: "المراجعة الأسبوعية",
+      dailyButton: "يومي",
+      dailyLabel: "المراجعة اليومية",
+      weeklyButton: "أسبوعي",
+      monthlyButton: "شهري",
+      monthlyLabel: "المراجعة الشهرية",
+      projectSweepButton: "مسح المشروع",
+      projectSweepLabel: "مسح المشروع",
+      selectProject: "اختر مشروعاً…",
+      menuAriaLabel: "خيارات المراجعة",
       of: "من",
       back: "← رجوع",
       next: "التالي →",
@@ -335,7 +355,11 @@ const locale = {
       upcoming7d: "قادم (الـ 7 أيام القادمة)",
       overdue: "متأخر",
       someday: "يوماً ما / ربما",
-      allOpen: "كل المهام غير المكتملة"
+      allOpen: "كل المهام غير المكتملة",
+      dueToday: "المستحق اليوم",
+      completedYesterday: "المكتمل بالأمس",
+      stalled: "مهام متوقفة",
+      completed30d: "مكتمل (آخر 30 يوماً)"
     },
     quickAddPlaceholder: "إضافة Better Task",
     quickAddButton: "موافق",
@@ -374,7 +398,8 @@ const locale = {
       Priority: "الأولوية",
       Energy: "الطاقة",
       GTD: "GTD",
-      Blocked: "معطّلة"
+      Blocked: "معطّلة",
+      Stalled: "متوقفة"
     },
     filterValues: {
       recurring: "متكرر",
@@ -396,7 +421,9 @@ const locale = {
       delegated: "مفوّض",
       someday: "يوماً ما",
       blocked: "متوقفة",
-      actionable: "قابل للتنفيذ"
+      actionable: "قابل للتنفيذ",
+      stalled: "متوقفة",
+      active: "نشطة"
     },
     completedWithinLabel: "مكتمل خلال",
     completedWithinOptions: {

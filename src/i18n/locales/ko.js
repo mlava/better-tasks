@@ -45,14 +45,23 @@ const locale = {
     pillThreshold: "인라인 필 체크박스 임계값",
     pillThresholdDescription: "Better Tasks 인라인 필이 초기 렌더링을 건너뛰기 전 최대 체크박스 수(기본 100). 값을 높이면 렌더링되지만 페이지가 느려질 수 있습니다.",
     advancedDashboard: "대시보드 고급 옵션",
-    advancedDashboardDescription: "주간 리뷰 단계 설정 표시.",
-    reviewStepDescription: "이 단계를 주간 리뷰 흐름에 포함(순서 고정).",
+    advancedDashboardDescription: "리뷰 단계 설정 표시(일일, 주간, 월간).",
+    reviewStepDescription: "이 단계를 리뷰 흐름에 포함(순서 고정).",
     reviewStepNextActions: "주간 리뷰: 다음 행동",
     reviewStepWaitingFor: "주간 리뷰: 대기 항목",
     reviewStepCompleted7d: "주간 리뷰: 완료됨(최근 7일)",
     reviewStepUpcoming7d: "주간 리뷰: 예정됨(다음 7일)",
     reviewStepOverdue: "주간 리뷰: 기한 초과",
     reviewStepSomeday: "주간 리뷰: 언젠가 / 아마",
+    reviewStepDueToday: "일일 리뷰: 오늘 마감",
+    reviewStepCompletedYesterday: "일일 리뷰: 어제 완료됨",
+    reviewStepDailyOverdue: "일일 리뷰: 기한 초과",
+    reviewStepCompleted30d: "월간 리뷰: 완료됨(최근 30일)",
+    reviewStepStalled: "월간 리뷰: 정체된 작업",
+    reviewStepMonthlySomeday: "월간 리뷰: 언젠가 / 아마",
+    reviewStepMonthlyOverdue: "월간 리뷰: 기한 초과",
+    stalledDaysName: "정체 작업 기준 일수",
+    stalledDaysDesc: "이 일수 동안 편집되지 않은 작업은 정체 상태로 표시됩니다.",
     destNextTask: "다음 작업 생성 위치",
     destNextTaskDescription: "다음 발생 항목을 생성할 위치",
     dnpHeading: "DNP 헤딩",
@@ -138,6 +147,8 @@ const locale = {
   commands: {
     reinstallPresetDashViews: "Better Tasks: 프리셋 대시보드 뷰 다시 설치",
     startReview: "Better Tasks: 주간 리뷰",
+    startDailyReview: "Better Tasks: 일일 리뷰",
+    startMonthlyReview: "Better Tasks: 월간 리뷰",
     toggleDashboardFullPage: "Better Tasks 대시보드 전환(전체 페이지)"
   },
   prompts: {
@@ -305,6 +316,15 @@ const locale = {
     review: {
       button: "주간 리뷰",
       label: "주간 리뷰",
+      dailyButton: "일일",
+      dailyLabel: "일일 리뷰",
+      weeklyButton: "주간",
+      monthlyButton: "월간",
+      monthlyLabel: "월간 리뷰",
+      projectSweepButton: "프로젝트 점검",
+      projectSweepLabel: "프로젝트 점검",
+      selectProject: "프로젝트 선택…",
+      menuAriaLabel: "리뷰 옵션",
       of: "중",
       back: "← 뒤로",
       next: "다음 →",
@@ -335,7 +355,11 @@ const locale = {
       upcoming7d: "예정됨(다음 7일)",
       overdue: "기한 초과",
       someday: "언젠가 / 아마",
-      allOpen: "모든 미완료 작업"
+      allOpen: "모든 미완료 작업",
+      dueToday: "오늘 마감",
+      completedYesterday: "어제 완료됨",
+      stalled: "정체된 작업",
+      completed30d: "완료됨(최근 30일)"
     },
     quickAddPlaceholder: "Better Task 추가",
     quickAddButton: "확인",
@@ -374,7 +398,8 @@ const locale = {
       Priority: "우선순위",
       Energy: "에너지",
       GTD: "GTD",
-      Blocked: "차단됨"
+      Blocked: "차단됨",
+      Stalled: "정체됨"
     },
     filterValues: {
       recurring: "반복",
@@ -396,7 +421,9 @@ const locale = {
       delegated: "위임됨",
       someday: "언젠가",
       blocked: "차단됨",
-      actionable: "실행 가능"
+      actionable: "실행 가능",
+      stalled: "정체됨",
+      active: "활성"
     },
     completedWithinLabel: "완료 기간",
     completedWithinOptions: {

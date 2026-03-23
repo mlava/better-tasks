@@ -38,6 +38,7 @@ If you use TODOs in Roam, Better Tasks gives you:
 
 ## ✅ Recent updates
 
+- **Expanded Reviews:** Daily, Weekly, and Monthly review flows with a split-button review menu. Daily cycles Due Today → Completed Yesterday → Overdue. Monthly cycles Completed 30d → Stalled → Someday → Overdue. Project Sweep reviews a single project's tasks. Stalled task detection flags tasks not edited in N days (configurable, default 14). Each review type has independent step toggles. 4 new preset views: Due Today, Completed Yesterday, Stalled Tasks, Completed (Last 30 Days).
 - **Subtasks:** nest BT tasks under a parent for automatic subtask detection with 📋 progress indicators (e.g. 1/3 done). Dashboard shows expand/collapse trees. Explicit `BT_attrParent:: ((uid))` links subtasks across the graph, overriding structural nesting. Progress tracks completion in real time. Extension Tools API includes `is_subtask`, `parent_task_uid`, `subtask_uids`, `subtask_progress`.
 - **Task dependencies:** block tasks on other tasks with `BT_attrDepends:: ((uid))`. Blocked tasks show a 🔒 indicator in pills, dashboard, and Today widget. Circular dependency detection (self, mutual, transitive). Dependency picker in the ⋯ pill menu. Blocked/Actionable filter in dashboard. Auto-unblock on completion; stale dependencies auto-cleaned.
 - **"Project Page" destination:** recurring tasks with a project attribute can now route their next occurrence to the project's page instead of the Daily Notes Page. Falls back to DNP gracefully when no project is set.
@@ -216,14 +217,25 @@ Preset views (seeded, in order):
 - Someday / Maybe
 - Blocked Tasks
 - All Open Tasks
+- Due Today
+- Completed Yesterday
+- Stalled Tasks
+- Completed (Last 30 Days)
 
-Weekly Review order:
-- Next Actions
-- Waiting For
-- Completed (Last 7 Days)
-- Upcoming (Next 7 Days)
-- Overdue
-- Someday / Maybe
+### Reviews
+
+The review menu (split button in the toolbar) offers four review types:
+
+| Review | Steps |
+|--------|-------|
+| **Daily** | Due Today → Completed Yesterday → Overdue |
+| **Weekly** | Next Actions → Waiting For → Completed 7d → Upcoming 7d → Overdue → Someday |
+| **Monthly** | Completed 30d → Stalled → Someday → Overdue |
+| **Project Sweep** | Select a project → Open → Overdue → Stalled → Completed 30d |
+
+Each step can be independently enabled/disabled per review type in Settings → Advanced Dashboard.
+
+**Stalled tasks:** open tasks whose block hasn't been edited in N days (configurable, default 14). Available as a filter chip (Stalled/Active) in the sidebar and as a preset view.
 
 ### Full-page mode
 
@@ -339,7 +351,9 @@ Additional sections appear only when enabled.
 - Toggle Dashboard (Full page)
 - Switch / Save views
 - Reinstall preset views
+- Daily Review
 - Weekly Review
+- Monthly Review
 
 ---
 

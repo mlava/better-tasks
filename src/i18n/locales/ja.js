@@ -45,14 +45,23 @@ const locale = {
     pillThreshold: "インラインピルのチェックボックス閾値",
     pillThresholdDescription: "インラインピルが初期レンダリングをスキップするチェックボックスの最大数（デフォルト100）。高い値はレンダリングされますがページが遅くなる可能性があります。",
     advancedDashboard: "ダッシュボードの詳細オプション",
-    advancedDashboardDescription: "週次レビューステップの設定を表示。",
-    reviewStepDescription: "このステップを週次レビューフローに含める（順序は固定）。",
+    advancedDashboardDescription: "レビューステップの設定を表示（日次、週次、月次）。",
+    reviewStepDescription: "このステップをレビューフローに含める（順序は固定）。",
     reviewStepNextActions: "週次レビュー：次のアクション",
     reviewStepWaitingFor: "週次レビュー：待機中",
     reviewStepCompleted7d: "週次レビュー：完了（過去7日間）",
     reviewStepUpcoming7d: "週次レビュー：予定（今後7日間）",
     reviewStepOverdue: "週次レビュー：期限超過",
     reviewStepSomeday: "週次レビュー：いつか / たぶん",
+    reviewStepDueToday: "日次レビュー：今日が期限",
+    reviewStepCompletedYesterday: "日次レビュー：昨日完了",
+    reviewStepDailyOverdue: "日次レビュー：期限超過",
+    reviewStepCompleted30d: "月次レビュー：完了（過去30日間）",
+    reviewStepStalled: "月次レビュー：停滞タスク",
+    reviewStepMonthlySomeday: "月次レビュー：いつか / たぶん",
+    reviewStepMonthlyOverdue: "月次レビュー：期限超過",
+    stalledDaysName: "停滞タスクの閾値（日数）",
+    stalledDaysDesc: "この日数以上編集されていないタスクは停滞としてマークされます。",
     destNextTask: "次のタスクの作成先",
     destNextTaskDescription: "次の発生を作成する場所",
     dnpHeading: "DNP見出し",
@@ -138,6 +147,8 @@ const locale = {
   commands: {
     reinstallPresetDashViews: "Better Tasks：プリセットダッシュボードビューを再インストール",
     startReview: "Better Tasks：週次レビュー",
+    startDailyReview: "Better Tasks：日次レビュー",
+    startMonthlyReview: "Better Tasks：月次レビュー",
     toggleDashboardFullPage: "Better Tasksダッシュボードを切り替え（フルページ）"
   },
   prompts: {
@@ -305,6 +316,15 @@ const locale = {
     review: {
       button: "週次レビュー",
       label: "週次レビュー",
+      dailyButton: "日次",
+      dailyLabel: "日次レビュー",
+      weeklyButton: "週次",
+      monthlyButton: "月次",
+      monthlyLabel: "月次レビュー",
+      projectSweepButton: "プロジェクト棚卸し",
+      projectSweepLabel: "プロジェクト棚卸し",
+      selectProject: "プロジェクトを選択…",
+      menuAriaLabel: "レビューオプション",
       of: "/",
       back: "← 戻る",
       next: "次へ →",
@@ -335,7 +355,11 @@ const locale = {
       upcoming7d: "予定（今後7日間）",
       overdue: "期限超過",
       someday: "いつか / たぶん",
-      allOpen: "すべてのオープンタスク"
+      allOpen: "すべてのオープンタスク",
+      dueToday: "今日が期限",
+      completedYesterday: "昨日完了",
+      stalled: "停滞タスク",
+      completed30d: "完了（過去30日間）"
     },
     quickAddPlaceholder: "Better Taskを追加",
     quickAddButton: "OK",
@@ -374,7 +398,8 @@ const locale = {
       Priority: "優先度",
       Energy: "エネルギー",
       GTD: "GTD",
-      Blocked: "ブロック中"
+      Blocked: "ブロック中",
+      Stalled: "停滞"
     },
     filterValues: {
       recurring: "繰り返し",
@@ -396,7 +421,9 @@ const locale = {
       delegated: "委任済み",
       someday: "いつか",
       blocked: "ブロック中",
-      actionable: "実行可能"
+      actionable: "実行可能",
+      stalled: "停滞",
+      active: "アクティブ"
     },
     completedWithinLabel: "完了期間",
     completedWithinOptions: {

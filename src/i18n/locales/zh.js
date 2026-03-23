@@ -45,14 +45,23 @@ const locale = {
     pillThreshold: "内联徽标复选框阈值",
     pillThresholdDescription: "当复选框数量超过此值时，内联徽标将跳过初始渲染（默认 100）。更高的值会渲染但可能使页面变慢。",
     advancedDashboard: "仪表板高级选项",
-    advancedDashboardDescription: "显示每周复盘步骤的设置。",
-    reviewStepDescription: "将此步骤包含在每周复盘流程中（顺序固定）。",
+    advancedDashboardDescription: "显示复盘步骤的设置（每日、每周、每月）。",
+    reviewStepDescription: "将此步骤包含在复盘流程中（顺序固定）。",
     reviewStepNextActions: "每周复盘：下一步行动",
     reviewStepWaitingFor: "每周复盘：等待中",
     reviewStepCompleted7d: "每周复盘：已完成（最近 7 天）",
     reviewStepUpcoming7d: "每周复盘：即将到期（未来 7 天）",
     reviewStepOverdue: "每周复盘：逾期",
     reviewStepSomeday: "每周复盘：也许 / 某天",
+    reviewStepDueToday: "每日复盘：今日到期",
+    reviewStepCompletedYesterday: "每日复盘：昨日完成",
+    reviewStepDailyOverdue: "每日复盘：逾期",
+    reviewStepCompleted30d: "每月复盘：已完成（最近 30 天）",
+    reviewStepStalled: "每月复盘：停滞任务",
+    reviewStepMonthlySomeday: "每月复盘：也许 / 某天",
+    reviewStepMonthlyOverdue: "每月复盘：逾期",
+    stalledDaysName: "停滞任务阈值（天）",
+    stalledDaysDesc: "超过此天数未编辑的任务将被标记为停滞。",
     destNextTask: "下一个任务的位置",
     destNextTaskDescription: "在哪里创建下一次出现",
     dnpHeading: "DNP 标题",
@@ -138,6 +147,8 @@ const locale = {
   commands: {
     reinstallPresetDashViews: "Better Tasks：重新安装仪表板预设视图",
     startReview: "Better Tasks：每周复盘",
+    startDailyReview: "Better Tasks：每日复盘",
+    startMonthlyReview: "Better Tasks：每月复盘",
     toggleDashboardFullPage: "切换 Better Tasks 仪表板（全页）"
   },
   prompts: {
@@ -305,6 +316,15 @@ const locale = {
     review: {
       button: "每周复盘",
       label: "每周复盘",
+      dailyButton: "每日",
+      dailyLabel: "每日复盘",
+      weeklyButton: "每周",
+      monthlyButton: "每月",
+      monthlyLabel: "每月复盘",
+      projectSweepButton: "项目盘点",
+      projectSweepLabel: "项目盘点",
+      selectProject: "选择项目…",
+      menuAriaLabel: "复盘选项",
       of: "共",
       back: "← 上一步",
       next: "下一步 →",
@@ -335,7 +355,11 @@ const locale = {
       upcoming7d: "即将到期（未来 7 天）",
       overdue: "逾期",
       someday: "也许 / 某天",
-      allOpen: "全部未完成任务"
+      allOpen: "全部未完成任务",
+      dueToday: "今日到期",
+      completedYesterday: "昨日完成",
+      stalled: "停滞任务",
+      completed30d: "已完成（最近 30 天）"
     },
     quickAddPlaceholder: "添加 Better Task",
     quickAddButton: "确定",
@@ -374,7 +398,8 @@ const locale = {
       Priority: "优先级",
       Energy: "精力",
       GTD: "GTD",
-      Blocked: "已阻塞"
+      Blocked: "已阻塞",
+      Stalled: "停滞"
     },
     filterValues: {
       recurring: "重复",
@@ -396,7 +421,9 @@ const locale = {
       delegated: "已委派",
       someday: "某天",
       blocked: "已阻塞",
-      actionable: "可执行"
+      actionable: "可执行",
+      stalled: "停滞",
+      active: "活跃"
     },
     completedWithinLabel: "完成时间范围",
     completedWithinOptions: {

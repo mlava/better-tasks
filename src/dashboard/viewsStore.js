@@ -13,6 +13,10 @@ export const DASHBOARD_PRESET_IDS = [
   "bt_preset_someday",
   "bt_preset_all_open",
   "bt_preset_blocked",
+  "bt_preset_due_today",
+  "bt_preset_completed_yesterday",
+  "bt_preset_stalled",
+  "bt_preset_completed_30d",
 ];
 
 export const DASHBOARD_REVIEW_PRESET_IDS = [
@@ -22,6 +26,26 @@ export const DASHBOARD_REVIEW_PRESET_IDS = [
   "bt_preset_upcoming_7d",
   "bt_preset_overdue",
   "bt_preset_someday",
+];
+
+export const DASHBOARD_DAILY_REVIEW_PRESET_IDS = [
+  "bt_preset_due_today",
+  "bt_preset_completed_yesterday",
+  "bt_preset_overdue",
+];
+
+export const DASHBOARD_MONTHLY_REVIEW_PRESET_IDS = [
+  "bt_preset_completed_30d",
+  "bt_preset_stalled",
+  "bt_preset_someday",
+  "bt_preset_overdue",
+];
+
+export const DASHBOARD_PROJECT_SWEEP_PRESET_IDS = [
+  "bt_preset_all_open",
+  "bt_preset_overdue",
+  "bt_preset_stalled",
+  "bt_preset_completed_30d",
 ];
 
 function nowMs() {
@@ -263,6 +287,54 @@ export function buildPresetViews({ getName } = {}) {
       state: {
         filters: { Completion: ["open"], Blocked: ["blocked"], completedRange: "any" },
         grouping: "project",
+        query: "",
+      },
+    },
+    {
+      id: "bt_preset_due_today",
+      name: nameFor("dueToday", "Due Today"),
+      createdAt: t,
+      updatedAt: t,
+      schema: VIEW_SCHEMA,
+      state: {
+        filters: { Completion: ["open"], Due: ["today"], completedRange: "any" },
+        grouping: "project",
+        query: "",
+      },
+    },
+    {
+      id: "bt_preset_completed_yesterday",
+      name: nameFor("completedYesterday", "Completed Yesterday"),
+      createdAt: t,
+      updatedAt: t,
+      schema: VIEW_SCHEMA,
+      state: {
+        filters: { Completion: ["completed"], completedRange: "1d" },
+        grouping: "time",
+        query: "",
+      },
+    },
+    {
+      id: "bt_preset_stalled",
+      name: nameFor("stalled", "Stalled Tasks"),
+      createdAt: t,
+      updatedAt: t,
+      schema: VIEW_SCHEMA,
+      state: {
+        filters: { Completion: ["open"], Stalled: ["stalled"], completedRange: "any" },
+        grouping: "project",
+        query: "",
+      },
+    },
+    {
+      id: "bt_preset_completed_30d",
+      name: nameFor("completed30d", "Completed (Last 30 Days)"),
+      createdAt: t,
+      updatedAt: t,
+      schema: VIEW_SCHEMA,
+      state: {
+        filters: { Completion: ["completed"], completedRange: "30d" },
+        grouping: "time",
         query: "",
       },
     },
