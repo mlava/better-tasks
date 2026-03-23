@@ -2585,9 +2585,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
 
   useEffect(() => {
     if (!controller) return undefined;
-    controller.refreshProjectOptions?.(true);
-    controller.refreshWaitingOptions?.(true);
-    controller.refreshContextOptions?.(true);
+    controller.refreshProjectOptions?.(false);
+    controller.refreshWaitingOptions?.(false);
+    controller.refreshContextOptions?.(false);
     const unsub = controller.subscribeProjectOptions?.((opts) =>
       setProjectOptions(Array.isArray(opts) ? opts : [])
     );

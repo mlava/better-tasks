@@ -4358,13 +4358,20 @@ export default {
     // ========================= Dependency / blocked-state helpers =========================
     const blockedStateCache = new Map();
     const BLOCKED_CACHE_TTL_MS = 30000;
+    let cycleDetectionCache = new Map();
 
     function invalidateBlockedState(uid) {
       if (uid) blockedStateCache.delete(uid);
+      if (uid) {
+        for (const key of cycleDetectionCache.keys()) {
+          if (key.startsWith(uid + "|") || key.endsWith("|" + uid)) cycleDetectionCache.delete(key);
+        }
+      }
     }
 
     function invalidateAllBlockedState() {
       blockedStateCache.clear();
+      cycleDetectionCache.clear();
     }
 
     async function computeBlockedState(dependsUids, taskUid) {
@@ -4481,6 +4488,9 @@ export default {
 
     async function wouldCreateCycle(taskUid, newDepUid, maxDepth = 20) {
       if (taskUid === newDepUid) return true;
+      const cacheKey = `${taskUid}|${newDepUid}`;
+      if (cycleDetectionCache.has(cacheKey)) return cycleDetectionCache.get(cacheKey);
+      const attrNames = resolveAttributeNames();
       const visited = new Set();
       const stack = [newDepUid];
       let depth = 0;
@@ -4493,14 +4503,14 @@ export default {
         if (!block) continue;
         const children = Array.isArray(block.children) ? block.children : [];
         const childAttrMap = parseAttrsFromChildBlocks(children);
-        const attrNames = resolveAttributeNames();
         const dependsEntry = pickChildAttr(childAttrMap, attrNames.dependsAliases || [], { allowFallback: true });
         const deps = dependsEntry?.value ? parseDependsValue(dependsEntry.value) : [];
         for (const dep of deps) {
-          if (dep === taskUid) return true;
+          if (dep === taskUid) { cycleDetectionCache.set(cacheKey, true); return true; }
           if (!visited.has(dep)) stack.push(dep);
         }
       }
+      cycleDetectionCache.set(cacheKey, false);
       return false;
     }
 
@@ -14820,15 +14830,20 @@ export default {
           console.warn("[BetterTasks] deriveDashboardTask failed", err);
         }
       }
-      // Compute blocked state for tasks with dependencies
-      for (const task of tasks) {
-        if (task.depends.length) {
-          try {
+      // Compute blocked state for tasks with dependencies (parallelized)
+      cycleDetectionCache = new Map();
+      const tasksWithDeps = tasks.filter((t) => t.depends.length);
+      if (tasksWithDeps.length) {
+        const results = await Promise.allSettled(
+          tasksWithDeps.map(async (task) => {
             const result = await isTaskBlocked(task.uid, task.depends);
             task.isBlocked = result.blocked;
             task.blockedBy = result.blockedBy;
-          } catch (err) {
-            debugLog("collectDashboardTasks blocked check failed", err);
+          })
+        );
+        for (const r of results) {
+          if (r.status === "rejected") {
+            debugLog("collectDashboardTasks blocked check failed", r.reason);
           }
         }
       }
@@ -14907,26 +14922,34 @@ export default {
         entry.members.sort((a, b) => ((a.dueAt || 0) - (b.dueAt || 0)) || ((a.completedAt || 0) - (b.completedAt || 0)));
       }
 
-      // Populate subtask progress cache for inline pill rendering
-      subtaskProgressCache.clear();
-      // Clear ALL pill signatures — subtask relationships may have changed for any task
-      if (window.__btPillSignatureCache) {
-        window.__btPillSignatureCache.clear();
-      }
-      let cacheChanged = false;
+      // Populate subtask progress cache for inline pill rendering (incremental)
+      const newProgressMap = new Map();
       for (const task of tasks) {
-        if (task.subtaskProgress) {
-          subtaskProgressCache.set(task.uid, task.subtaskProgress);
-          cacheChanged = true;
-        }
+        if (task.subtaskProgress) newProgressMap.set(task.uid, task.subtaskProgress);
       }
-      // Mark cache as authoritative — inline pill handler skips re-computation
+      const changedUids = new Set();
+      for (const [uid, prev] of subtaskProgressCache) {
+        if (uid === "_lastCollectAt") continue;
+        const next = newProgressMap.get(uid);
+        if (!next || prev.done !== next.done || prev.total !== next.total) changedUids.add(uid);
+      }
+      for (const [uid, next] of newProgressMap) {
+        const prev = subtaskProgressCache.get(uid);
+        if (!prev || prev.done !== next.done || prev.total !== next.total) changedUids.add(uid);
+      }
+      subtaskProgressCache.clear();
+      for (const [uid, prog] of newProgressMap) subtaskProgressCache.set(uid, prog);
+      // Only invalidate pill signatures for tasks whose subtask progress changed
+      if (window.__btPillSignatureCache && changedUids.size) {
+        for (const uid of changedUids) window.__btPillSignatureCache.delete(uid);
+      }
       subtaskProgressCache._lastCollectAt = Date.now();
-      // Always trigger pill re-render after collection (clears stale pills + renders new ones)
-      // Delay past the 500ms pill throttle to ensure the re-render actually executes
-      setTimeout(() => {
-        scheduleSurfaceSync(lastAttrSurface || "Child");
-      }, 520);
+      // Only trigger pill re-render if progress actually changed
+      if (changedUids.size) {
+        setTimeout(() => {
+          scheduleSurfaceSync(lastAttrSurface || "Child");
+        }, 520);
+      }
 
       const result = dashboardTaskCache.set(memoKey, sortDashboardTasksList(tasks));
       // Set up watches AFTER all subtask passes complete and state is updated
