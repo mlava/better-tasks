@@ -162,12 +162,12 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 
 **Mission:** Turn planning into flow.
 
-### Recurring Series View
-- Full history of past completions
-- Future occurrence projections
-- Skip/modify individual occurrences
-- Streak tracking (consecutive on-time completions)
-- Exception handling (skip specific dates like holidays)
+### Recurring Series View — Complete ✅
+- ✅ Full history of past completions (timeline with on-time/late badges)
+- ✅ Future occurrence projections (5/10/20 count selector)
+- ✅ Skip/modify individual occurrences (skip button on future dates)
+- ✅ Streak tracking (current streak, best streak, on-time completion rate)
+- ✅ Exception handling (add/remove exception dates, carry-forward on completion)
 
 ### Focus / Do Mode
 - Single-task execution view

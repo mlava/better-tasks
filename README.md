@@ -38,6 +38,7 @@ If you use TODOs in Roam, Better Tasks gives you:
 
 ## ✅ Recent updates
 
+- **Recurring Series View:** open the full history of a recurring task from the dashboard's ⋯ menu. Timeline shows past completions with on-time/late badges, current occurrence, and future projections (5/10/20). Streak banner tracks current streak, best streak, and on-time rate. Skip individual future dates or add exception dates (e.g. holidays) — exceptions carry forward when the task completes.
 - **Expanded Reviews:** Daily, Weekly, and Monthly review flows with a split-button review menu. Daily cycles Due Today → Completed Yesterday → Overdue. Monthly cycles Completed 30d → Stalled → Someday → Overdue. Project Sweep reviews a single project's tasks. Stalled task detection flags tasks not edited in N days (configurable, default 14). Each review type has independent step toggles. 4 new preset views: Due Today, Completed Yesterday, Stalled Tasks, Completed (Last 30 Days).
 - **Subtasks:** nest BT tasks under a parent for automatic subtask detection with 📋 progress indicators (e.g. 1/3 done). Dashboard shows expand/collapse trees. Explicit `BT_attrParent:: ((uid))` links subtasks across the graph, overriding structural nesting. Progress tracks completion in real time. Extension Tools API includes `is_subtask`, `parent_task_uid`, `subtask_uids`, `subtask_progress`.
 - **Task dependencies:** block tasks on other tasks with `BT_attrDepends:: ((uid))`. Blocked tasks show a 🔒 indicator in pills, dashboard, and Today widget. Circular dependency detection (self, mutual, transitive). Dependency picker in the ⋯ pill menu. Blocked/Actionable filter in dashboard. Auto-unblock on completion; stale dependencies auto-cleaned.
@@ -180,6 +181,7 @@ Common actions:
 | End recurrence | Stop repeating |
 | Add / Edit dependency | Open dependency picker to search and select blocking tasks |
 | Remove all dependencies | Clear all dependencies from the task |
+| View series | Open the recurring series timeline (recurring tasks only) |
 
 All actions support **Undo**.
 
@@ -206,6 +208,7 @@ Features:
 - Optional **full-page mode** with persistent filter sidebar
 - Metadata chips + filtering
 - Quick-add input (uses AI parsing if enabled)
+- Recurring series view (past completions, future projections, streak tracking, exceptions)
 - Mobile-friendly layout (full-page with slide-in filters and sticky quick-add)
 
 Preset views (seeded, in order):
