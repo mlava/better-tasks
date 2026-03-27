@@ -113,6 +113,7 @@ Leave the repeat field blank while setting any combination of `start::`, `defer:
     - BT_attrPriority:: high
     - BT_attrEnergy:: medium
     - BT_attrDepends:: ((uid1)), ((uid2))
+    - BT_attrParent:: ((uid))
 
 Metadata appears both inline (pill) and in the dashboard.
 

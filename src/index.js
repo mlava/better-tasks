@@ -4920,7 +4920,7 @@ export default {
           {
             name: "bt_create",
             readOnly: false,
-            description: "Create a new Better Tasks task. Use attributes object for due, project, defer, start, priority, energy, gtd, waitingFor, context. Top-level attribute keys also accepted.",
+            description: "Create a new Better Tasks task. Use attributes object for repeat, start, defer, due, completed, project, gtd, waitingFor, context, priority, energy, depends, parent. Top-level attribute keys also accepted.",
             parameters: {
               type: "object",
               properties: {
@@ -4936,7 +4936,7 @@ export default {
           {
             name: "bt_modify",
             readOnly: false,
-            description: "Modify an existing Better Tasks task. Use attributes object for due, project, defer, start, priority, energy, gtd, waitingFor, context. Top-level attribute keys also accepted.",
+            description: "Modify an existing Better Tasks task. Use attributes object for repeat, start, defer, due, completed, project, gtd, waitingFor, context, priority, energy, depends, parent. Top-level attribute keys also accepted.",
             parameters: {
               type: "object",
               properties: {
@@ -5116,8 +5116,9 @@ export default {
     }
 
     const KNOWN_BT_ATTR_KEYS = new Set([
-      "due", "start", "defer", "project", "repeat",
-      "gtd", "waitingFor", "context", "priority", "energy", "assignee"
+      "due", "start", "defer", "completed", "project", "repeat",
+      "gtd", "waitingFor", "context", "priority", "energy",
+      "depends", "parent", "assignee"
     ]);
 
     function sweepAttributeArgs(args) {
@@ -5217,6 +5218,7 @@ export default {
           energy: metadata?.energy || null,
           gtd: metadata?.gtd || null,
           depends: Array.isArray(metadata?.depends) ? metadata.depends.slice() : [],
+          parent: metadata?.parentTaskUid || task?.parentTaskUid || null,
         },
         is_blocked: !!task?.isBlocked,
         blocked_by: Array.isArray(task?.blockedBy)
@@ -5585,6 +5587,7 @@ export default {
         ["priority", attrs.priorityAttr, attrs.priorityAliases, attrs.attrByType?.priority?.defaultName, "enum"],
         ["energy", attrs.energyAttr, attrs.energyAliases, attrs.attrByType?.energy?.defaultName, "enum"],
         ["depends", attrs.dependsAttr, attrs.dependsAliases, attrs.attrByType?.depends?.defaultName, "list"],
+        ["parent", attrs.parentAttr, attrs.parentAliases, attrs.attrByType?.parent?.defaultName, "ref"],
       ];
       const attributes = map.map(([id, name, aliases, defaultName, type]) => ({
         id,
@@ -5628,6 +5631,7 @@ export default {
       if ("gtd" in attrs) patch.gtd = attrs.gtd;
       if ("completed" in attrs) patch.completed = attrs.completed;
       if ("depends" in attrs) patch.depends = attrs.depends;
+      if ("parent" in attrs) patch.parent = attrs.parent;
       return patch;
     }
 
@@ -5698,6 +5702,16 @@ export default {
           }
           await setRichAttribute(uid, "depends", uids, attrNames);
           invalidateBlockedState(uid);
+        }
+      }
+      if ("parent" in patch) {
+        if (patch.parent == null || String(patch.parent).trim() === "") {
+          await removeChildAttrsForType(uid, "parent", attrNames);
+        } else {
+          const parentUid = String(patch.parent).trim().replace(/^\(\(|\)\)$/g, "");
+          const parentBlock = await getBlock(parentUid);
+          if (!parentBlock) throw new Error(`Parent task not found: ${parentUid}`);
+          await ensureChildAttrForType(uid, "parent", `((${parentUid}))`, attrNames);
         }
       }
     }
