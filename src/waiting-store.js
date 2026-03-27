@@ -29,7 +29,12 @@ function escapeForQuery(str) {
 
 function normalizeWaitingValue(raw) {
   if (typeof raw !== "string") return "";
-  return raw.trim();
+  let v = raw.trim();
+  if (!v) return "";
+  if (v.startsWith("#")) v = v.slice(1).trim();
+  const pageMatch = v.match(/^\[\[(.*)\]\]$/);
+  if (pageMatch) return pageMatch[1].trim();
+  return v;
 }
 
 function getWaitingAttrName() {

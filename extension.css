@@ -399,6 +399,22 @@ body.bt-theme-dark .bt-task-row__context-link {
     color: rgba(247, 249, 251, 0.9);
 }
 
+body.bp3-dark .bt-task-row__page-ref,
+body.bt-theme-dark .bt-task-row__page-ref {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(247, 249, 251, 0.9);
+}
+
+body.bp3-dark .bt-task-row__page-ref:hover,
+body.bt-theme-dark .bt-task-row__page-ref:hover {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+body.bp3-dark .bt-task-row__page-ref--plain,
+body.bt-theme-dark .bt-task-row__page-ref--plain {
+    background: rgba(255, 255, 255, 0.1);
+}
+
 body.bp3-dark .bt-chip,
 body.bt-theme-dark .bt-chip {
     color: var(--bt-panel-text);
@@ -1247,6 +1263,28 @@ body.bt-theme-dark .bt-sidebar__close:hover {
     font: inherit;
     padding: 0;
     cursor: pointer;
+}
+
+.bt-task-row__page-ref {
+    border: none;
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--bt-panel-text);
+    font: inherit;
+    font-weight: 600;
+    padding: 1px 4px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.bt-task-row__page-ref:hover {
+    background: rgba(0, 0, 0, 0.12);
+}
+
+.bt-task-row__page-ref--plain {
+    font-weight: 600;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.06);
 }
 
 .bt-task-row__meta {

@@ -71,6 +71,69 @@ function cycleGtdStatus(current) {
   return order[(idx + 1) % order.length];
 }
 
+const TITLE_TOKEN_RE = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)|\[\[([^\]]+)\]\]/g;
+
+function resolvePageUid(title) {
+  try {
+    const result = window.roamAlphaAPI?.data?.pull?.(
+      "[:block/uid]", [":node/title", title]
+    );
+    return result?.[":block/uid"] || null;
+  } catch { return null; }
+}
+
+function renderTitleWithLinks(title, controller) {
+  if (!title) return title;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+  TITLE_TOKEN_RE.lastIndex = 0;
+  while ((match = TITLE_TOKEN_RE.exec(title)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(title.slice(lastIndex, match.index));
+    }
+    if (match[2]) {
+      // Markdown link: [text](url)
+      parts.push(
+        <a
+          key={`ml-${match.index}`}
+          href={match[2]}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {match[1]}
+        </a>
+      );
+    } else if (match[3]) {
+      // Page ref: [[page name]]
+      const pageName = match[3];
+      const pageUid = resolvePageUid(pageName);
+      if (pageUid && controller?.openPage) {
+        parts.push(
+          <button
+            key={`pr-${match.index}`}
+            type="button"
+            className="bt-task-row__page-ref"
+            onClick={(e) => { e.stopPropagation(); controller.openPage(pageUid, { inSidebar: e.shiftKey }); }}
+            title="Open page (Shift+Click \u2192 sidebar)"
+          >
+            {pageName}
+          </button>
+        );
+      } else {
+        parts.push(<span key={`pr-${match.index}`} className="bt-task-row__page-ref--plain">{pageName}</span>);
+      }
+    }
+    lastIndex = TITLE_TOKEN_RE.lastIndex;
+  }
+  if (parts.length === 0) return title;
+  if (lastIndex < title.length) {
+    parts.push(title.slice(lastIndex));
+  }
+  return parts;
+}
+
 const DEFAULT_FILTERS = {
   Recurrence: [],
   Start: [],
@@ -1194,7 +1257,7 @@ function TaskRow({ task, controller, strings, selectionActive, isSelected, onTog
               {isExpanded ? "\u25BE" : "\u25B8"}
             </button>
           ) : null}
-          {task.isBlocked ? "🔒 " : ""}{task.title || strings?.untitled || "(Untitled task)"}
+          {task.isBlocked ? "🔒 " : ""}{renderTitleWithLinks(task.title, controller) || strings?.untitled || "(Untitled task)"}
         </div>
         <span id={metaDescriptionId} className="bt-sr-only">
           {contextBits.map((bit) => bit.text).filter(Boolean).join(", ")}
@@ -1429,7 +1492,7 @@ function SeriesViewPanel({ task, controller, language, onClose }) {
         {/* Header */}
         <div className="bt-series-header">
           <div className="bt-series-header__info">
-            <h3 className="bt-series-header__title">{task.title || tPath(["dashboard", "untitled"], lang) || "(Untitled task)"}</h3>
+            <h3 className="bt-series-header__title">{renderTitleWithLinks(task.title, controller) || tPath(["dashboard", "untitled"], lang) || "(Untitled task)"}</h3>
             {task.repeatText && (
               <span className="bt-series-header__rule">↻ {task.repeatText}</span>
             )}
