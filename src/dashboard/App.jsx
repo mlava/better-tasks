@@ -41,6 +41,7 @@ const DEFAULT_KEYBINDINGS = {
   openMenu: ".",
   fullPage: "f",
   refresh: "r",
+  analytics: "shift+g",
   help: "shift+?",
   escape: "Escape",
 };
@@ -101,6 +102,7 @@ function KeyboardHelpOverlay({ keybindings, onClose }) {
     [keybindings.focusSearch, "Focus search"],
     [keybindings.fullPage, "Toggle full page"],
     [keybindings.refresh, "Refresh"],
+    [keybindings.analytics, "Graph analytics"],
     [keybindings.help, "Show / hide this help"],
     [keybindings.escape, "Close / clear"],
   ];
@@ -1511,6 +1513,345 @@ function TaskRow({ task, controller, strings, selectionActive, isSelected, onTog
   );
 }
 
+// ========================= Analytics Panel =========================
+
+function AnalyticsPanel({ controller, language, onClose }) {
+  const [period, setPeriod] = useState("30d");
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const panelRef = useRef(null);
+  const lang = language || "en";
+  const s = (key, fallback) => tPath(["analytics", key], lang) ?? fallback;
+
+  // Week start from settings (e.g. "Monday", "Sunday")
+  const weekStartName = controller?.getWeekStart?.() || "Monday";
+  const ALL_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const weekStartIdx = Math.max(0, ALL_DAYS.indexOf(weekStartName));
+  const orderedDays = [...ALL_DAYS.slice(weekStartIdx), ...ALL_DAYS.slice(0, weekStartIdx)];
+  const dayLabels = orderedDays.map((d) => d.charAt(0));
+  // JS getDay(): 0=Sun, 1=Mon, ... 6=Sat → convert to our ordered index
+  const JS_DAY_TO_ISO = [7, 1, 2, 3, 4, 5, 6]; // Sun=7, Mon=1, ..., Sat=6
+  const weekStartISO = weekStartIdx + 1; // Monday=1 ... Sunday=7
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    controller?.computeAnalytics?.(period).then((result) => {
+      if (!cancelled) { setData(result); setLoading(false); }
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [period, controller]);
+
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); onClose?.(); } };
+    document.addEventListener("keydown", handleKey, true);
+    return () => document.removeEventListener("keydown", handleKey, true);
+  }, [onClose]);
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) onClose?.();
+    };
+    const timer = setTimeout(() => document.addEventListener("mousedown", handleClick), 50);
+    return () => { clearTimeout(timer); document.removeEventListener("mousedown", handleClick); };
+  }, [onClose]);
+
+  const portalRoot = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const el = document.createElement("div");
+    el.className = "bt-analytics-portal";
+    el.setAttribute("data-bt-portal", "analytics");
+    return el;
+  }, []);
+
+  useEffect(() => {
+    if (!portalRoot) return undefined;
+    const host = document.querySelector(".bt-dashboard-host") || document.body;
+    host.appendChild(portalRoot);
+    return () => portalRoot.remove();
+  }, [portalRoot]);
+
+  if (!portalRoot) return null;
+
+  const periods = [
+    { key: "7d", label: s("period7d", "7 days") },
+    { key: "30d", label: s("period30d", "30 days") },
+    { key: "90d", label: s("period90d", "90 days") },
+    { key: "all", label: s("periodAll", "All time") },
+  ];
+
+  const maxBarCount = data?.completionOverTime?.length
+    ? Math.max(1, ...data.completionOverTime.map((d) => d.count))
+    : 1;
+
+  const ttcTotal = data?.timeToCompletion?.distribution
+    ? Object.values(data.timeToCompletion.distribution).reduce((a, b) => a + b, 0)
+    : 0;
+
+  // Heatmap quantization
+  const heatmapMax = data?.heatmap?.byDate?.length
+    ? Math.max(1, ...data.heatmap.byDate.map((d) => d.count))
+    : 1;
+  const heatmapLevel = (count) => {
+    if (count === 0) return 0;
+    const ratio = count / heatmapMax;
+    if (ratio <= 0.25) return 1;
+    if (ratio <= 0.5) return 2;
+    if (ratio <= 0.75) return 3;
+    return 4;
+  };
+
+  // Pad heatmap to align with configured week start
+  const heatmapCells = data?.heatmap?.byDate || [];
+  const firstDate = heatmapCells[0]?.date ? new Date(heatmapCells[0].date + "T00:00:00") : null;
+  const padDays = firstDate ? ((JS_DAY_TO_ISO[firstDate.getDay()] - weekStartISO + 7) % 7) : 0;
+
+  const maxProjectOpen = data?.projectBreakdown?.byOpenCount?.length
+    ? Math.max(1, ...data.projectBreakdown.byOpenCount.map((p) => p.count))
+    : 1;
+  const maxProjectVelocity = data?.projectBreakdown?.byVelocity?.length
+    ? Math.max(1, ...data.projectBreakdown.byVelocity.map((p) => p.count))
+    : 1;
+
+  return createPortal(
+    <div className="bt-analytics-overlay" role="dialog" aria-label={s("title", "Analytics")}>
+      <div className="bt-analytics-overlay__backdrop" onClick={onClose} />
+      <div className="bt-analytics-overlay__panel" ref={panelRef}>
+        {/* Header */}
+        <div className="bt-analytics-header">
+          <h3 className="bt-analytics-header__title">{s("title", "Analytics")}</h3>
+          <button type="button" className="bp3-button bp3-minimal bp3-small" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
+
+        {/* Period selector */}
+        <div className="bt-analytics-periods">
+          {periods.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              className={`bt-analytics-period-btn${period === p.key ? " bt-analytics-period-btn--active" : ""}`}
+              onClick={() => setPeriod(p.key)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="bt-analytics-content">
+          {loading ? (
+            <div className="bt-analytics-empty">{s("loading", "Computing analytics...")}</div>
+          ) : !data || data.summary.completed === 0 ? (
+            <div className="bt-analytics-empty">{s("noData", "No completed tasks in this period.")}</div>
+          ) : (
+            <>
+              {/* Summary cards */}
+              <div className="bt-analytics-summary">
+                <div className="bt-analytics-card">
+                  <span className="bt-analytics-card__value">{data.summary.totalOpen}</span>
+                  <span className="bt-analytics-card__label">{s("totalOpen", "Open")}</span>
+                </div>
+                <div className="bt-analytics-card">
+                  <span className="bt-analytics-card__value">{data.summary.completed}</span>
+                  <span className="bt-analytics-card__label">{s("completed", "Completed")}</span>
+                </div>
+                <div className="bt-analytics-card">
+                  <span className="bt-analytics-card__value">{data.summary.overdue}</span>
+                  <span className="bt-analytics-card__label">{s("overdue", "Overdue")}</span>
+                </div>
+                <div className="bt-analytics-card">
+                  <span className="bt-analytics-card__value">{Math.round(data.summary.completionRate * 100)}%</span>
+                  <span className="bt-analytics-card__label">{s("completionRate", "Completion rate")}</span>
+                </div>
+              </div>
+
+              {/* Completion over time */}
+              <div className="bt-analytics-section">
+                <h4 className="bt-analytics-section__title">{s("completionOverTime", "Completions over time")}</h4>
+                <div className="bt-analytics-bars">
+                  {data.completionOverTime.map((d) => (
+                    <div
+                      key={d.date}
+                      className="bt-analytics-bar"
+                      style={{ height: `${Math.max(2, (d.count / maxBarCount) * 100)}%` }}
+                      title={`${d.date}: ${d.count}`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Time to completion */}
+              <div className="bt-analytics-section">
+                <h4 className="bt-analytics-section__title">
+                  {s("timeToCompletion", "Time to completion")}
+                  {data.timeToCompletion.averageDays > 0 && (
+                    <span className="bt-analytics-section__badge">
+                      {s("avgDays", "Avg")}: {data.timeToCompletion.averageDays}d
+                    </span>
+                  )}
+                </h4>
+                {ttcTotal > 0 && (
+                  <div className="bt-analytics-distro">
+                    {[
+                      ["sameDay", s("sameDay", "Same day"), data.timeToCompletion.distribution.sameDay],
+                      ["d1to3", s("days1to3", "1-3 days"), data.timeToCompletion.distribution.d1to3],
+                      ["d4to7", s("days4to7", "4-7 days"), data.timeToCompletion.distribution.d4to7],
+                      ["w1to2", s("weeks1to2", "1-2 wks"), data.timeToCompletion.distribution.w1to2],
+                      ["w2plus", s("weeks2plus", "2+ wks"), data.timeToCompletion.distribution.w2plus],
+                    ].map(([key, label, count]) => (
+                      <div key={key} className="bt-analytics-distro__row">
+                        <span className="bt-analytics-distro__label">{label}</span>
+                        <div className="bt-analytics-distro__track">
+                          <div className="bt-analytics-distro__fill" style={{ width: `${(count / ttcTotal) * 100}%` }} />
+                        </div>
+                        <span className="bt-analytics-distro__count">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Overdue frequency */}
+              {data.overdueFrequency.totalWithDue > 0 && (
+                <div className="bt-analytics-section">
+                  <h4 className="bt-analytics-section__title">{s("overdueFrequency", "Overdue frequency")}</h4>
+                  <div className="bt-analytics-stats-row">
+                    <div className="bt-analytics-stat">
+                      <span className="bt-analytics-stat__value">{data.overdueFrequency.overdueRate}%</span>
+                      <span className="bt-analytics-stat__label">{s("overdueRate", "Late rate")}</span>
+                    </div>
+                    <div className="bt-analytics-stat">
+                      <span className="bt-analytics-stat__value">{data.overdueFrequency.avgDaysOverdue}d</span>
+                      <span className="bt-analytics-stat__label">{s("avgDaysOverdue", "Avg days late")}</span>
+                    </div>
+                    <div className="bt-analytics-stat">
+                      <span className="bt-analytics-stat__value">{data.overdueFrequency.lateCount}/{data.overdueFrequency.totalWithDue}</span>
+                      <span className="bt-analytics-stat__label">Late / with due</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Project breakdown */}
+              {data.projectBreakdown.byOpenCount.length > 0 && (
+                <div className="bt-analytics-section">
+                  <h4 className="bt-analytics-section__title">{s("projectBreakdown", "By project")}</h4>
+                  <div className="bt-analytics-subsection">
+                    <span className="bt-analytics-subsection__label">{s("openTasks", "Open tasks")}</span>
+                    <div className="bt-analytics-distro">
+                      {data.projectBreakdown.byOpenCount.map((p) => (
+                        <div key={p.name} className="bt-analytics-distro__row">
+                          <span className="bt-analytics-distro__label bt-analytics-distro__label--wide">{p.name}</span>
+                          <div className="bt-analytics-distro__track">
+                            <div className="bt-analytics-distro__fill" style={{ width: `${(p.count / maxProjectOpen) * 100}%` }} />
+                          </div>
+                          <span className="bt-analytics-distro__count">{p.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {data.projectBreakdown.byVelocity.length > 0 && (
+                    <div className="bt-analytics-subsection">
+                      <span className="bt-analytics-subsection__label">{s("completedTasks", "Completed")}</span>
+                      <div className="bt-analytics-distro">
+                        {data.projectBreakdown.byVelocity.map((p) => (
+                          <div key={p.name} className="bt-analytics-distro__row">
+                            <span className="bt-analytics-distro__label bt-analytics-distro__label--wide">{p.name}</span>
+                            <div className="bt-analytics-distro__track">
+                              <div className="bt-analytics-distro__fill" style={{ width: `${(p.count / maxProjectVelocity) * 100}%` }} />
+                            </div>
+                            <span className="bt-analytics-distro__count">{p.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Recurring adherence */}
+              {data.recurringAdherence.totalSeries > 0 && (
+                <div className="bt-analytics-section">
+                  <h4 className="bt-analytics-section__title">{s("recurringAdherence", "Recurring adherence")}</h4>
+                  <div className="bt-analytics-stats-row">
+                    <div className="bt-analytics-stat">
+                      <span className="bt-analytics-stat__value">{data.recurringAdherence.avgOnTimeRate}%</span>
+                      <span className="bt-analytics-stat__label">{s("avgOnTimeRate", "Avg on-time")}</span>
+                    </div>
+                    <div className="bt-analytics-stat">
+                      <span className="bt-analytics-stat__value">{data.recurringAdherence.totalSeries}</span>
+                      <span className="bt-analytics-stat__label">Series</span>
+                    </div>
+                  </div>
+                  {data.recurringAdherence.topPerformers.length > 0 && (
+                    <div className="bt-analytics-subsection">
+                      <span className="bt-analytics-subsection__label">{s("topPerformers", "Most consistent")}</span>
+                      <div className="bt-analytics-list">
+                        {data.recurringAdherence.topPerformers.map((p, i) => (
+                          <div key={i} className="bt-analytics-list__item">
+                            <span className="bt-analytics-list__name">{p.title}</span>
+                            <span className="bt-analytics-list__value">{p.rate}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {data.recurringAdherence.bottomPerformers.length > 0 && (
+                    <div className="bt-analytics-subsection">
+                      <span className="bt-analytics-subsection__label">{s("bottomPerformers", "Least consistent")}</span>
+                      <div className="bt-analytics-list">
+                        {data.recurringAdherence.bottomPerformers.map((p, i) => (
+                          <div key={i} className="bt-analytics-list__item">
+                            <span className="bt-analytics-list__name">{p.title}</span>
+                            <span className="bt-analytics-list__value">{p.rate}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Busiest days heatmap */}
+              <div className="bt-analytics-section">
+                <h4 className="bt-analytics-section__title">{s("busiestDays", "Busiest days")}</h4>
+                <div className="bt-analytics-heatmap-labels">
+                  {dayLabels.map((d, i) => (
+                    <span key={i} className="bt-analytics-heatmap-label">{d}</span>
+                  ))}
+                </div>
+                <div className="bt-analytics-heatmap">
+                  {Array.from({ length: padDays }).map((_, i) => (
+                    <div key={`pad-${i}`} className="bt-analytics-heatmap__cell bt-analytics-heatmap__cell--empty" />
+                  ))}
+                  {heatmapCells.map((d) => (
+                    <div
+                      key={d.date}
+                      className={`bt-analytics-heatmap__cell bt-analytics-heatmap__cell--${heatmapLevel(d.count)}`}
+                      title={`${d.date}: ${d.count}`}
+                    />
+                  ))}
+                </div>
+                <div className="bt-analytics-heatmap-legend">
+                  <span className="bt-analytics-heatmap-legend__label">Less</span>
+                  <div className="bt-analytics-heatmap__cell bt-analytics-heatmap__cell--0" />
+                  <div className="bt-analytics-heatmap__cell bt-analytics-heatmap__cell--1" />
+                  <div className="bt-analytics-heatmap__cell bt-analytics-heatmap__cell--2" />
+                  <div className="bt-analytics-heatmap__cell bt-analytics-heatmap__cell--3" />
+                  <div className="bt-analytics-heatmap__cell bt-analytics-heatmap__cell--4" />
+                  <span className="bt-analytics-heatmap-legend__label">More</span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>,
+    portalRoot
+  );
+}
+
 // ========================= Recurring Series View Panel =========================
 
 function SeriesViewPanel({ task, controller, language, onClose }) {
@@ -2166,6 +2507,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const focusedUidRef = useRef(null);
   const [menuOpenForUid, setMenuOpenForUid] = useState(null);
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
 
   const sortedViews = useMemo(() => {
     const views = Array.isArray(viewsStore?.views) ? viewsStore.views : [];
@@ -2756,6 +3098,13 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       if (matchesBinding(key, keybindings.refresh)) {
         event.preventDefault();
         controller.refresh?.({ reason: "manual" });
+        return;
+      }
+
+      // Shift+G — toggle analytics panel
+      if (matchesBinding(key, keybindings.analytics)) {
+        event.preventDefault();
+        setShowAnalytics((v) => !v);
         return;
       }
 
@@ -3871,6 +4220,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             <p>{ui.headerSubtitle}</p>
           </div>
           <div className="bt-dashboard__header-actions">
+            <button type="button" className="bp3-button bp3-small" onClick={() => setShowAnalytics(true)}>
+              {tPath(["analytics", "title"], lang) || "Analytics"}
+            </button>
             {!isMobileLayout ? (
               <button type="button" className="bp3-button bp3-small" onClick={handleToggleFullPage}>
                 {snapshot?.isFullPage ? ui.fullPageExit : ui.fullPageEnter}
@@ -4229,6 +4581,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             onClose={() => setShowKeyboardHelp(false)}
           />
         )}
+        {showAnalytics && (
+          <AnalyticsPanel controller={controller} language={language} onClose={() => setShowAnalytics(false)} />
+        )}
       </div>
     );
   }
@@ -4241,6 +4596,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           <p>{ui.headerSubtitle}</p>
         </div>
         <div className="bt-dashboard__header-actions">
+          <button type="button" className="bp3-button bp3-small" onClick={() => setShowAnalytics(true)}>
+            {tPath(["analytics", "title"], lang) || "Analytics"}
+          </button>
           {!isMobileLayout ? (
             <button type="button" className="bp3-button bp3-small" onClick={handleToggleFullPage}>
               {snapshot?.isFullPage ? ui.fullPageExit : ui.fullPageEnter}
@@ -4830,6 +5188,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           keybindings={{ ...DEFAULT_KEYBINDINGS, ...(controller?.getKeyboardBindings?.() || {}) }}
           onClose={() => setShowKeyboardHelp(false)}
         />
+      )}
+      {showAnalytics && (
+        <AnalyticsPanel controller={controller} language={language} onClose={() => setShowAnalytics(false)} />
       )}
     </div>
   );

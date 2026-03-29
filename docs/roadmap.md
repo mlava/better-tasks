@@ -221,9 +221,10 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 **Mission:** Expand outward without betraying core values.
 
 ### Roam Query Integration
-- Expose BT attributes as queryable
-- Task-rendering query blocks
-- Custom query templates for common filters
+- **Enhanced native query results:** MutationObserver on `{{query}}` result blocks to detect BT tasks and inject pill badges (due, project, status) — zero learning curve, users keep existing queries
+- **Page-ref consistency:** ensure all BT attributes that reference pages use `[[page refs]]` so native `{{query}}` naturally discovers BT tasks
+- **`{{bt-query}}` block renderer (optional):** simpler syntax (`{{bt-query: project="X" status="TODO"}}`) for users who don't know Datalog, with interactive task rows powered by the existing `bt_search` engine
+- **Datalog helpers:** documented query snippets for common BT filters (overdue, by project, stalled, waiting-for)
 
 ### Time-of-Day Scheduling (Optional)
 - Optional time support in dates
@@ -248,13 +249,18 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - CSV / JSON export for backup
 - Optional ICS calendar export
 
-### Graph Analytics
-- Completion rate over time
-- Average time from creation to completion
-- Overdue frequency analysis
-- Tasks by project/context breakdown
-- Recurring task adherence (streak stats)
-- "Busiest days" heatmap
+### Graph Analytics — Complete ✅
+- ✅ Slide-in analytics panel (480px, full-width mobile) with period selector (7d / 30d / 90d / all time)
+- ✅ Summary cards: open, completed, overdue, completion rate
+- ✅ Completion over time: CSS bar chart (daily ≤30d, weekly buckets for 90d, monthly for all time)
+- ✅ Time to completion: average days + distribution bars (same day, 1-3d, 4-7d, 1-2w, 2+w)
+- ✅ Overdue frequency: late completion rate, avg days overdue
+- ✅ Project breakdown: top 10 by open count + by velocity (horizontal bars)
+- ✅ Recurring task adherence: avg on-time rate, top/bottom 5 performers
+- ✅ Busiest days heatmap: 365-day calendar grid with 5 intensity levels + legend
+- ✅ Respects first-day-of-week setting
+- ✅ Keyboard shortcut: Shift+G; also accessible via header button
+- ✅ Lazy computation with 30s cache; no background cost
 
 ### Multi-Language NLP
 - Recurrence rule parsing beyond English

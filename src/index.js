@@ -4363,6 +4363,7 @@ export default {
     // ========================= Recurring series index (populated by collectDashboardTasks) ===
     // Map<seriesId, { members: DashboardTask[] }> — groups tasks sharing the same rt.parent / rt.id
     let dashboardSeriesIndex = new Map();
+    let analyticsCache = null;
 
     // ========================= Dependency / blocked-state helpers =========================
     const blockedStateCache = new Map();
@@ -5118,6 +5119,27 @@ export default {
               const match = tasks.find(t => t.uid === args.uid);
               if (!match) return { error: `No task found with UID ${args.uid}` };
               return buildToolTaskSummary(match, set);
+            })
+          },
+          {
+            name: "bt_get_analytics_detailed",
+            readOnly: true,
+            description: "Detailed task analytics: summary, completion over time, time to completion distribution, overdue frequency, project breakdown, recurring adherence, and busiest-days heatmap.",
+            parameters: {
+              type: "object",
+              properties: {
+                period: {
+                  type: "string",
+                  description: "Period: '7d', '30d', '90d', or 'all'. Default '30d'."
+                }
+              }
+            },
+            execute: async (args = {}) => runToolSafely("bt_get_analytics_detailed", args, async () => {
+              const period = ["7d", "30d", "90d", "all"].includes(args.period) ? args.period : "30d";
+              if (!activeDashboardController?.computeAnalytics) {
+                return { error: "Dashboard controller not initialised. Open the dashboard first." };
+              }
+              return await activeDashboardController.computeAnalytics(period);
             })
           }
         ],
@@ -13044,6 +13066,211 @@ export default {
             return JSON.parse(raw);
           } catch { return null; }
         },
+        getWeekStart: () => getWeekStartSetting(),
+        computeAnalytics: async (period) => {
+          const ANALYTICS_CACHE_TTL = 30000;
+          if (
+            analyticsCache &&
+            analyticsCache.period === period &&
+            Date.now() - analyticsCache.computedAt < ANALYTICS_CACHE_TTL
+          ) {
+            return analyticsCache.data;
+          }
+          const tasks = await collectDashboardTasks({
+            includeCompleted: true,
+            attachWatches: false,
+            cacheKey: "analytics",
+          });
+          const all = Array.isArray(tasks) ? tasks : [];
+          const now = new Date();
+          const todayISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+          const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+          // Period bounds
+          let periodStart, periodEnd;
+          const daysBack = period === "7d" ? 6 : period === "30d" ? 29 : period === "90d" ? 89 : null;
+          if (daysBack != null) {
+            const d = new Date(todayStart);
+            d.setDate(d.getDate() - daysBack);
+            periodStart = d;
+            periodEnd = todayStart;
+          } else {
+            periodStart = null;
+            periodEnd = todayStart;
+          }
+          const periodStartISO = periodStart ? `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, "0")}-${String(periodStart.getDate()).padStart(2, "0")}` : null;
+
+          // Helper: date to ISO string
+          const toISO = (d) => {
+            if (!(d instanceof Date) || isNaN(d.getTime())) return null;
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          };
+
+          // Summary
+          const totalOpen = all.filter((t) => !t.isCompleted).length;
+          const overdue = all.filter((t) => !t.isCompleted && t.dueBucket === "overdue").length;
+          const completedInPeriod = all.filter((t) => {
+            if (!t.isCompleted || !t.completedAt) return false;
+            const iso = toISO(t.completedAt);
+            if (!iso) return false;
+            if (periodStartISO && iso < periodStartISO) return false;
+            if (iso > todayISO) return false;
+            return true;
+          });
+          const completed = completedInPeriod.length;
+          const completionRate = totalOpen + completed > 0 ? Math.round((completed / (totalOpen + completed)) * 100) / 100 : 0;
+
+          // Completion over time (daily or weekly buckets)
+          const completionByDate = {};
+          for (const t of completedInPeriod) {
+            const iso = toISO(t.completedAt);
+            if (iso) completionByDate[iso] = (completionByDate[iso] || 0) + 1;
+          }
+          let completionOverTime;
+          if (daysBack != null && daysBack <= 30) {
+            completionOverTime = [];
+            const cursor = new Date(periodStart);
+            for (let i = 0; i <= daysBack; i++) {
+              const iso = toISO(cursor);
+              completionOverTime.push({ date: iso, count: completionByDate[iso] || 0 });
+              cursor.setDate(cursor.getDate() + 1);
+            }
+          } else if (daysBack != null) {
+            // Weekly buckets
+            completionOverTime = [];
+            const cursor = new Date(periodStart);
+            while (cursor <= periodEnd) {
+              let weekCount = 0;
+              const weekStart = toISO(cursor);
+              for (let d = 0; d < 7 && cursor <= periodEnd; d++) {
+                const iso = toISO(cursor);
+                weekCount += completionByDate[iso] || 0;
+                cursor.setDate(cursor.getDate() + 1);
+              }
+              completionOverTime.push({ date: weekStart, count: weekCount });
+            }
+          } else {
+            // All time — monthly buckets
+            const monthMap = {};
+            for (const [iso, count] of Object.entries(completionByDate)) {
+              const monthKey = iso.slice(0, 7);
+              monthMap[monthKey] = (monthMap[monthKey] || 0) + count;
+            }
+            completionOverTime = Object.entries(monthMap)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([date, count]) => ({ date, count }));
+          }
+
+          // Time to completion
+          const ttcDays = [];
+          for (const t of completedInPeriod) {
+            let createdDate = null;
+            if (t.pageTitle) createdDate = parseRoamDate(t.pageTitle);
+            if (!createdDate && typeof t.editedAt === "number") createdDate = new Date(t.editedAt);
+            if (!createdDate || !t.completedAt) continue;
+            const days = Math.max(0, Math.round((t.completedAt - createdDate) / 86400000));
+            ttcDays.push(days);
+          }
+          const averageDays = ttcDays.length > 0 ? Math.round((ttcDays.reduce((a, b) => a + b, 0) / ttcDays.length) * 10) / 10 : 0;
+          const distribution = { sameDay: 0, d1to3: 0, d4to7: 0, w1to2: 0, w2plus: 0 };
+          for (const d of ttcDays) {
+            if (d === 0) distribution.sameDay++;
+            else if (d <= 3) distribution.d1to3++;
+            else if (d <= 7) distribution.d4to7++;
+            else if (d <= 14) distribution.w1to2++;
+            else distribution.w2plus++;
+          }
+
+          // Overdue frequency
+          let lateCount = 0, totalWithDue = 0, totalDaysOverdue = 0;
+          for (const t of completedInPeriod) {
+            if (t.dueAt instanceof Date) {
+              totalWithDue++;
+              if (t.completedAt > t.dueAt) {
+                lateCount++;
+                totalDaysOverdue += Math.max(0, Math.round((t.completedAt - t.dueAt) / 86400000));
+              }
+            }
+          }
+          const overdueRate = totalWithDue > 0 ? Math.round((lateCount / totalWithDue) * 100) : 0;
+          const avgDaysOverdue = lateCount > 0 ? Math.round((totalDaysOverdue / lateCount) * 10) / 10 : 0;
+
+          // Project breakdown
+          const projectOpenMap = {};
+          const projectVelocityMap = {};
+          for (const t of all) {
+            const proj = t.metadata?.project || null;
+            if (!proj) continue;
+            if (!t.isCompleted) projectOpenMap[proj] = (projectOpenMap[proj] || 0) + 1;
+          }
+          for (const t of completedInPeriod) {
+            const proj = t.metadata?.project || null;
+            if (!proj) continue;
+            projectVelocityMap[proj] = (projectVelocityMap[proj] || 0) + 1;
+          }
+          const byOpenCount = Object.entries(projectOpenMap)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 10)
+            .map(([name, count]) => ({ name, count }));
+          const byVelocity = Object.entries(projectVelocityMap)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 10)
+            .map(([name, count]) => ({ name, count }));
+
+          // Recurring task adherence
+          let totalOnTimeRate = 0, seriesCount = 0;
+          const seriesPerformance = [];
+          for (const [, entry] of dashboardSeriesIndex) {
+            const members = entry.members || [];
+            if (members.length < 2) continue;
+            const streaks = computeSeriesStreaks(members);
+            if (streaks.totalCompleted > 0) {
+              seriesCount++;
+              totalOnTimeRate += streaks.onTimeRate;
+              const title = members.find((m) => !m.isCompleted)?.title || members[0]?.title || "(Untitled)";
+              seriesPerformance.push({ title, rate: streaks.onTimeRate, completed: streaks.totalCompleted });
+            }
+          }
+          const avgOnTimeRate = seriesCount > 0 ? Math.round(totalOnTimeRate / seriesCount) : 0;
+          seriesPerformance.sort((a, b) => b.rate - a.rate);
+          const topPerformers = seriesPerformance.slice(0, 5);
+          const bottomPerformers = seriesPerformance.length > 5
+            ? seriesPerformance.slice(-5).reverse()
+            : [];
+
+          // Heatmap
+          const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+          const byDayOfWeek = {};
+          for (const name of dayNames) byDayOfWeek[name] = 0;
+          for (const t of completedInPeriod) {
+            if (t.completedAt instanceof Date) {
+              byDayOfWeek[dayNames[t.completedAt.getDay()]] = (byDayOfWeek[dayNames[t.completedAt.getDay()]] || 0) + 1;
+            }
+          }
+          // Heatmap by date — cap at 365 days
+          const heatmapStart = new Date(todayStart);
+          heatmapStart.setDate(heatmapStart.getDate() - 364);
+          const heatmapByDate = [];
+          const hCursor = new Date(heatmapStart);
+          while (hCursor <= todayStart) {
+            const iso = toISO(hCursor);
+            heatmapByDate.push({ date: iso, count: completionByDate[iso] || 0 });
+            hCursor.setDate(hCursor.getDate() + 1);
+          }
+
+          const data = {
+            period: { start: periodStartISO || heatmapByDate[0]?.date, end: todayISO, label: period },
+            summary: { totalOpen, completed, overdue, completionRate },
+            completionOverTime,
+            timeToCompletion: { averageDays, distribution },
+            overdueFrequency: { overdueRate, avgDaysOverdue, lateCount, totalWithDue },
+            projectBreakdown: { byOpenCount, byVelocity },
+            recurringAdherence: { avgOnTimeRate, totalSeries: seriesCount, topPerformers, bottomPerformers },
+            heatmap: { byDayOfWeek, byDate: heatmapByDate },
+          };
+          analyticsCache = { period, data, computedAt: Date.now() };
+          return data;
+        },
         isDashboardFullPage: () => !!isFullPage,
         setDashboardFullPage,
         toggleDashboardFullPage: () => setDashboardFullPage(!isFullPage),
@@ -13272,6 +13499,7 @@ export default {
       }
 
       async function refresh({ reason = "manual" } = {}) {
+        analyticsCache = null;
         if (refreshPromise) return refreshPromise;
         state = {
           ...state,
@@ -14493,6 +14721,7 @@ export default {
       }
 
       function dispose() {
+        analyticsCache = null;
         subscribers.clear();
         close();
         state = { ...initialState };

@@ -38,6 +38,7 @@ If you use TODOs in Roam, Better Tasks gives you:
 
 ## ✅ Recent updates
 
+- **Graph Analytics panel:** slide-in analytics panel accessible from the dashboard header or `Shift+G`. Summary cards (open/completed/overdue/rate), completion-over-time bar chart, time-to-completion distribution, overdue frequency stats, project breakdown by open count and velocity, recurring task adherence (top/bottom performers), and a 365-day busiest-days heatmap with intensity legend. Period selector (7d/30d/90d/all time). Respects first-day-of-week setting. Lazy computation with 30s cache — no background cost.
 - **Keyboard navigation:** vim-style dashboard shortcuts — j/k to navigate, Enter to open, c to complete, s/S to snooze (+1d/+7d), e to expand subtasks, . to open the task menu (with arrow/j/k navigation), x to select, / to search, f for full-page, r to refresh, ? for shortcut legend. Bindings are customisable via JSON in Advanced Dashboard settings. All actions are bulk-aware when tasks are selected.
 - **Rich dashboard titles:** markdown links (`[text](url)`) render as clickable links; `[[page refs]]` render as clickable tags that navigate to the page (Shift+Click for sidebar).
 - **Recurring Series View:** open the full history of a recurring task from the dashboard's ⋯ menu. Timeline shows past completions with on-time/late badges, current occurrence, and future projections (5/10/20). Streak banner tracks current streak, best streak, and on-time rate. Skip individual future dates or add exception dates (e.g. holidays) — exceptions carry forward when the task completes.
@@ -213,6 +214,7 @@ Features:
 - Quick-add input (uses AI parsing if enabled)
 - Recurring series view (past completions, future projections, streak tracking, exceptions)
 - Mobile-friendly layout (full-page with slide-in filters and sticky quick-add)
+- **Graph Analytics** — slide-in panel with completion trends, time-to-completion, overdue frequency, project breakdown, recurring adherence, and busiest-days heatmap (press `Shift+G` or click Analytics in the header)
 - **Keyboard navigation** (press `?` in the dashboard for the full legend):
 
 | Key | Action |
@@ -537,6 +539,7 @@ Better Tasks registers tools on `window.RoamExtensionTools["better-tasks"]` so o
 | `bt_bulk_modify` | Modify multiple tasks in a single operation (max 50) |
 | `bt_bulk_snooze` | Snooze multiple tasks by shifting defer/start/due dates forward |
 | `bt_get_analytics` | Task analytics: overdue count, completion rate, velocity by project and time period |
+| `bt_get_analytics_detailed` | Full analytics: summary, completion over time, time-to-completion distribution, overdue frequency, project breakdown, recurring adherence, busiest-days heatmap |
 | `bt_get_task_by_uid` | Fetch a single task by its block UID with full details |
 
 ### `bt_search` blocked filter values
