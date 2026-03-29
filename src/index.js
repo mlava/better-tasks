@@ -14579,6 +14579,28 @@ export default {
             }
           }
 
+          // 2b. Project inheritance: subtasks without a project inherit from parent (read-only)
+          if (task.isSubtask && task.parentTaskUid && !task.metadata?.project) {
+            const parentTask = existingByUid.get(task.parentTaskUid);
+            const parentProject = parentTask?.metadata?.project;
+            if (parentProject) {
+              task.metadata = { ...task.metadata, project: parentProject, _projectInherited: true };
+              // Inject project pill since pills were built before inheritance
+              const lang = getLanguageSetting();
+              const metaLabels = t(["metadata"], lang) || {};
+              task.metaPills = [
+                ...task.metaPills,
+                {
+                  type: "project",
+                  icon: "\u{1F4C1}",
+                  value: parentProject,
+                  label: `${metaLabels.projectLabel || metaLabels.project || "Project"}: ${parentProject}`,
+                  raw: parentProject,
+                },
+              ];
+            }
+          }
+
           // 3. Recompute subtask progress for this task if it has subtasks
           if (task.subtaskUids.length) {
             const total = task.subtaskUids.length;

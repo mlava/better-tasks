@@ -141,6 +141,7 @@ Nest a Better Task under another Better Task to create a subtask relationship au
 - **Dashboard expand/collapse:** parent tasks show a ▸ caret; click to expand and see subtasks nested below
 - **Per-level counting:** each parent counts its direct children only (not recursive grandchildren)
 - **Drag-in/out:** moving a block in or out of a parent updates the relationship in real time
+- **Project inheritance:** subtasks without their own project automatically inherit the parent's project (read-only — nothing written to the graph). Explicit project on a subtask takes precedence.
 - **Recurring parents:** subtask relationships are not carried forward to spawned occurrences
 
 Interactions:
