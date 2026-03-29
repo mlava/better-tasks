@@ -46,6 +46,8 @@ const locale = {
     pillThresholdDescription: "インラインピルが初期レンダリングをスキップするチェックボックスの最大数（デフォルト100）。高い値はレンダリングされますがページが遅くなる可能性があります。",
     advancedDashboard: "ダッシュボードの詳細オプション",
     advancedDashboardDescription: "レビューステップの設定を表示（日次、週次、月次）。",
+    keyboardBindings: "Keyboard bindings (JSON)",
+    keyboardBindingsDescription: "Customise dashboard keyboard shortcuts. Keys: moveDown, moveUp, open, complete, snooze, focusSearch, toggleSelect, selectAll, escape. Default: j, k, Enter, c, s, /, x, shift+a, Escape.",
     reviewStepDescription: "このステップをレビューフローに含める（順序は固定）。",
     reviewStepNextActions: "週次レビュー：次のアクション",
     reviewStepWaitingFor: "週次レビュー：待機中",

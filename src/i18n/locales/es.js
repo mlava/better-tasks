@@ -46,6 +46,8 @@ const locale = {
     pillThresholdDescription: "Cantidad máxima de casillas antes de que las píldoras en línea omitan el renderizado inicial (por defecto 100). Valores más altos se renderizan pero la página puede ser más lenta.",
     advancedDashboard: "Opciones avanzadas del panel",
     advancedDashboardDescription: "Mostrar ajustes de los pasos de revisión (Diaria, Semanal, Mensual).",
+    keyboardBindings: "Keyboard bindings (JSON)",
+    keyboardBindingsDescription: "Customise dashboard keyboard shortcuts. Keys: moveDown, moveUp, open, complete, snooze, focusSearch, toggleSelect, selectAll, escape. Default: j, k, Enter, c, s, /, x, shift+a, Escape.",
     reviewStepDescription: "Incluir este paso en el flujo de revisión (el orden es fijo).",
     reviewStepNextActions: "Revisión Semanal: Próximas Acciones",
     reviewStepWaitingFor: "Revisión Semanal: En Espera",

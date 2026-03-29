@@ -46,6 +46,8 @@ const locale = {
     pillThresholdDescription: "Maximale Anzahl von Kontrollkästchen, bevor Inline-Pills das initiale Rendering überspringen (Standard 100). Höhere Werte werden gerendert, aber die Seite kann langsamer sein.",
     advancedDashboard: "Erweiterte Dashboard-Optionen",
     advancedDashboardDescription: "Einstellungen für Rückschau-Schritte (Täglich, Wöchentlich, Monatlich) anzeigen.",
+    keyboardBindings: "Keyboard bindings (JSON)",
+    keyboardBindingsDescription: "Customise dashboard keyboard shortcuts. Keys: moveDown, moveUp, open, complete, snooze, focusSearch, toggleSelect, selectAll, escape. Default: j, k, Enter, c, s, /, x, shift+a, Escape.",
     reviewStepDescription: "Diesen Schritt in den Rückschau-Ablauf aufnehmen (Reihenfolge ist fest).",
     reviewStepNextActions: "Wochenrückschau: Nächste Aktionen",
     reviewStepWaitingFor: "Wochenrückschau: Warten auf",

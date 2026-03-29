@@ -46,6 +46,8 @@ const locale = {
     pillThresholdDescription: "当复选框数量超过此值时，内联徽标将跳过初始渲染（默认 100）。更高的值会渲染但可能使页面变慢。",
     advancedDashboard: "仪表板高级选项",
     advancedDashboardDescription: "显示复盘步骤的设置（每日、每周、每月）。",
+    keyboardBindings: "Keyboard bindings (JSON)",
+    keyboardBindingsDescription: "Customise dashboard keyboard shortcuts. Keys: moveDown, moveUp, open, complete, snooze, focusSearch, toggleSelect, selectAll, escape. Default: j, k, Enter, c, s, /, x, shift+a, Escape.",
     reviewStepDescription: "将此步骤包含在复盘流程中（顺序固定）。",
     reviewStepNextActions: "每周复盘：下一步行动",
     reviewStepWaitingFor: "每周复盘：等待中",

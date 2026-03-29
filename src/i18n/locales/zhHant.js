@@ -46,6 +46,8 @@ const locale = {
     pillThresholdDescription: "當勾選框數量超過此值時，內嵌標籤會跳過初始渲染（預設 100）。較高數值會渲染但可能讓頁面變慢。",
     advancedDashboard: "儀表板進階選項",
     advancedDashboardDescription: "顯示複盤步驟的設定（每日、每週、每月）。",
+    keyboardBindings: "Keyboard bindings (JSON)",
+    keyboardBindingsDescription: "Customise dashboard keyboard shortcuts. Keys: moveDown, moveUp, open, complete, snooze, focusSearch, toggleSelect, selectAll, escape. Default: j, k, Enter, c, s, /, x, shift+a, Escape.",
     reviewStepDescription: "將此步驟包含在複盤流程中（順序固定）。",
     reviewStepNextActions: "每週複盤：下一步行動",
     reviewStepWaitingFor: "每週複盤：等待中",

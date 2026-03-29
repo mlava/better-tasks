@@ -46,6 +46,8 @@ const locale = {
     pillThresholdDescription: "Número máximo de caixas de verificação antes de as pastilhas inline do Better Tasks saltarem a renderização inicial (omissão 100). Valores mais altos renderizam mas a página pode ficar mais lenta.",
     advancedDashboard: "Opções avançadas do painel",
     advancedDashboardDescription: "Mostrar definições para os passos de revisão (Diária, Semanal, Mensal).",
+    keyboardBindings: "Keyboard bindings (JSON)",
+    keyboardBindingsDescription: "Customise dashboard keyboard shortcuts. Keys: moveDown, moveUp, open, complete, snooze, focusSearch, toggleSelect, selectAll, escape. Default: j, k, Enter, c, s, /, x, shift+a, Escape.",
     reviewStepDescription: "Incluir este passo no fluxo de revisão (ordem fixa).",
     reviewStepNextActions: "Revisão Semanal: Próximas ações",
     reviewStepWaitingFor: "Revisão Semanal: A aguardar",

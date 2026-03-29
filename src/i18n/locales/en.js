@@ -46,6 +46,8 @@ const locale = {
     pillThresholdDescription: "Max checkbox count before Better Tasks inline pills skip initial rendering (default 100). Higher values will render but the page may be slower.",
     advancedDashboard: "Advanced Dashboard options",
     advancedDashboardDescription: "Show settings for review steps (Daily, Weekly, Monthly).",
+    keyboardBindings: "Keyboard bindings (JSON)",
+    keyboardBindingsDescription: "Customise dashboard keyboard shortcuts. Keys: moveDown, moveUp, open, complete, snooze, focusSearch, toggleSelect, selectAll, escape. Default: j, k, Enter, c, s, /, x, shift+a, Escape.",
     reviewStepDescription: "Include this step in the review flow (order is fixed).",
     reviewStepNextActions: "Weekly Review: Next Actions",
     reviewStepWaitingFor: "Weekly Review: Waiting For",

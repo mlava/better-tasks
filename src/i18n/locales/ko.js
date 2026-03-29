@@ -46,6 +46,8 @@ const locale = {
     pillThresholdDescription: "Better Tasks 인라인 필이 초기 렌더링을 건너뛰기 전 최대 체크박스 수(기본 100). 값을 높이면 렌더링되지만 페이지가 느려질 수 있습니다.",
     advancedDashboard: "대시보드 고급 옵션",
     advancedDashboardDescription: "리뷰 단계 설정 표시(일일, 주간, 월간).",
+    keyboardBindings: "Keyboard bindings (JSON)",
+    keyboardBindingsDescription: "Customise dashboard keyboard shortcuts. Keys: moveDown, moveUp, open, complete, snooze, focusSearch, toggleSelect, selectAll, escape. Default: j, k, Enter, c, s, /, x, shift+a, Escape.",
     reviewStepDescription: "이 단계를 리뷰 흐름에 포함(순서 고정).",
     reviewStepNextActions: "주간 리뷰: 다음 행동",
     reviewStepWaitingFor: "주간 리뷰: 대기 항목",

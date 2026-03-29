@@ -46,6 +46,8 @@ const locale = {
     pillThresholdDescription: "Максимальное число чекбоксов до пропуска начальной отрисовки инлайн-тегов Better Tasks (по умолчанию 100). Большее значение рендерится, но может замедлить страницу.",
     advancedDashboard: "Расширенные опции панели",
     advancedDashboardDescription: "Показать настройки шагов обзора (Ежедневный, Еженедельный, Ежемесячный).",
+    keyboardBindings: "Keyboard bindings (JSON)",
+    keyboardBindingsDescription: "Customise dashboard keyboard shortcuts. Keys: moveDown, moveUp, open, complete, snooze, focusSearch, toggleSelect, selectAll, escape. Default: j, k, Enter, c, s, /, x, shift+a, Escape.",
     reviewStepDescription: "Включить этот шаг в поток обзора (порядок фиксированный).",
     reviewStepNextActions: "Еженедельный обзор: Следующие действия",
     reviewStepWaitingFor: "Еженедельный обзор: Ожидание",

@@ -46,6 +46,8 @@ const locale = {
     pillThresholdDescription: "الحد الأقصى لعدد مربعات الاختيار قبل أن تتخطى شارات Better Tasks المضمنة العرض الأولي (الافتراضي 100). القيم الأعلى ستُعرض لكن قد تُبطئ الصفحة.",
     advancedDashboard: "خيارات متقدمة للوحة التحكم",
     advancedDashboardDescription: "إظهار إعدادات خطوات المراجعة (اليومية، الأسبوعية، الشهرية).",
+    keyboardBindings: "Keyboard bindings (JSON)",
+    keyboardBindingsDescription: "Customise dashboard keyboard shortcuts. Keys: moveDown, moveUp, open, complete, snooze, focusSearch, toggleSelect, selectAll, escape. Default: j, k, Enter, c, s, /, x, shift+a, Escape.",
     reviewStepDescription: "تضمين هذه الخطوة في مسار المراجعة (الترتيب ثابت).",
     reviewStepNextActions: "مراجعة أسبوعية: الإجراءات التالية",
     reviewStepWaitingFor: "مراجعة أسبوعية: قيد الانتظار",

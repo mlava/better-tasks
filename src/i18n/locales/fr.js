@@ -46,6 +46,8 @@ const locale = {
     pillThresholdDescription: "Nombre maximal de cases avant que les pastilles en ligne ne sautent le rendu initial (par défaut 100). Des valeurs plus élevées seront rendues mais la page peut être plus lente.",
     advancedDashboard: "Options avancées du tableau de bord",
     advancedDashboardDescription: "Afficher les réglages des étapes de revue (Quotidienne, Hebdomadaire, Mensuelle).",
+    keyboardBindings: "Keyboard bindings (JSON)",
+    keyboardBindingsDescription: "Customise dashboard keyboard shortcuts. Keys: moveDown, moveUp, open, complete, snooze, focusSearch, toggleSelect, selectAll, escape. Default: j, k, Enter, c, s, /, x, shift+a, Escape.",
     reviewStepDescription: "Inclure cette étape dans le flux de revue (l'ordre est fixe).",
     reviewStepNextActions: "Revue Hebdomadaire : Prochaines Actions",
     reviewStepWaitingFor: "Revue Hebdomadaire : En Attente",

@@ -1056,6 +1056,15 @@ export default {
         ...aiSettings,
         ...dashboardAdvancedToggle,
         ...(advancedDashboardEnabled ? weeklyReviewSettings : []),
+        ...(advancedDashboardEnabled ? [{
+          id: "bt-keyboard-bindings",
+          name: tr("settings.keyboardBindings", "Keyboard bindings (JSON)"),
+          description: tr(
+            "settings.keyboardBindingsDescription",
+            "Customise dashboard keyboard shortcuts. Keys: moveDown, moveUp, open, complete, snooze, snooze7, expandSubtasks, openMenu, toggleSelect, selectAll, focusSearch, fullPage, refresh, help, escape. Default: j, k, Enter, c, s, shift+s, e, ., x, shift+a, /, f, r, shift+/, Escape."
+          ),
+          action: { type: "input", placeholder: '{"moveDown":"j","moveUp":"k"}' },
+        }] : []),
         ...picklistAdvanced,
         ...attributeSettingsToggle,
         ...(advancedAttrNamesEnabled ? attributeSettings : []),
@@ -13028,6 +13037,13 @@ export default {
         subscribeReviewStepSettings,
         notifyReviewStepSettingsChanged,
         requestStartDashReview,
+        getKeyboardBindings: () => {
+          try {
+            const raw = extensionAPI.settings.get("bt-keyboard-bindings");
+            if (!raw || typeof raw !== "string") return null;
+            return JSON.parse(raw);
+          } catch { return null; }
+        },
         isDashboardFullPage: () => !!isFullPage,
         setDashboardFullPage,
         toggleDashboardFullPage: () => setDashboardFullPage(!isFullPage),

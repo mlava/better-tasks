@@ -194,13 +194,19 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - Timestamps on all changes
 - Visible in task detail view
 
-### Keyboard Navigation
-- j/k to move between tasks
-- Enter to open task
-- c to complete, s to snooze
-- / to search
-- Customizable bindings
-- Bulk action bar/menu navigation (including metadata submenus)
+### Keyboard Navigation — Complete ✅
+- ✅ j/k to move between tasks (skips group headers, scrolls into view)
+- ✅ Enter to open task
+- ✅ c to complete, s to snooze (+1d), Shift+S to snooze (+7d)
+- ✅ e to expand/collapse subtasks
+- ✅ . to open task menu (j/k/arrows + Enter to navigate items)
+- ✅ / to search
+- ✅ x to toggle selection, Shift+A to select all visible
+- ✅ f to toggle full-page mode, r to refresh
+- ✅ ? to show keyboard shortcut legend
+- ✅ Escape cascade: close help → clear selection → clear focus
+- ✅ Customisable bindings via JSON in Advanced Dashboard settings
+- ✅ Bulk-aware: c/s operate on selection when active
 
 ### Task Templates
 - Save task configurations as templates
@@ -278,4 +284,4 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 
 ---
 
-*Last updated: March 2026*
+*Last updated: 2026-03-30*

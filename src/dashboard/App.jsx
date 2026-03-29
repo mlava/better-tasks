@@ -25,6 +25,108 @@ import {
   DASHBOARD_PROJECT_SWEEP_PRESET_IDS,
 } from "./viewsStore";
 
+/* ── Keyboard navigation helpers ─────────────────────────────────── */
+
+const DEFAULT_KEYBINDINGS = {
+  moveDown: "j",
+  moveUp: "k",
+  open: "Enter",
+  complete: "c",
+  snooze: "s",
+  focusSearch: "/",
+  toggleSelect: "x",
+  selectAll: "shift+a",
+  snooze7: "shift+s",
+  expandSubtasks: "e",
+  openMenu: ".",
+  fullPage: "f",
+  refresh: "r",
+  help: "shift+?",
+  escape: "Escape",
+};
+
+function isTypingInInput() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (el.isContentEditable) return true;
+  if (el.closest?.(".rm-block-input")) return true;
+  return false;
+}
+
+function normalizeKey(event) {
+  const parts = [];
+  if (event.ctrlKey) parts.push("ctrl");
+  if (event.altKey) parts.push("alt");
+  if (event.metaKey) parts.push("meta");
+  if (event.shiftKey) parts.push("shift");
+  parts.push(event.key.toLowerCase());
+  return parts.join("+");
+}
+
+function matchesBinding(normalizedKey, binding) {
+  if (!binding) return false;
+  return normalizedKey === binding.toLowerCase();
+}
+
+function findNextNavigable(rows, currentIndex, direction) {
+  const start = (currentIndex ?? (direction > 0 ? -1 : rows.length)) + direction;
+  for (let i = start; i >= 0 && i < rows.length; i += direction) {
+    if (rows[i].type === "task" || rows[i].type === "subtask") return i;
+  }
+  return null;
+}
+
+function findNavigableByUid(rows, uid) {
+  if (!uid) return null;
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].task?.uid === uid) return i;
+  }
+  return null;
+}
+
+function KeyboardHelpOverlay({ keybindings, onClose }) {
+  const entries = [
+    [keybindings.moveDown, "Move down"],
+    [keybindings.moveUp, "Move up"],
+    [keybindings.open, "Open task"],
+    [keybindings.complete, "Complete / undo"],
+    [keybindings.snooze, "Snooze +1d"],
+    [keybindings.snooze7, "Snooze +7d"],
+    [keybindings.expandSubtasks, "Expand / collapse subtasks"],
+    [keybindings.openMenu, "Open task menu"],
+    [keybindings.toggleSelect, "Toggle selection"],
+    [keybindings.selectAll, "Select all visible"],
+    [keybindings.focusSearch, "Focus search"],
+    [keybindings.fullPage, "Toggle full page"],
+    [keybindings.refresh, "Refresh"],
+    [keybindings.help, "Show / hide this help"],
+    [keybindings.escape, "Close / clear"],
+  ];
+  return createPortal(
+    <div className="bt-kb-help-overlay" onClick={onClose}>
+      <div className="bt-kb-help-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="bt-kb-help-title">Keyboard Shortcuts</div>
+        <div className="bt-kb-help-grid">
+          {entries.map(([key, desc]) => (
+            <React.Fragment key={key}>
+              <kbd className="bt-kb-help-key">{key}</kbd>
+              <span className="bt-kb-help-desc">{desc}</span>
+            </React.Fragment>
+          ))}
+        </div>
+        <div className="bt-kb-help-footer">
+          Press <kbd>Esc</kbd> or <kbd>?</kbd> to close
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* ── End keyboard navigation helpers ─────────────────────────────── */
+
 function resolvePath(obj, parts = []) {
   return parts.reduce(
     (acc, key) => (acc && Object.prototype.hasOwnProperty.call(acc, key) ? acc[key] : undefined),
@@ -589,8 +691,9 @@ function GroupHeader({
   );
 }
 
-function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
+function TaskActionsMenu({ task, controller, onOpenChange, strings, forceOpen, onForceOpenHandled }) {
   const [open, setOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
   const menuRef = useRef(null);
   const buttonRef = useRef(null);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
@@ -913,8 +1016,23 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
     };
   }, [open, updatePosition]);
 
+  // Respond to forceOpen from keyboard navigation
+  useEffect(() => {
+    if (forceOpen && !open) {
+      setOpenState(true);
+      setHighlightIndex(0);
+      onForceOpenHandled?.();
+    }
+  }, [forceOpen]);
+
+  // Reset highlight when menu closes
+  useEffect(() => {
+    if (!open) setHighlightIndex(-1);
+  }, [open]);
+
   useEffect(() => {
     if (!open) return undefined;
+    const actionableItems = safeActions.filter((a) => !a.separator);
     const handleClick = (event) => {
       if (
         menuRef.current?.contains(event.target) ||
@@ -926,16 +1044,40 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
     };
     const handleKey = (event) => {
       if (event.key === "Escape") {
+        event.stopPropagation();
         setOpenState(false);
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "j") {
+        event.preventDefault();
+        event.stopPropagation();
+        setHighlightIndex((prev) => Math.min(prev + 1, actionableItems.length - 1));
+        return;
+      }
+      if (event.key === "ArrowUp" || event.key === "k") {
+        event.preventDefault();
+        event.stopPropagation();
+        setHighlightIndex((prev) => Math.max(prev - 1, 0));
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        const item = actionableItems[highlightIndex];
+        if (item?.handler) {
+          item.handler();
+          setOpenState(false);
+        }
+        return;
       }
     };
     document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleKey);
+    document.addEventListener("keydown", handleKey, true);
     return () => {
       document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
+      document.removeEventListener("keydown", handleKey, true);
     };
-  }, [open]);
+  }, [open, highlightIndex, safeActions]);
 
   if (!safeActions.length) return null;
 
@@ -951,28 +1093,42 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings }) {
             left: coords.left,
           }}
         >
-          {safeActions.map((action) =>
-            action.separator ? (
-              <div key={action.key} className="bt-task-menu__separator">
-                {action.label}
-              </div>
-            ) : (
-              <button
-              key={action.key}
-              type="button"
-              className={`bt-task-menu__item${action.danger ? " bt-task-menu__item--danger" : ""}`}
-              role="menuitem"
-              onClick={async () => {
-                if (typeof action.handler === "function") {
-                  await action.handler();
-                }
-                setOpenState(false);
-              }}
-            >
-              {action.label}
-            </button>
-          )
-          )}
+          {(() => {
+            let actionIdx = 0;
+            return safeActions.map((action) => {
+              if (action.separator) {
+                return (
+                  <div key={action.key} className="bt-task-menu__separator">
+                    {action.label}
+                  </div>
+                );
+              }
+              const idx = actionIdx++;
+              const isHighlighted = idx === highlightIndex;
+              return (
+                <button
+                  key={action.key}
+                  type="button"
+                  className={[
+                    "bt-task-menu__item",
+                    action.danger ? "bt-task-menu__item--danger" : "",
+                    isHighlighted ? "bt-task-menu__item--highlight" : "",
+                  ].filter(Boolean).join(" ")}
+                  role="menuitem"
+                  ref={isHighlighted ? (el) => el?.scrollIntoView?.({ block: "nearest" }) : undefined}
+                  onClick={async () => {
+                    if (typeof action.handler === "function") {
+                      await action.handler();
+                    }
+                    setOpenState(false);
+                  }}
+                  onMouseEnter={() => setHighlightIndex(idx)}
+                >
+                  {action.label}
+                </button>
+              );
+            });
+          })()}
         </div>,
         menuRoot
       )
@@ -1155,7 +1311,7 @@ function SimpleActionsMenu({ actions, title, disabled = false }) {
   );
 }
 
-function TaskRow({ task, controller, strings, selectionActive, isSelected, onToggleSelect, isSubtask, hasSubtasks, isExpanded, onToggleExpand }) {
+function TaskRow({ task, controller, strings, selectionActive, isSelected, onToggleSelect, isSubtask, hasSubtasks, isExpanded, onToggleExpand, isFocused, menuOpenForUid, onMenuOpenHandled }) {
   const checkboxLabel = task.isCompleted
     ? strings?.markOpen || "Mark as open"
     : strings?.markDone || "Mark as done";
@@ -1221,6 +1377,7 @@ function TaskRow({ task, controller, strings, selectionActive, isSelected, onTog
     "bt-task-row",
     menuOpen ? "bt-task-row--menu-open" : "",
     isSelected ? "bt-task-row--selected" : "",
+    isFocused ? "bt-task-row--focused" : "",
     task.isBlocked ? "bt-task-row--blocked" : "",
     isSubtask ? "bt-task-row--subtask" : "",
   ].filter(Boolean).join(" ");
@@ -1277,7 +1434,7 @@ function TaskRow({ task, controller, strings, selectionActive, isSelected, onTog
               ))}
             </div>
           {!selectionActive && (
-            <TaskActionsMenu task={task} controller={controller} onOpenChange={handleMenuOpenChange} strings={strings} />
+            <TaskActionsMenu task={task} controller={controller} onOpenChange={handleMenuOpenChange} strings={strings} forceOpen={menuOpenForUid === task.uid} onForceOpenHandled={onMenuOpenHandled} />
           )}
         </div>
         <div className="bt-task-row__context">
@@ -2003,6 +2160,13 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const [selectedUids, setSelectedUids] = useState(() => new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const lastSelectedUidRef = useRef(null);
+
+  // Keyboard navigation state
+  const [focusedIndex, setFocusedIndex] = useState(null);
+  const focusedUidRef = useRef(null);
+  const [menuOpenForUid, setMenuOpenForUid] = useState(null);
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
+
   const sortedViews = useMemo(() => {
     const views = Array.isArray(viewsStore?.views) ? viewsStore.views : [];
     const presetOrder = new Map(DASHBOARD_PRESET_IDS.map((id, idx) => [id, idx]));
@@ -2520,6 +2684,212 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     setSelectedUids(new Set());
     lastSelectedUidRef.current = null;
   }, [filters, grouping, query, viewsStore?.activeViewId]);
+
+  /* ── Keyboard navigation ───────────────────────────────────────── */
+
+  // Sync focusedUidRef when focusedIndex or rows change
+  useEffect(() => {
+    const row = focusedIndex != null ? rows[focusedIndex] : null;
+    focusedUidRef.current = row?.task?.uid ?? null;
+  }, [focusedIndex, rows]);
+
+  // Reconcile focusedIndex when rows mutate (filter, collapse, search)
+  useEffect(() => {
+    if (focusedUidRef.current == null) return;
+    const newIndex = findNavigableByUid(rows, focusedUidRef.current);
+    if (newIndex != null) {
+      setFocusedIndex(newIndex);
+    } else {
+      setFocusedIndex((prev) => {
+        if (prev == null) return null;
+        const clamped = Math.min(prev, rows.length - 1);
+        return findNextNavigable(rows, clamped - 1, 1)
+            ?? findNextNavigable(rows, clamped + 1, -1)
+            ?? null;
+      });
+    }
+  }, [rows]);
+
+  // Refs so the keydown handler never goes stale
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const focusedIndexRef = useRef(focusedIndex);
+  focusedIndexRef.current = focusedIndex;
+  const selectionActiveRef = useRef(selectionActive);
+  selectionActiveRef.current = selectionActive;
+  const selectedUidsRef = useRef(selectedUids);
+  selectedUidsRef.current = selectedUids;
+  const seriesViewTaskRef = useRef(seriesViewTask);
+  seriesViewTaskRef.current = seriesViewTask;
+  const showKeyboardHelpRef = useRef(showKeyboardHelp);
+  showKeyboardHelpRef.current = showKeyboardHelp;
+
+  // Single-registration keydown handler
+  useEffect(() => {
+    const handler = (event) => {
+      // Don't capture keystrokes when typing in inputs
+      if (isTypingInInput()) {
+        if (event.key === "Escape") document.activeElement?.blur?.();
+        return;
+      }
+      // Don't capture when a modal overlay is open
+      if (seriesViewTaskRef.current) return;
+
+      const keybindings = { ...DEFAULT_KEYBINDINGS, ...(controller?.getKeyboardBindings?.() || {}) };
+      const key = normalizeKey(event);
+
+      // / — focus search (always, even without focused row)
+      if (matchesBinding(key, keybindings.focusSearch)) {
+        event.preventDefault();
+        document.querySelector(".bt-dashboard .bt-search")?.focus();
+        return;
+      }
+
+      // f — toggle full-page mode
+      if (matchesBinding(key, keybindings.fullPage)) {
+        event.preventDefault();
+        controller.toggleDashboardFullPage?.();
+        return;
+      }
+
+      // r — refresh
+      if (matchesBinding(key, keybindings.refresh)) {
+        event.preventDefault();
+        controller.refresh?.({ reason: "manual" });
+        return;
+      }
+
+      // ? — show keyboard shortcut help
+      if (matchesBinding(key, keybindings.help)) {
+        event.preventDefault();
+        setShowKeyboardHelp((v) => !v);
+        return;
+      }
+
+      // Escape — close help, clear selection, then clear focus
+      if (matchesBinding(key, keybindings.escape)) {
+        if (showKeyboardHelpRef.current) { setShowKeyboardHelp(false); return; }
+        if (selectionActiveRef.current) { cancelSelection(); return; }
+        if (focusedIndexRef.current != null) {
+          setFocusedIndex(null);
+          focusedUidRef.current = null;
+        }
+        return;
+      }
+
+      // j — move down
+      if (matchesBinding(key, keybindings.moveDown)) {
+        event.preventDefault();
+        setFocusedIndex((prev) => {
+          const next = findNextNavigable(rowsRef.current, prev ?? -1, 1);
+          if (next != null) rowVirtualizer.scrollToIndex(next, { align: "auto" });
+          return next ?? prev;
+        });
+        return;
+      }
+
+      // k — move up
+      if (matchesBinding(key, keybindings.moveUp)) {
+        event.preventDefault();
+        setFocusedIndex((prev) => {
+          if (prev == null) return null;
+          const next = findNextNavigable(rowsRef.current, prev, -1);
+          if (next != null) rowVirtualizer.scrollToIndex(next, { align: "auto" });
+          return next ?? prev;
+        });
+        return;
+      }
+
+      // Shift+A — select all visible
+      if (matchesBinding(key, keybindings.selectAll)) {
+        event.preventDefault();
+        selectAllVisible();
+        return;
+      }
+
+      // --- Actions below require a focused row ---
+      const idx = focusedIndexRef.current;
+      if (idx == null) return;
+      const row = rowsRef.current[idx];
+      if (!row?.task) return;
+
+      // Enter — open task
+      if (matchesBinding(key, keybindings.open)) {
+        event.preventDefault();
+        controller.openBlock(row.task.uid, { skipCompletionToast: row.task.isCompleted });
+        return;
+      }
+
+      // c — complete (bulk if selection active)
+      if (matchesBinding(key, keybindings.complete)) {
+        event.preventDefault();
+        if (selectionActiveRef.current && selectedUidsRef.current.size > 0) {
+          controller.bulkToggleTask?.(Array.from(selectedUidsRef.current), "complete");
+          cancelSelection();
+        } else {
+          controller.toggleTask(row.task.uid, row.task.isCompleted ? "undo" : "complete");
+        }
+        return;
+      }
+
+      // s — snooze +1d (bulk if selection active)
+      if (matchesBinding(key, keybindings.snooze)) {
+        event.preventDefault();
+        if (selectionActiveRef.current && selectedUidsRef.current.size > 0) {
+          controller.bulkSnoozeTask?.(Array.from(selectedUidsRef.current), 1);
+          cancelSelection();
+        } else {
+          controller.snoozeTask(row.task.uid, 1);
+        }
+        return;
+      }
+
+      // x — toggle selection on focused row
+      if (matchesBinding(key, keybindings.toggleSelect)) {
+        event.preventDefault();
+        handleToggleSelect(row.task.uid, event);
+        return;
+      }
+
+      // Shift+S — snooze +7d (bulk if selection active)
+      if (matchesBinding(key, keybindings.snooze7)) {
+        event.preventDefault();
+        if (selectionActiveRef.current && selectedUidsRef.current.size > 0) {
+          controller.bulkSnoozeTask?.(Array.from(selectedUidsRef.current), 7);
+          cancelSelection();
+        } else {
+          controller.snoozeTask(row.task.uid, 7);
+        }
+        return;
+      }
+
+      // e — expand/collapse subtasks
+      if (matchesBinding(key, keybindings.expandSubtasks)) {
+        if (row.task.subtaskUids?.length) {
+          event.preventDefault();
+          setExpandedParentTasks((prev) => ({
+            ...prev,
+            [row.task.uid]: !prev[row.task.uid],
+          }));
+        }
+        return;
+      }
+
+      // . — open three-dot menu
+      if (matchesBinding(key, keybindings.openMenu)) {
+        event.preventDefault();
+        setMenuOpenForUid(row.task.uid);
+        return;
+      }
+    };
+
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [rowVirtualizer, controller, cancelSelection, handleToggleSelect, selectAllVisible]);
+
+  const handleMenuOpenHandled = useCallback(() => setMenuOpenForUid(null), []);
+
+  /* ── End keyboard navigation ───────────────────────────────────── */
 
   const handleFilterToggle = (section, value, singleChoice = false) => {
     dispatchFilters({ type: singleChoice ? "toggleSingle" : "toggle", section, value });
@@ -3597,7 +3967,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                     {ui.projectSweepButton}
                   </div>
                   <select
-                    style={{ width: "100%", margin: "2px 0 4px", fontSize: "12px" }}
+                    style={{ width: "calc(100% - 16px)", margin: "2px 8px 4px", fontSize: "12px" }}
                     value=""
                     onChange={(e) => {
                       if (e.target.value) startReview("project-sweep", { projectFilter: e.target.value });
@@ -3791,6 +4161,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                           controller={controller}
                           strings={ui}
                           isSubtask={true}
+                          isFocused={focusedIndex === virtualRow.index}
+                          menuOpenForUid={menuOpenForUid}
+                          onMenuOpenHandled={handleMenuOpenHandled}
                           selectionActive={selectionActive}
                           isSelected={selectedUids.has(row.task.uid)}
                           onToggleSelect={handleToggleSelect}
@@ -3812,6 +4185,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                             [row.task.uid]: !prev[row.task.uid],
                           }))
                         }
+                        isFocused={focusedIndex === virtualRow.index}
+                          menuOpenForUid={menuOpenForUid}
+                          onMenuOpenHandled={handleMenuOpenHandled}
                         selectionActive={selectionActive}
                         isSelected={selectedUids.has(row.task.uid)}
                         onToggleSelect={handleToggleSelect}
@@ -3845,6 +4221,12 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             controller={controller}
             language={language}
             onClose={() => setSeriesViewTask(null)}
+          />
+        )}
+        {showKeyboardHelp && (
+          <KeyboardHelpOverlay
+            keybindings={{ ...DEFAULT_KEYBINDINGS, ...(controller?.getKeyboardBindings?.() || {}) }}
+            onClose={() => setShowKeyboardHelp(false)}
           />
         )}
       </div>
@@ -3943,7 +4325,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                     {ui.projectSweepButton}
                   </div>
                   <select
-                    style={{ width: "100%", margin: "2px 0 4px", fontSize: "12px" }}
+                    style={{ width: "calc(100% - 16px)", margin: "2px 8px 4px", fontSize: "12px" }}
                     value=""
                     onChange={(e) => {
                       if (e.target.value) startReview("project-sweep", { projectFilter: e.target.value });
@@ -4376,6 +4758,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                     controller={controller}
                     strings={ui}
                     isSubtask={true}
+                    isFocused={focusedIndex === virtualRow.index}
+                          menuOpenForUid={menuOpenForUid}
+                          onMenuOpenHandled={handleMenuOpenHandled}
                     selectionActive={selectionActive}
                     isSelected={selectedUids.has(row.task.uid)}
                     onToggleSelect={handleToggleSelect}
@@ -4402,6 +4787,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
                       [row.task.uid]: !prev[row.task.uid],
                     }))
                   }
+                  isFocused={focusedIndex === virtualRow.index}
+                          menuOpenForUid={menuOpenForUid}
+                          onMenuOpenHandled={handleMenuOpenHandled}
                   selectionActive={selectionActive}
                   isSelected={selectedUids.has(row.task.uid)}
                   onToggleSelect={handleToggleSelect}
@@ -4435,6 +4823,12 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           controller={controller}
           language={language}
           onClose={() => setSeriesViewTask(null)}
+        />
+      )}
+      {showKeyboardHelp && (
+        <KeyboardHelpOverlay
+          keybindings={{ ...DEFAULT_KEYBINDINGS, ...(controller?.getKeyboardBindings?.() || {}) }}
+          onClose={() => setShowKeyboardHelp(false)}
         />
       )}
     </div>

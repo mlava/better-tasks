@@ -46,6 +46,8 @@ const locale = {
     pillThresholdDescription: "Numero massimo di checkbox prima che i badge inline di Better Tasks saltino il rendering iniziale (default 100). Valori più alti verranno renderizzati ma la pagina può rallentare.",
     advancedDashboard: "Opzioni avanzate Dashboard",
     advancedDashboardDescription: "Mostra impostazioni dei passaggi di revisione (Giornaliera, Settimanale, Mensile).",
+    keyboardBindings: "Keyboard bindings (JSON)",
+    keyboardBindingsDescription: "Customise dashboard keyboard shortcuts. Keys: moveDown, moveUp, open, complete, snooze, focusSearch, toggleSelect, selectAll, escape. Default: j, k, Enter, c, s, /, x, shift+a, Escape.",
     reviewStepDescription: "Includi questo passaggio nel flusso di revisione (ordine fisso).",
     reviewStepNextActions: "Revisione Settimanale: Prossime Azioni",
     reviewStepWaitingFor: "Revisione Settimanale: In attesa",

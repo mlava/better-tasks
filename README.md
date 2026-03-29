@@ -38,6 +38,8 @@ If you use TODOs in Roam, Better Tasks gives you:
 
 ## ✅ Recent updates
 
+- **Keyboard navigation:** vim-style dashboard shortcuts — j/k to navigate, Enter to open, c to complete, s/S to snooze (+1d/+7d), e to expand subtasks, . to open the task menu (with arrow/j/k navigation), x to select, / to search, f for full-page, r to refresh, ? for shortcut legend. Bindings are customisable via JSON in Advanced Dashboard settings. All actions are bulk-aware when tasks are selected.
+- **Rich dashboard titles:** markdown links (`[text](url)`) render as clickable links; `[[page refs]]` render as clickable tags that navigate to the page (Shift+Click for sidebar).
 - **Recurring Series View:** open the full history of a recurring task from the dashboard's ⋯ menu. Timeline shows past completions with on-time/late badges, current occurrence, and future projections (5/10/20). Streak banner tracks current streak, best streak, and on-time rate. Skip individual future dates or add exception dates (e.g. holidays) — exceptions carry forward when the task completes.
 - **Expanded Reviews:** Daily, Weekly, and Monthly review flows with a split-button review menu. Daily cycles Due Today → Completed Yesterday → Overdue. Monthly cycles Completed 30d → Stalled → Someday → Overdue. Project Sweep reviews a single project's tasks. Stalled task detection flags tasks not edited in N days (configurable, default 14). Each review type has independent step toggles. 4 new preset views: Due Today, Completed Yesterday, Stalled Tasks, Completed (Last 30 Days).
 - **Subtasks:** nest BT tasks under a parent for automatic subtask detection with 📋 progress indicators (e.g. 1/3 done). Dashboard shows expand/collapse trees. Explicit `BT_attrParent:: ((uid))` links subtasks across the graph, overriding structural nesting. Progress tracks completion in real time. Extension Tools API includes `is_subtask`, `parent_task_uid`, `subtask_uids`, `subtask_progress`.
@@ -211,6 +213,25 @@ Features:
 - Quick-add input (uses AI parsing if enabled)
 - Recurring series view (past completions, future projections, streak tracking, exceptions)
 - Mobile-friendly layout (full-page with slide-in filters and sticky quick-add)
+- **Keyboard navigation** (press `?` in the dashboard for the full legend):
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move focus down / up |
+| `Enter` | Open focused task |
+| `c` | Complete / undo |
+| `s` / `Shift+S` | Snooze +1d / +7d |
+| `e` | Expand / collapse subtasks |
+| `.` | Open task menu (navigate with j/k/arrows, Enter to select) |
+| `x` | Toggle selection |
+| `Shift+A` | Select all visible |
+| `/` | Focus search |
+| `f` | Toggle full-page mode |
+| `r` | Refresh |
+| `?` | Show / hide shortcut legend |
+| `Escape` | Close help → clear selection → clear focus |
+
+Customise bindings via JSON in Settings → Advanced Dashboard → **Keyboard bindings**.
 
 Preset views (seeded, in order):
 - Next Actions
@@ -509,10 +530,14 @@ Better Tasks registers tools on `window.RoamExtensionTools["better-tasks"]` so o
 | `bt_get_projects` | List projects with derived status and optional task counts |
 | `bt_get_waiting_for` | List waiting-for values with optional counts |
 | `bt_get_context` | List context values with optional counts |
-| `bt_get_attributes` | Get configured attribute schema (names, types, allowed values) |
+| `bt_get_attributes` | Get configured attribute schema — all 13 attributes with names, types, aliases, and allowed values |
 | `bt_search` | Search tasks by status, due, project, assignee, blocked state, or free text. Results include `is_subtask`, `parent_task_uid`, `subtask_uids`, `subtask_progress`. |
-| `bt_create` | Create a new task (defaults to today's daily page) |
+| `bt_create` | Create a new task (defaults to today's daily page). Supports all attributes including `parent` and `depends`. |
 | `bt_modify` | Update an existing task's status, text, or attributes |
+| `bt_bulk_modify` | Modify multiple tasks in a single operation (max 50) |
+| `bt_bulk_snooze` | Snooze multiple tasks by shifting defer/start/due dates forward |
+| `bt_get_analytics` | Task analytics: overdue count, completion rate, velocity by project and time period |
+| `bt_get_task_by_uid` | Fetch a single task by its block UID with full details |
 
 ### `bt_search` blocked filter values
 
