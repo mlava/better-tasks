@@ -38,6 +38,7 @@ If you use TODOs in Roam, Better Tasks gives you:
 
 ## ✅ Recent updates
 
+- **Local-first NLP capture:** the dashboard quick-add input now parses natural language locally — no API key needed. Type `buy milk due:friday !high @errands` or `call dentist tomorrow every week` and the task is created with all metadata extracted. Supports `due:/start:/defer:` date prefixes, `!priority`, `~energy`, `p:project`, `@context`, repeat rules, and implicit trailing dates. Runs synchronously before AI; works offline.
 - **Graph Analytics panel:** slide-in analytics panel accessible from the dashboard header or `Shift+G`. Summary cards (open/completed/overdue/rate), completion-over-time bar chart, time-to-completion distribution, overdue frequency stats, project breakdown by open count and velocity, recurring task adherence (top/bottom performers), and a 365-day busiest-days heatmap with intensity legend. Period selector (7d/30d/90d/all time). Respects first-day-of-week setting. Lazy computation with 30s cache — no background cost.
 - **Keyboard navigation:** vim-style dashboard shortcuts — j/k to navigate, Enter to open, c to complete, s/S to snooze (+1d/+7d), e to expand subtasks, . to open the task menu (with arrow/j/k navigation), x to select, / to search, f for full-page, r to refresh, ? for shortcut legend. Bindings are customisable via JSON in Advanced Dashboard settings. All actions are bulk-aware when tasks are selected.
 - **Rich dashboard titles:** markdown links (`[text](url)`) render as clickable links; `[[page refs]]` render as clickable tags that navigate to the page (Shift+Click for sidebar).
@@ -361,10 +362,45 @@ Additional sections appear only when enabled.
 
 ---
 
-## 🤖 AI task input parsing (experimental)
+## 🧠 Smart task capture
+
+### Local parsing (no API key needed)
+
+The quick-add input parses natural language locally using rule-based extraction. No network, no API key, works offline.
+
+**Syntax:**
+| Marker | Example | Writes attribute |
+|--------|---------|-----------------|
+| `due:` | `due:friday`, `due:next week` | `BT_attrDue` |
+| `start:` | `start:monday`, `start:in 3 days` | `BT_attrStart` |
+| `defer:` | `defer:next month`, `defer:end of week` | `BT_attrDefer` |
+| `!` | `!high`, `!medium`, `!low` | `BT_attrPriority` |
+| `~` | `~high`, `~medium`, `~low` | `BT_attrEnergy` |
+| `p:` | `p:ProjectName` | `BT_attrProject` |
+| `@` | `@office`, `@errands` | `BT_attrContext` |
+| Repeat keywords | `every friday`, `daily`, `weekly` | `BT_attrRepeat` |
+| Trailing date | `buy milk tomorrow` | `BT_attrDue` (implicit) |
+
+**Supported date phrases** (for `due:`, `start:`, `defer:`, or trailing):
+- Named days: `monday`, `next tuesday`, `this friday`
+- Relative: `today`, `tomorrow`, `next week`, `next month`
+- Offsets: `in 3 days`, `in 2 weeks`, `5 days from now`
+- Boundaries: `end of week`, `end of month`, `end of year`
+- Fuzzy: `early next week`, `mid january`, `late this month`
+- Roam dates: `[[April 15th, 2026]]`, `2026-04-15`
+
+**Examples:**
+- `buy milk due:friday` → title "buy milk", due Friday
+- `call dentist tomorrow !high` → title "call dentist", due tomorrow, priority high
+- `review PR every week p:Engineering @office` → recurring task with project and context
+- `submit report end of month` → title "submit report", due last day of month
+- `plan conference start:monday defer:next month` → start Monday, defer next month
+- `send invoice in 3 days` → title "send invoice", due in 3 days
+
+### AI parsing (optional, experimental)
 
 - Optional BYO OpenAI key (client-side only)
-- Maps natural language into repeat/dates
+- Handles more ambiguous natural language than rule-based parsing
 - Falls back safely if parsing fails
 - No backend, no graph data sent
 - Note: OpenAI keys are stored in Roam graph settings and may be included in some exports.

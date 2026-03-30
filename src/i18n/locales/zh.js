@@ -363,7 +363,7 @@ const locale = {
       stalled: "停滞任务",
       completed30d: "已完成（最近 30 天）"
     },
-    quickAddPlaceholder: "添加 Better Task",
+    quickAddPlaceholder: "添加任务 — 试试 due:friday !high @work",
     quickAddButton: "确定",
     searchPlaceholder: "搜索 Better Tasks",
     groupingOptions: {

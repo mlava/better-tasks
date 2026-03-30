@@ -2288,6 +2288,127 @@ export default {
       return { ok: true, task };
     }
 
+    // ── Local-first NLP capture ────────────────────────────────────
+    const LOCAL_DATE_KEYWORDS = new Set([
+      "today", "tomorrow", "tmr", "tmrw", "tonight",
+      "next", "this", "early", "mid", "late", "in", "end",
+      "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+      "mon", "tue", "tues", "wed", "thu", "thurs", "fri", "sat", "sun",
+    ]);
+    const LOCAL_REPEAT_STARTERS = /\b(every\s+.+|daily|weekly|monthly|yearly|annually|biweekly|fortnightly|quarterly|weekdays|weekends)\b/i;
+
+    function parseTaskLocally(rawText) {
+      if (!rawText || typeof rawText !== "string") return { ok: false };
+      let working = rawText.trim();
+      const result = {};
+      const set = S();
+
+      // Phase A: explicit markers
+      // due:/start:/defer: prefixes — try next 1-4 words, take longest parseable match
+      for (const prefix of ["due", "start", "defer"]) {
+        const re = new RegExp(`\\b${prefix}:\\s*`, "i");
+        const m = working.match(re);
+        if (m) {
+          const afterPrefix = working.slice(m.index + m[0].length);
+          const words = afterPrefix.split(/\s+/).filter(Boolean);
+          let bestLen = 0;
+          let bestParsed = null;
+          for (let len = Math.min(4, words.length); len >= 1; len--) {
+            const candidate = words.slice(0, len).join(" ");
+            // Stop if candidate starts with a known marker
+            if (/^[!~@]|^p:/i.test(candidate)) break;
+            const parsed = parseDateFromText(candidate, set);
+            if (parsed.date) { bestLen = len; bestParsed = parsed; break; }
+          }
+          if (bestParsed) {
+            const key = prefix === "due" ? "dueDateText" : prefix === "start" ? "startDateText" : "deferDateText";
+            result[key] = bestParsed.text || words.slice(0, bestLen).join(" ");
+            const fullMatch = m[0] + words.slice(0, bestLen).join(" ");
+            working = working.replace(fullMatch, " ");
+          }
+        }
+      }
+
+      // !priority (no \b before ! since it's not a word character)
+      const prioMatch = working.match(/(?:^|\s)!(high|medium|low)\b/i);
+      if (prioMatch) {
+        result.priority = prioMatch[1].toLowerCase();
+        working = working.replace(prioMatch[0], " ");
+      }
+
+      // ~energy
+      const energyMatch = working.match(/(?:^|\s)~(high|medium|low)\b/i);
+      if (energyMatch) {
+        result.energy = energyMatch[1].toLowerCase();
+        working = working.replace(energyMatch[0], " ");
+      }
+
+      // p:project
+      const projMatch = working.match(/\bp:("[^"]+"|[\S]+)/i);
+      if (projMatch) {
+        result.project = projMatch[1].replace(/^"|"$/g, "").trim();
+        working = working.replace(projMatch[0], " ");
+      }
+
+      // @context (no \b before @ since it's not a word character)
+      const ctxMatch = working.match(/(?:^|\s)@([\S]+)/);
+      if (ctxMatch) {
+        result.context = ctxMatch[1].trim();
+        working = working.replace(ctxMatch[0], " ");
+      }
+
+      // Phase B: repeat rules
+      const repeatMatch = working.match(LOCAL_REPEAT_STARTERS);
+      if (repeatMatch) {
+        // Try from the match start to end of remaining text, progressively shorter
+        const fromRepeat = working.slice(repeatMatch.index).trim();
+        const words = fromRepeat.split(/\s+/);
+        let found = false;
+        for (let len = words.length; len >= 1; len--) {
+          const candidate = words.slice(0, len).join(" ");
+          const rule = parseRuleText(candidate, set);
+          if (rule) {
+            result.repeatRule = candidate;
+            working = working.slice(0, repeatMatch.index) + " " + words.slice(len).join(" ");
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          // Try single keyword forms
+          const singleWord = repeatMatch[1].split(/\s+/)[0].toLowerCase();
+          if (parseRuleText(singleWord, set)) {
+            result.repeatRule = singleWord;
+            working = working.replace(new RegExp(`\\b${singleWord}\\b`, "i"), " ");
+          }
+        }
+      }
+
+      // Phase C: implicit trailing date
+      if (!result.dueDateText) {
+        working = working.replace(/\s+/g, " ").trim();
+        const words = working.split(" ");
+        for (let len = Math.min(4, words.length - 1); len >= 1; len--) {
+          const candidate = words.slice(-len).join(" ");
+          const firstWord = words[words.length - len].toLowerCase();
+          if (!LOCAL_DATE_KEYWORDS.has(firstWord)) continue;
+          const parsed = parseDateFromText(candidate, set);
+          if (parsed.date) {
+            result.dueDateText = parsed.text || candidate;
+            working = words.slice(0, -len).join(" ");
+            break;
+          }
+        }
+      }
+
+      // Phase D: title cleanup
+      const title = working.replace(/\s+/g, " ").replace(/^[\s\-–—,]+|[\s\-–—,]+$/g, "").trim();
+      result.title = title;
+
+      return validateParsedTask(result);
+    }
+    // ── End local-first NLP capture ──────────────────────────────────
+
     function stripSchedulingFromTitle(title, parsed) {
       const hasRepeat = typeof parsed?.repeatRule === "string" && parsed.repeatRule.trim();
       const hasDate =
@@ -7750,8 +7871,9 @@ export default {
       let t = text.trim();
       // strip "at 3pm" or "at 15:30"
       t = t.replace(/\s+at\s+\d{1,2}(:\d{2})?\s*(am|pm)?\b/i, "");
-      // strip trailing "3pm" or "15:30"
-      t = t.replace(/\s+\d{1,2}(:\d{2})?\s*(am|pm)?\b/i, "");
+      // strip trailing "3pm" or "15:30" (require am/pm or colon to avoid stripping "in 3 days")
+      t = t.replace(/\s+\d{1,2}:\d{2}\s*(am|pm)?\b/i, "");
+      t = t.replace(/\s+\d{1,2}\s*(am|pm)\b/i, "");
       // strip time-of-day words
       t = t
         .replace(/\b(morning|afternoon|evening|night)\b/gi, "")
@@ -7934,6 +8056,54 @@ export default {
         const anchor = addDaysLocal(startOfWeek(todayLocal(), weekStartCode), 7);
         return addDaysLocal(anchor, 5);
       }
+
+      // "in N days/weeks/months"
+      const inNMatch = raw.match(/^in\s+(\d+)\s+(days?|weeks?|months?)$/);
+      if (inNMatch) {
+        const n = parseInt(inNMatch[1], 10);
+        const unit = inNMatch[2].replace(/s$/, "");
+        if (unit === "day") return addDaysLocal(todayLocal(), n);
+        if (unit === "week") return addDaysLocal(todayLocal(), n * 7);
+        if (unit === "month") {
+          const now = todayLocal();
+          const targetMonth = now.getMonth() + n;
+          const maxDay = new Date(now.getFullYear(), targetMonth + 1, 0).getDate();
+          return new Date(now.getFullYear(), targetMonth, Math.min(now.getDate(), maxDay), 12, 0, 0, 0);
+        }
+      }
+
+      // "N days/weeks/months from now"
+      const fromNowMatch = raw.match(/^(\d+)\s+(days?|weeks?|months?)\s+from\s+now$/);
+      if (fromNowMatch) {
+        const n = parseInt(fromNowMatch[1], 10);
+        const unit = fromNowMatch[2].replace(/s$/, "");
+        if (unit === "day") return addDaysLocal(todayLocal(), n);
+        if (unit === "week") return addDaysLocal(todayLocal(), n * 7);
+        if (unit === "month") {
+          const now = todayLocal();
+          const targetMonth = now.getMonth() + n;
+          const maxDay = new Date(now.getFullYear(), targetMonth + 1, 0).getDate();
+          return new Date(now.getFullYear(), targetMonth, Math.min(now.getDate(), maxDay), 12, 0, 0, 0);
+        }
+      }
+
+      // "end of week" / "end of this week"
+      if (/^end\s+of\s+(the\s+|this\s+)?week$/.test(raw)) {
+        const ws = startOfWeek(todayLocal(), weekStartCode);
+        return addDaysLocal(ws, 6);
+      }
+
+      // "end of month" / "end of this month"
+      if (/^end\s+of\s+(the\s+|this\s+)?month$/.test(raw)) {
+        const now = todayLocal();
+        return new Date(now.getFullYear(), now.getMonth() + 1, 0, 12, 0, 0, 0);
+      }
+
+      // "end of year" / "end of this year"
+      if (/^end\s+of\s+(the\s+|this\s+)?year$/.test(raw)) {
+        return new Date(todayLocal().getFullYear(), 11, 31, 12, 0, 0, 0);
+      }
+
       return null;
     }
     function nextDowDate(anchor, dowCode) {
@@ -13544,6 +13714,23 @@ export default {
           toast("Enter some task text.");
           return;
         }
+        // Try local NLP parsing first (synchronous, zero-cost)
+        const localResult = parseTaskLocally(trimmed);
+        if (localResult.ok) {
+          const lt = localResult.task;
+          const hasLocalMeta = !!(
+            lt.repeatRule || lt.dueDateText || lt.startDateText || lt.deferDateText ||
+            lt.project || lt.context || lt.priority || lt.energy
+          );
+          if (hasLocalMeta) {
+            const created = await createQuickTaskFromParsed(lt, trimmed);
+            if (created) {
+              await refresh({ reason: "quick-add" });
+              return;
+            }
+          }
+        }
+
         const aiSettings = getAiSettings();
         const aiEnabled = isAiEnabled(aiSettings);
         let parsedTask = null;

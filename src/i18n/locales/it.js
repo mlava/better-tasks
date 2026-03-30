@@ -363,7 +363,7 @@ const locale = {
       stalled: "Attività in stallo",
       completed30d: "Completate (Ultimi 30 Giorni)"
     },
-    quickAddPlaceholder: "Aggiungi una Better Task",
+    quickAddPlaceholder: "Aggiungi attività — prova due:friday !high @work",
     quickAddButton: "OK",
     searchPlaceholder: "Cerca Better Tasks",
     groupingOptions: {

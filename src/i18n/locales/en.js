@@ -363,7 +363,7 @@ const locale = {
       stalled: "Stalled Tasks",
       completed30d: "Completed (Last 30 Days)"
     },
-    quickAddPlaceholder: "Add a Better Task",
+    quickAddPlaceholder: "Add a task — try due:friday !high @work",
     quickAddButton: "OK",
     searchPlaceholder: "Search Better Tasks",
     groupingOptions: {

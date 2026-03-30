@@ -363,7 +363,7 @@ const locale = {
       stalled: "정체된 작업",
       completed30d: "완료됨(최근 30일)"
     },
-    quickAddPlaceholder: "Better Task 추가",
+    quickAddPlaceholder: "작업 추가 — 예: due:friday !high @work",
     quickAddButton: "확인",
     searchPlaceholder: "Better Tasks 검색",
     groupingOptions: {

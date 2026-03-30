@@ -363,7 +363,7 @@ const locale = {
       stalled: "Stockende Aufgaben",
       completed30d: "Erledigt (Letzte 30 Tage)"
     },
-    quickAddPlaceholder: "Better Task hinzufügen",
+    quickAddPlaceholder: "Aufgabe hinzufügen — z.B. due:friday !high @work",
     quickAddButton: "OK",
     searchPlaceholder: "Better Tasks durchsuchen",
     groupingOptions: {

@@ -363,7 +363,7 @@ const locale = {
       stalled: "停滯任務",
       completed30d: "已完成（最近 30 天）"
     },
-    quickAddPlaceholder: "新增 Better Task",
+    quickAddPlaceholder: "新增任務 — 試試 due:friday !high @work",
     quickAddButton: "確定",
     searchPlaceholder: "搜尋 Better Tasks",
     groupingOptions: {

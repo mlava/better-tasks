@@ -363,7 +363,7 @@ const locale = {
       stalled: "Застойные задачи",
       completed30d: "Выполнено (последние 30 дней)"
     },
-    quickAddPlaceholder: "Добавить Better Task",
+    quickAddPlaceholder: "Добавить задачу — напр. due:friday !high @work",
     quickAddButton: "OK",
     searchPlaceholder: "Поиск Better Tasks",
     groupingOptions: {

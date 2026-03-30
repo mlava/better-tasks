@@ -363,7 +363,7 @@ const locale = {
       stalled: "Tarefas Estagnadas",
       completed30d: "Concluídas (Últimos 30 Dias)"
     },
-    quickAddPlaceholder: "Adicionar uma Better Task",
+    quickAddPlaceholder: "Adicionar tarefa — tente due:friday !high @work",
     quickAddButton: "OK",
     searchPlaceholder: "Pesquisar Better Tasks",
     groupingOptions: {

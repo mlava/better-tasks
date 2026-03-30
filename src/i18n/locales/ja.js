@@ -363,7 +363,7 @@ const locale = {
       stalled: "停滞タスク",
       completed30d: "完了（過去30日間）"
     },
-    quickAddPlaceholder: "Better Taskを追加",
+    quickAddPlaceholder: "タスク追加 — 例: due:friday !high @work",
     quickAddButton: "OK",
     searchPlaceholder: "Better Tasksを検索",
     groupingOptions: {

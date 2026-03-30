@@ -120,7 +120,7 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 
 ---
 
-## 🚀 Phase 8 — Differentiators v1 (In Progress)
+## 🚀 Phase 8 — Differentiators v1 (✅ Complete)
 
 **Mission:** Permanently differentiate Better Tasks.
 
@@ -149,11 +149,14 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - "Select all visible" / "Select all in group"
 - Undo for bulk operations
 
-### Local-First NLP Capture
-- Rule-based date parsing without API key
-- Fuzzy date recognition ("next Tuesday", "in 2 weeks", "end of month")
-- Inline metadata extraction from hashtags/mentions
-- Offline-safe, works without network
+### Local-First NLP Capture — Complete ✅
+- ✅ Rule-based date parsing without API key (synchronous, zero-cost)
+- ✅ Fuzzy date recognition ("next Tuesday", "in 2 weeks", "end of month", "3 days from now")
+- ✅ Inline metadata extraction: `due:`, `start:`, `defer:` prefixes, `!priority`, `~energy`, `p:project`, `@context`
+- ✅ Implicit trailing date detection with conservative keyword allowlist
+- ✅ Repeat rule extraction (reuses existing `parseRuleText` engine)
+- ✅ Runs always-first before AI; no setting needed
+- ✅ Offline-safe, works without network
 
 ---
 

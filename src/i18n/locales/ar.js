@@ -363,7 +363,7 @@ const locale = {
       stalled: "مهام متوقفة",
       completed30d: "مكتمل (آخر 30 يوماً)"
     },
-    quickAddPlaceholder: "إضافة Better Task",
+    quickAddPlaceholder: "إضافة مهمة — جرّب due:friday !high @work",
     quickAddButton: "موافق",
     searchPlaceholder: "البحث في Better Tasks",
     groupingOptions: {
