@@ -4565,6 +4565,65 @@ body.bt-theme-dark .bt-kb-help-footer kbd {
     border-color: rgba(255, 255, 255, 0.15);
 }
 
+/* ── Date Picker Enhancements ─────────────────────────────────── */
+
+.rt-date-inline-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.rt-date-nlp-input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    font-size: 13px;
+    background: #fff;
+    color: #111;
+    outline: none;
+    transition: border-color 0.15s;
+    box-sizing: border-box;
+}
+
+.rt-date-nlp-input::placeholder {
+    color: rgba(0, 0, 0, 0.4);
+    font-size: 12px;
+}
+
+.rt-date-nlp-input:focus {
+    border-color: #3b82f6;
+}
+
+.rt-date-nlp-input--valid {
+    border-color: #22c55e !important;
+}
+
+.rt-date-nlp-input--invalid {
+    border-color: #ef4444 !important;
+}
+
+.rt-date-shortcuts-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.rt-date-shortcuts-inline button {
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: rgba(0, 0, 0, 0.04);
+    color: #333;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.rt-date-shortcuts-inline button:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
 /* ── Analytics Panel ──────────────────────────────────────────── */
 
 .bt-analytics-overlay {

@@ -7822,6 +7822,11 @@ export default {
       x.setDate(x.getDate() + n);
       return x;
     }
+    function addMonthLocal(d, n) {
+      const targetMonth = d.getMonth() + n;
+      const maxDay = new Date(d.getFullYear(), targetMonth + 1, 0).getDate();
+      return new Date(d.getFullYear(), targetMonth, Math.min(d.getDate(), maxDay), 12, 0, 0, 0);
+    }
     function startOfWeek(date, weekStartCode) {
       const target = weekStartCode && DOW_IDX.includes(weekStartCode) ? weekStartCode : DEFAULT_WEEK_START_CODE;
       let cursor = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
@@ -9097,6 +9102,44 @@ export default {
               input.parentNode?.insertBefore(row, input);
               row.appendChild(input);
             }
+
+            // Natural language text input
+            const nlpInput = document.createElement("input");
+            nlpInput.type = "text";
+            nlpInput.className = "rt-date-nlp-input";
+            nlpInput.placeholder = "e.g. friday, in 3 days, +7, end of month";
+            const applyNlpValue = (raw) => {
+              if (!raw) { nlpInput.className = "rt-date-nlp-input"; return null; }
+              const plusMatch = raw.match(/^\+(\d+)$/);
+              const date = plusMatch
+                ? addDaysLocal(todayLocal(), parseInt(plusMatch[1], 10))
+                : parseDateFromText(raw, shortcutSet).date;
+              if (date instanceof Date && !isNaN(date.getTime())) {
+                const iso = formatIsoDate(date, shortcutSet);
+                input.value = iso;
+                current = iso;
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+                nlpInput.classList.add("rt-date-nlp-input--valid");
+                nlpInput.classList.remove("rt-date-nlp-input--invalid");
+                return date;
+              }
+              nlpInput.classList.add("rt-date-nlp-input--invalid");
+              nlpInput.classList.remove("rt-date-nlp-input--valid");
+              return null;
+            };
+            nlpInput.addEventListener("input", () => applyNlpValue(nlpInput.value.trim()));
+            nlpInput.addEventListener("keydown", (e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const date = applyNlpValue(nlpInput.value.trim());
+                if (date) {
+                  toastEl.querySelector(".iziToast-buttons button")?.click();
+                }
+              }
+            });
+            row.insertBefore(nlpInput, input);
+
+            // Quick-select buttons
             const shortcutWrap = document.createElement("div");
             shortcutWrap.className = "rt-date-shortcuts-inline";
             const makeBtn = (label, offsetDays) => {
@@ -9112,8 +9155,25 @@ export default {
               });
               return btn;
             };
+            const makeBtnDate = (label, date) => {
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.textContent = label;
+              btn.addEventListener("click", () => {
+                if (!(date instanceof Date)) return;
+                const iso = formatIsoDate(date, shortcutSet);
+                input.value = iso;
+                current = iso;
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+              });
+              return btn;
+            };
             shortcutWrap.appendChild(makeBtn("Today", 0));
             shortcutWrap.appendChild(makeBtn("Tomorrow", 1));
+            shortcutWrap.appendChild(makeBtn("+3d", 3));
+            shortcutWrap.appendChild(makeBtnDate("Next Mon", nextDowDate(todayLocal(), "MO")));
+            shortcutWrap.appendChild(makeBtn("+1w", 7));
+            shortcutWrap.appendChild(makeBtnDate("+1m", addMonthLocal(todayLocal(), 1)));
             row.appendChild(shortcutWrap);
           },
           onClosed: () => finish(null),

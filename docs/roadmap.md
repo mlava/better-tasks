@@ -160,7 +160,7 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 
 ---
 
-## 🧠 Phase 9 — Execution, Recurrence & Review Mastery
+## 🧠 Phase 9 — Execution, Recurrence & Review Mastery (In Progress)
 
 **Mission:** Turn planning into flow.
 
@@ -233,11 +233,11 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - Time-bucketed Today view (morning/afternoon/evening)
 - Read-only calendar view
 
-### Quick Rescheduling
-- Relative shortcuts: `+3` for 3 days from now
-- Natural language date input: type "fri" → next Friday
-- "Tomorrow", "Next Week", "Next Month" quick buttons
-- Drag task to calendar day
+### Quick Rescheduling — Complete ✅
+- ✅ Relative shortcuts: `+3` for 3 days from now (in date picker text input)
+- ✅ Natural language date input: type "fri", "in 2 weeks", "end of month" with live parse feedback
+- ✅ Quick buttons: Today, Tomorrow, +3d, Next Mon, +1w, +1m
+- ✅ Enter in text input saves immediately
 
 ### Smart Suggestions
 - Advisory AI nudges only (never automatic)
