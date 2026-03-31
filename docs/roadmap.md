@@ -228,11 +228,6 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - **`{{bt-query}}` block renderer (optional):** simpler syntax (`{{bt-query: project="X" status="TODO"}}`) for users who don't know Datalog, with interactive task rows powered by the existing `bt_search` engine
 - **Datalog helpers:** documented query snippets for common BT filters (overdue, by project, stalled, waiting-for)
 
-### Time-of-Day Scheduling (Optional)
-- Optional time support in dates
-- Time-bucketed Today view (morning/afternoon/evening)
-- Read-only calendar view
-
 ### Quick Rescheduling — Complete ✅
 - ✅ Relative shortcuts: `+3` for 3 days from now (in date picker text input)
 - ✅ Natural language date input: type "fri", "in 2 weeks", "end of month" with live parse feedback
@@ -245,11 +240,13 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - "You usually do this on Mondays" → suggest reschedule
 - "No tasks scheduled for Thursday" → suggest load balancing
 
-### Trust & Exit
-- Deconvert BT → plain TODO (moved from Phase 8 for completion)
-- Batch deconvert for full migration away
-- CSV / JSON export for backup
-- Optional ICS calendar export
+### Trust & Exit — Complete ✅
+- ✅ Deconvert BT → plain TODO: Command Palette → "Deconvert Better Task to plain TODO" (cursor on task block)
+- ✅ Batch deconvert: Command Palette → "Batch Deconvert All Better Tasks" (confirm dialog, processes all tasks)
+- ✅ CSV export: flattened columns, ISO dates, all 13 attributes (Command Palette + API)
+- ✅ JSON export: full task data with ISO dates (Command Palette + API)
+- ✅ ICS calendar export: VCALENDAR with VTODO entries, priority mapping, project categories (Command Palette + API)
+- ✅ `bt_export` Extension Tools API method with format/status/project filters
 
 ### Graph Analytics — Complete ✅
 - ✅ Slide-in analytics panel (480px, full-width mobile) with period selector (7d / 30d / 90d / all time)
@@ -264,10 +261,6 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - ✅ Keyboard shortcut: Shift+G; also accessible via header button
 - ✅ Lazy computation with 30s cache; no background cost
 
-### Multi-Language NLP
-- Recurrence rule parsing beyond English
-- Localized date parsing
-
 ---
 
 ## 🚫 Explicitly Deferred (Post–Phase 10)
@@ -277,6 +270,12 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - Heavy external task sync (Todoist, Things, Notion)
 - Real-time collaboration features
 - Native mobile app (beyond responsive web)
+- Time-of-day scheduling (hour-level granularity — Roam is date-level; use ICS export for calendar integration)
+
+### Multi-Language NLP — Deprioritised
+- Recurrence rule parsing beyond English — ~500-800 lines per language of keyword/regex mapping; low ROI given most Roam users type English recurrence rules regardless of UI language
+- Localized date parsing — same scope issue
+- **Decision:** UI is fully localised (13 locales); input syntax remains English-only. Revisit only if user demand emerges for specific languages.
 
 ---
 

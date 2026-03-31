@@ -38,6 +38,8 @@ If you use TODOs in Roam, Better Tasks gives you:
 
 ## ✅ Recent updates
 
+- **Clean exit / deconvert:** remove Better Tasks metadata from individual tasks or all tasks at once via Command Palette. Your `{{[[TODO]]}}` blocks remain as plain Roam — just the BT child blocks and RT props are removed. Fully reversible (re-convert anytime).
+- **Data export:** export all tasks via Command Palette — JSON (full data), CSV (spreadsheet-ready), or ICS (calendar import). All use ISO dates and include every attribute. Also available programmatically via `bt_export` in the Extension Tools API.
 - **Quick rescheduling:** the date picker now includes a natural language text input — type "friday", "in 3 days", "+7", or "end of month" with live green/red parse feedback and Enter to save. Quick-select buttons expanded: Today, Tomorrow, +3d, Next Mon, +1w, +1m. Works in all date editing contexts (dashboard ⋯ menu, pill edit, snooze pick).
 - **Local-first NLP capture:** the dashboard quick-add input now parses natural language locally — no API key needed. Type `buy milk due:friday !high @errands` or `call dentist tomorrow every week` and the task is created with all metadata extracted. Supports `due:/start:/defer:` date prefixes, `!priority`, `~energy`, `p:project`, `@context`, repeat rules, and implicit trailing dates. Runs synchronously before AI; works offline.
 - **Graph Analytics panel:** slide-in analytics panel accessible from the dashboard header or `Shift+G`. Summary cards (open/completed/overdue/rate), completion-over-time bar chart, time-to-completion distribution, overdue frequency stats, project breakdown by open count and velocity, recurring task adherence (top/bottom performers), and a 365-day busiest-days heatmap with intensity legend. Period selector (7d/30d/90d/all time). Respects first-day-of-week setting. Lazy computation with 30s cache — no background cost.
@@ -419,6 +421,11 @@ The quick-add input parses natural language locally using rule-based extraction.
 - Daily Review
 - Weekly Review
 - Monthly Review
+- Export Better Tasks (JSON)
+- Export Better Tasks (CSV)
+- Export Better Tasks (ICS Calendar)
+- Deconvert Better Task to plain TODO
+- Batch Deconvert All Better Tasks
 
 ---
 
@@ -579,6 +586,7 @@ Better Tasks registers tools on `window.RoamExtensionTools["better-tasks"]` so o
 | `bt_get_analytics` | Task analytics: overdue count, completion rate, velocity by project and time period |
 | `bt_get_analytics_detailed` | Full analytics: summary, completion over time, time-to-completion distribution, overdue frequency, project breakdown, recurring adherence, busiest-days heatmap |
 | `bt_get_task_by_uid` | Fetch a single task by its block UID with full details |
+| `bt_export` | Export tasks as JSON, CSV, or ICS with optional status/project filters (returns data, no browser download) |
 
 ### `bt_search` blocked filter values
 

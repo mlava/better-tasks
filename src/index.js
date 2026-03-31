@@ -1476,17 +1476,56 @@ export default {
     observeTopbarButton();
     observeThemeChanges();
 
-    // Placeholder for future feature - deconvert Better Tasks TODOs
-    /* 
+    // Export commands
     extensionAPI.ui.commandPalette.addCommand({
-      label: "Convert Better Task to plain TODO",
-      callback: () => disableRecTODO(null),
+      label: "Export Better Tasks (JSON)",
+      callback: () => exportTasksJSON(),
     });
-    window.roamAlphaAPI.ui.blockContextMenu.addCommand({
-      label: "Convert Better Task to plain TODO",
-      callback: (e) => disableRecTODO(e),
+    extensionAPI.ui.commandPalette.addCommand({
+      label: "Export Better Tasks (CSV)",
+      callback: () => exportTasksCSV(),
     });
-    */
+    extensionAPI.ui.commandPalette.addCommand({
+      label: "Export Better Tasks (ICS Calendar)",
+      callback: () => exportTasksICS(),
+    });
+
+    // Deconvert commands
+    extensionAPI.ui.commandPalette.addCommand({
+      label: "Deconvert Better Task to plain TODO",
+      callback: async () => {
+        const uid = window.roamAlphaAPI?.ui?.getFocusedBlock?.()?.["block-uid"];
+        if (!uid) { toast("Place your cursor on a Better Task block first."); return; }
+        const block = await getBlock(uid);
+        const title = (block?.string || "").replace(/\{\{\[\[(?:TODO|DONE)\]\]\}\}\s*/, "").slice(0, 60);
+        const confirmed = await confirmToast("Deconvert Task", `Remove all Better Tasks metadata from "<b>${escapeHtml(title || uid)}</b>"?<br><br>The TODO block itself will remain.`);
+        if (!confirmed) return;
+        const ok = await deconvertTask(uid);
+        if (ok) {
+          toast("Task deconverted \u2014 BT metadata removed. TODO preserved.");
+          activeDashboardController?.notifyBlockChange?.(uid);
+          activeDashboardController?.refresh?.({ reason: "deconvert" });
+        } else {
+          toast("Block is not a Better Task or has no BT metadata.");
+        }
+      },
+    });
+    extensionAPI.ui.commandPalette.addCommand({
+      label: "Batch Deconvert All Better Tasks",
+      callback: async () => {
+        const tasks = await getToolTasksSnapshot();
+        if (!tasks.length) { toast("No Better Tasks found."); return; }
+        const confirmed = await confirmToast("Batch Deconvert", `Remove Better Tasks metadata from <b>${tasks.length} tasks</b>?<br><br>Your TODOs will remain as plain Roam blocks.`);
+        if (!confirmed) return;
+        let count = 0;
+        for (const task of tasks) {
+          const ok = await deconvertTask(task.uid);
+          if (ok) count++;
+        }
+        toast(`Deconverted ${count} tasks. TODOs preserved.`);
+        activeDashboardController?.refresh?.({ reason: "batch-deconvert" });
+      },
+    });
 
     async function convertTODO(e) {
       const perfConvert = perfMark("convertTODO");
@@ -5262,6 +5301,36 @@ export default {
               }
               return await activeDashboardController.computeAnalytics(period);
             })
+          },
+          {
+            name: "bt_export",
+            readOnly: true,
+            description: "Export tasks as JSON, CSV, or ICS. Returns the data (does not trigger browser download).",
+            parameters: {
+              type: "object",
+              properties: {
+                format: { type: "string", enum: ["json", "csv", "ics"], description: "Export format. Default 'json'." },
+                status: { type: "string", enum: ["TODO", "DONE", "all"], description: "Filter by status. Default 'all'." },
+                project: { type: "string", description: "Filter by project name." },
+              }
+            },
+            execute: async (args = {}) => runToolSafely("bt_export", args, async () => {
+              const format = ["json", "csv", "ics"].includes(args.format) ? args.format : "json";
+              const data = await buildExportData({
+                status: args.status === "all" ? null : args.status,
+                project: args.project,
+              });
+              if (format === "csv") {
+                const rows = [CSV_HEADERS.join(",")];
+                for (const task of data) rows.push(taskToCSVRow(task).map(escapeCSV).join(","));
+                return { format: "csv", count: data.length, content: rows.join("\n") };
+              }
+              if (format === "ics") {
+                const icsResult = buildICSContent(data);
+                return { format: "ics", count: icsResult.count, skipped: icsResult.skipped, content: icsResult.content };
+              }
+              return { format: "json", count: data.length, tasks: data };
+            })
           }
         ],
       };
@@ -9022,6 +9091,243 @@ export default {
         });
       });
     }
+
+    // ── Data Export (CSV / JSON / ICS) ─────────────────────────────
+
+    function triggerBrowserDownload(content, filename, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    async function buildExportData(options = {}) {
+      const tasks = await getToolTasksSnapshot();
+      const set = { ...S(), dateFormat: "ISO" };
+      let summaries = tasks.map((t) => buildToolTaskSummary(t, set));
+      if (options.status === "TODO") summaries = summaries.filter((t) => t.status === "TODO");
+      if (options.status === "DONE") summaries = summaries.filter((t) => t.status === "DONE");
+      if (options.project) {
+        const proj = options.project.toLowerCase();
+        summaries = summaries.filter((t) => (t.attributes?.project || "").toLowerCase().includes(proj));
+      }
+      return summaries;
+    }
+
+    async function exportTasksJSON(options = {}) {
+      const data = await buildExportData(options);
+      const json = JSON.stringify(data, null, 2);
+      const date = new Date().toISOString().slice(0, 10);
+      triggerBrowserDownload(json, `better-tasks-${date}.json`, "application/json");
+      toast(`Exported ${data.length} tasks as JSON.`);
+      return data;
+    }
+
+    const CSV_HEADERS = [
+      "uid", "title", "status", "due", "start", "defer", "completed",
+      "repeat", "project", "waiting_for", "context", "priority", "energy",
+      "gtd", "depends", "parent", "page_title", "is_blocked", "is_subtask",
+      "parent_task_uid", "subtask_uids"
+    ];
+
+    function escapeCSV(value) {
+      const s = String(value);
+      if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    }
+
+    function taskToCSVRow(task) {
+      const a = task.attributes || {};
+      return [
+        task.uid,
+        task.title,
+        task.status,
+        task.due || "",
+        task.start || "",
+        task.defer || "",
+        task.completed || "",
+        a.repeat || "",
+        a.project || "",
+        a.waitingFor || "",
+        (a.context || []).join("; "),
+        a.priority || "",
+        a.energy || "",
+        a.gtd || "",
+        (a.depends || []).join("; "),
+        a.parent || "",
+        task.page_title || "",
+        task.is_blocked ? "true" : "false",
+        task.is_subtask ? "true" : "false",
+        task.parent_task_uid || "",
+        (task.subtask_uids || []).join("; "),
+      ];
+    }
+
+    async function exportTasksCSV(options = {}) {
+      const data = await buildExportData(options);
+      const rows = [CSV_HEADERS.join(",")];
+      for (const task of data) {
+        rows.push(taskToCSVRow(task).map(escapeCSV).join(","));
+      }
+      const csv = rows.join("\n");
+      const date = new Date().toISOString().slice(0, 10);
+      triggerBrowserDownload(csv, `better-tasks-${date}.csv`, "text/csv");
+      toast(`Exported ${data.length} tasks as CSV.`);
+      return data;
+    }
+
+    function toICSDate(isoDate) {
+      if (!isoDate) return null;
+      return isoDate.replace(/-/g, "");
+    }
+
+    async function exportTasksICS(options = {}) {
+      const data = await buildExportData(options);
+      const withDates = data.filter((t) => t.due || t.start || t.defer);
+      const lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//BetterTasks//Roam Research//EN",
+        "X-WR-CALNAME:Better Tasks",
+      ];
+      for (const task of withDates) {
+        const eventDate = task.due || task.defer || task.start;
+        if (!eventDate) continue;
+        const dtStart = toICSDate(eventDate);
+        // All-day event: DTEND = DTSTART + 1 day (per iCal spec)
+        const nextDay = new Date(eventDate + "T12:00:00");
+        nextDay.setDate(nextDay.getDate() + 1);
+        const dtEnd = `${nextDay.getFullYear()}${String(nextDay.getMonth() + 1).padStart(2, "0")}${String(nextDay.getDate()).padStart(2, "0")}`;
+        const status = task.status === "DONE" ? " [DONE]" : "";
+        const project = task.attributes?.project ? ` [${task.attributes.project}]` : "";
+        lines.push("BEGIN:VEVENT");
+        lines.push(`UID:${task.uid}@bettertasks.roam`);
+        lines.push(`DTSTART;VALUE=DATE:${dtStart}`);
+        lines.push(`DTEND;VALUE=DATE:${dtEnd}`);
+        lines.push(`SUMMARY:${(task.title || task.text || "").replace(/\n/g, " ")}${status}${project}`);
+        if (task.attributes?.project) lines.push(`CATEGORIES:${task.attributes.project}`);
+        if (task.status === "DONE") lines.push("STATUS:CONFIRMED");
+        else lines.push("STATUS:TENTATIVE");
+        lines.push("TRANSP:TRANSPARENT");
+        lines.push("END:VEVENT");
+      }
+      lines.push("END:VCALENDAR");
+      const ics = lines.join("\r\n");
+      const date = new Date().toISOString().slice(0, 10);
+      triggerBrowserDownload(ics, `better-tasks-${date}.ics`, "text/calendar");
+      toast(`Exported ${withDates.length} tasks as ICS (${data.length - withDates.length} skipped \u2014 no dates).`);
+      return withDates;
+    }
+
+    function buildICSContent(data) {
+      const withDates = data.filter((t) => t.due || t.start || t.defer);
+      const lines = [
+        "BEGIN:VCALENDAR", "VERSION:2.0",
+        "PRODID:-//BetterTasks//Roam Research//EN", "X-WR-CALNAME:Better Tasks",
+      ];
+      for (const task of withDates) {
+        const eventDate = task.due || task.defer || task.start;
+        if (!eventDate) continue;
+        const dtStart = toICSDate(eventDate);
+        const nextDay = new Date(eventDate + "T12:00:00");
+        nextDay.setDate(nextDay.getDate() + 1);
+        const dtEnd = `${nextDay.getFullYear()}${String(nextDay.getMonth() + 1).padStart(2, "0")}${String(nextDay.getDate()).padStart(2, "0")}`;
+        const status = task.status === "DONE" ? " [DONE]" : "";
+        const project = task.attributes?.project ? ` [${task.attributes.project}]` : "";
+        lines.push("BEGIN:VEVENT");
+        lines.push(`UID:${task.uid}@bettertasks.roam`);
+        lines.push(`DTSTART;VALUE=DATE:${dtStart}`);
+        lines.push(`DTEND;VALUE=DATE:${dtEnd}`);
+        lines.push(`SUMMARY:${(task.title || task.text || "").replace(/\n/g, " ")}${status}${project}`);
+        if (task.attributes?.project) lines.push(`CATEGORIES:${task.attributes.project}`);
+        if (task.status === "DONE") lines.push("STATUS:CONFIRMED");
+        else lines.push("STATUS:TENTATIVE");
+        lines.push("TRANSP:TRANSPARENT");
+        lines.push("END:VEVENT");
+      }
+      lines.push("END:VCALENDAR");
+      return { content: lines.join("\r\n"), count: withDates.length, skipped: data.length - withDates.length };
+    }
+
+    // ── Deconvert (Clean Exit) ─────────────────────────────────────
+
+    function confirmToast(title, message) {
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = (v) => { if (!settled) { settled = true; resolve(v); } };
+        iziToast.question({
+          theme: "light",
+          color: "black",
+          layout: 2,
+          class: "betterTasks bt-toast-strong-icon",
+          drag: false,
+          timeout: false,
+          close: true,
+          closeOnEscape: true,
+          overlay: true,
+          icon: "icon-check",
+          iconText: "\u26A0",
+          iconColor: "#d97706",
+          title: title || "Better Tasks",
+          message: message || "Are you sure?",
+          position: "center",
+          onOpening: (_instance, toastEl) => { applyToastA11y(toastEl); },
+          buttons: [
+            [`<button>Yes</button>`, (instance, toast) => { instance.hide({ transitionOut: "fadeOut" }, toast, "button"); finish(true); }, true],
+            [`<button>Cancel</button>`, (instance, toast) => { instance.hide({ transitionOut: "fadeOut" }, toast, "button"); finish(false); }],
+          ],
+          onClosed: () => finish(false),
+        });
+      });
+    }
+
+    function isBtChildBlock(childString, attrNames) {
+      if (!childString || typeof childString !== "string") return false;
+      const s = childString.trim().toLowerCase();
+      for (const entry of Object.values(attrNames.attrByType || {})) {
+        const names = [entry.attr, entry.key, ...(entry.aliases || [])].filter(Boolean);
+        for (const name of names) {
+          if (s.startsWith(name.toLowerCase() + "::")) return true;
+        }
+      }
+      return false;
+    }
+
+    async function deconvertTask(uid) {
+      if (!uid) return false;
+      const block = await getBlock(uid);
+      if (!block) return false;
+      const blockStr = block.string || "";
+      if (!blockStr.includes("TODO") && !blockStr.includes("DONE")) return false;
+      const attrNames = resolveAttributeNames();
+      const children = block.children || [];
+      const btChildren = children.filter((c) => isBtChildBlock(c.string, attrNames));
+      if (!btChildren.length) return false;
+      // Delete BT attribute child blocks
+      for (const child of btChildren) {
+        await deleteBlock(child.uid);
+      }
+      // Clear RT props (series metadata) if present
+      try {
+        const props = window.roamAlphaAPI?.data?.pull?.("[:block/props]", [":block/uid", uid]);
+        if (props?.[":block/props"]?.rt) {
+          await updateBlockProps(uid, { rt: null });
+        }
+      } catch (_) { /* ignore */ }
+      invalidateBlockCache(uid);
+      return true;
+    }
+
+    // ── End Deconvert ────────────────────────────────────────────────
+
+    // ── End Data Export ──────────────────────────────────────────────
 
     function promptForDate({ title, message, initial }) {
       return new Promise((resolve) => {
