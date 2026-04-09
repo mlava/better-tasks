@@ -33,12 +33,14 @@ If you use TODOs in Roam, Better Tasks gives you:
 - Optional **Today widget** (on today's DNP) and **Today badge** (left sidebar)
 - **Subtasks** with progress indicators, structural nesting or explicit cross-graph linking
 - **Task templates** with parameterised titles, metadata defaults, and subtask structures
+- **Focus / Do Mode** — distraction-free single-task execution surface with keyboard-first navigation
 - Optional metadata: **Project, Context, Waiting-for, GTD, Priority, Energy, Dependencies**
 
 ---
 
 ## ✅ Recent updates
 
+- **Focus / Do Mode:** distraction-free single-task execution view launched from the dashboard's **Focus** button or `Better Tasks: Enter Focus Mode` in the Command Palette. Takes a frozen snapshot of your currently-visible filtered and sorted tasks at entry time, then guides you through one task at a time with progress indicator and keyboard-first controls (`j`/`k` navigate, `c` complete with auto-advance, `s`/`Shift+S` snooze +1d/+7d, `Enter` opens in Roam, `r` refresh, `?` shortcut help, `Esc` exit). Subtasks appear as a read-only checklist on the parent card and also get their own focus turn. Blocked tasks render with a 🔒 hint and disable `c` to prevent accidental completion. Live pills: metadata refreshes while the queue order stays stable. Stale-queue banner if any queued task is renamed or deleted, with a one-click rebuild.
 - **Task Templates:** save reusable task configurations with a title pattern, metadata defaults, and a subtask structure. Parameterised titles like `Weekly report for {project}` prompt for values at instantiation. Save any existing task as a template via the block context menu, or build one from scratch via `Create Better Task template`. Instantiate from the Command Palette, the dashboard's Template button, or programmatically via the Extension Tools API. Date defaults support compact relative syntax (`+3d`, `+1w`, `+1m`) plus the full natural language vocabulary (`next Monday`, `end of month`, etc.) and resolve at instantiation time.
 - **Clean exit / deconvert:** remove Better Tasks metadata from individual tasks or all tasks at once via Command Palette. Your `{{[[TODO]]}}` blocks remain as plain Roam — just the BT child blocks and RT props are removed. Fully reversible (re-convert anytime).
 - **Data export:** export all tasks via Command Palette — JSON (full data), CSV (spreadsheet-ready), or ICS (calendar import). All use ISO dates and include every attribute. Also available programmatically via `bt_export` in the Extension Tools API.
@@ -281,6 +283,7 @@ Features:
 - Quick-add input (local NLP parsing first, then AI if enabled) plus a **Template** button to instantiate saved templates
 - Recurring series view (past completions, future projections, streak tracking, exceptions)
 - Mobile-friendly layout (full-page with slide-in filters and sticky quick-add)
+- **Focus / Do Mode** — distraction-free single-task execution surface with keyboard-first navigation, launched from the **Focus** button in the header (see [Focus / Do Mode](#focus--do-mode) below)
 - **Graph Analytics** — slide-in panel with completion trends, time-to-completion, overdue frequency, project breakdown, recurring adherence, and busiest-days heatmap (press `Shift+G` or click Analytics in the header)
 - **Keyboard navigation** (press `?` in the dashboard for the full legend):
 
@@ -374,6 +377,36 @@ Apply changes to multiple tasks at once from the dashboard.
 All bulk actions support **Undo** via the toast notification.
 
 **Tip:** Set up your view first (filters, grouping) before entering bulk mode — this lets you target exactly the tasks you want to update.
+
+### Focus / Do Mode
+
+A distraction-free, single-task execution surface launched from the **Focus** button in the dashboard header or via Command Palette → **Better Tasks: Enter Focus Mode**.
+
+Focus Mode takes a snapshot of your currently-visible filtered and sorted task list at entry time, then guides you through one task at a time. The queue order stays stable for the whole session, but pills, blocked state, and subtask progress update live as you work.
+
+**Keyboard shortcuts** (capture-phase, isolated from the dashboard):
+
+| Key | Action |
+|-----|--------|
+| `j` / `n` / `→` | Next task |
+| `k` / `p` / `←` | Previous task |
+| `c` | Complete current task (auto-advances) |
+| `s` | Snooze +1 day |
+| `Shift+S` | Snooze +7 days |
+| `Enter` | Open task in Roam |
+| `r` | Refresh task data (forces a snapshot pull) |
+| `?` | Show / hide shortcut overlay |
+| `Esc` | Exit Focus Mode |
+
+**Behaviour:**
+- **Blocked tasks** are shown with a 🔒 indicator and an amber hint; `c` is disabled (toast) so you can't accidentally complete a task whose dependencies aren't met
+- **Subtasks** appear as a read-only checklist on the parent's focus card *and* later in the queue as their own focus turns — every visible actionable task gets its own moment
+- **All done!** celebration screen appears when the queue is cleared (every queued task is now complete)
+- **Stale-queue banner** appears if any queued task's title or blocked-state changes externally, or if a queued task is deleted — click **Refresh queue** to rebuild from the current filtered list
+- **Click outside** the panel (or press `Esc`) to exit; the dashboard returns to wherever you left it
+- The queue is **in-memory only** — Focus Mode closes on Roam reload (snapshot is intentionally ephemeral; rebuild it next time you open it)
+
+> Tip: set up your filter and sort first (e.g. "Due Today" preset, sorted by priority), then click **Focus** — the queue is built from exactly what you see.
 
 ---
 
@@ -483,6 +516,7 @@ The quick-add input parses natural language locally using rule-based extraction.
 - Daily Review
 - Weekly Review
 - Monthly Review
+- Enter Focus Mode
 - Export Better Tasks (JSON)
 - Export Better Tasks (CSV)
 - Export Better Tasks (ICS Calendar)

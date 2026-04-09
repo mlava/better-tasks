@@ -1852,6 +1852,319 @@ function AnalyticsPanel({ controller, language, onClose }) {
   );
 }
 
+// ========================= Focus Mode Panel =========================
+
+function FocusModePanel({ queue, controller, language, liveSnapshot, strings, onExit, onRefreshQueue }) {
+  const [index, setIndex] = useState(0);
+  const [isStale, setIsStale] = useState(false);
+  const [helpCollapsed, setHelpCollapsed] = useState(false);
+  const panelRef = useRef(null);
+  const s = strings || {};
+
+  // Build a uid → live task map for staleness diff and subtask lookup
+  const liveByUid = useMemo(() => {
+    const map = new Map();
+    for (const t of liveSnapshot?.tasks || []) map.set(t.uid, t);
+    return map;
+  }, [liveSnapshot]);
+
+  // Staleness detection: title or blocked-state changes, or task disappeared
+  useEffect(() => {
+    if (!queue || !liveByUid) return;
+    let stale = false;
+    for (const q of queue) {
+      const live = liveByUid.get(q.uid);
+      if (!live) { stale = true; break; }
+      if (live.title !== q.title || live.isBlocked !== q.isBlocked) { stale = true; break; }
+    }
+    setIsStale(stale);
+  }, [queue, liveByUid]);
+
+  // All-done state: index past end OR every queue item is now completed in live snapshot
+  const allRemainingCompleted = useMemo(() => {
+    if (!queue?.length) return true;
+    return queue.every((q) => {
+      const live = liveByUid.get(q.uid);
+      return live ? live.isCompleted : false;
+    });
+  }, [queue, liveByUid]);
+
+  const isAllDone = index >= (queue?.length || 0) || allRemainingCompleted;
+
+  // Current task — prefer live version so completion/metadata reflect updates
+  const currentTask = useMemo(() => {
+    if (isAllDone || !queue || index < 0 || index >= queue.length) return null;
+    const frozen = queue[index];
+    const live = liveByUid.get(frozen.uid);
+    return live || frozen;
+  }, [queue, index, liveByUid, isAllDone]);
+
+  const advance = useCallback((delta) => {
+    setIndex((prev) => {
+      const next = prev + delta;
+      if (!queue?.length) return prev;
+      if (next < 0) return 0;
+      if (next >= queue.length) return queue.length - 1;
+      return next;
+    });
+  }, [queue]);
+
+  // Capture-phase keydown handler — runs before the dashboard handler thanks to {capture: true}
+  useEffect(() => {
+    if (isAllDone) {
+      const handler = (e) => {
+        if (isTypingInInput()) return;
+        if (e.key === "Escape" || e.key === "Enter") {
+          e.preventDefault();
+          e.stopPropagation();
+          onExit();
+        }
+      };
+      document.addEventListener("keydown", handler, true);
+      return () => document.removeEventListener("keydown", handler, true);
+    }
+    if (!currentTask) return undefined;
+    const handler = (e) => {
+      if (isTypingInInput()) return;
+      const key = normalizeKey(e);
+      const stop = () => { e.preventDefault(); e.stopPropagation(); };
+
+      if (key === "escape") { stop(); onExit(); return; }
+      if (key === "shift+?") { stop(); setHelpCollapsed((c) => !c); return; }
+      if (key === "j" || key === "n" || key === "arrowright" || key === "arrowdown") {
+        stop();
+        advance(+1);
+        return;
+      }
+      if (key === "k" || key === "p" || key === "arrowleft" || key === "arrowup") {
+        stop();
+        advance(-1);
+        return;
+      }
+      if (key === "enter") {
+        stop();
+        controller?.openBlock?.(currentTask.uid, { skipCompletionToast: !!currentTask.isCompleted });
+        return;
+      }
+      if (key === "c") {
+        stop();
+        if (currentTask.isBlocked) {
+          iziToast.info({ message: s.blockedHint || "This task is blocked and can't be completed from here." });
+          return;
+        }
+        controller?.toggleTask?.(currentTask.uid, "complete");
+        // Auto-advance: index++; if past end, isAllDone will trigger on next render
+        setIndex((i) => Math.min(i + 1, (queue?.length || 0)));
+        return;
+      }
+      if (key === "shift+s") {
+        stop();
+        controller?.snoozeTask?.(currentTask.uid, 7);
+        return;
+      }
+      if (key === "s") {
+        stop();
+        controller?.snoozeTask?.(currentTask.uid, 1);
+        return;
+      }
+      if (key === "r") {
+        stop();
+        controller?.refresh?.({ reason: "focus-mode-manual" });
+        return;
+      }
+    };
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
+  }, [advance, controller, currentTask, isAllDone, onExit, queue, s.blockedHint]);
+
+  // Click outside the panel exits Focus Mode (50ms delay mirrors AnalyticsPanel pattern)
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) onExit();
+    };
+    const timer = setTimeout(() => document.addEventListener("mousedown", handleClick), 50);
+    return () => { clearTimeout(timer); document.removeEventListener("mousedown", handleClick); };
+  }, [onExit]);
+
+  // Portal root — created once, removed on unmount (no leak risk)
+  const portalRoot = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const el = document.createElement("div");
+    el.className = "bt-focus-mode-portal";
+    el.setAttribute("data-bt-portal", "focus-mode");
+    return el;
+  }, []);
+
+  useEffect(() => {
+    if (!portalRoot) return undefined;
+    const host = document.querySelector(".bt-dashboard-host") || document.body;
+    host.appendChild(portalRoot);
+    return () => portalRoot.remove();
+  }, [portalRoot]);
+
+  if (!portalRoot) return null;
+
+  const total = queue?.length || 0;
+  const safeIndex = Math.min(index, Math.max(0, total - 1));
+  const progressPct = total > 0 ? Math.min(100, Math.max(0, ((safeIndex + 1) / total) * 100)) : 0;
+
+  // ── All-done screen ──
+  if (isAllDone) {
+    return createPortal(
+      <div className="bt-focus-mode-overlay" role="dialog" aria-label={s.title || "Focus Mode"}>
+        <div className="bt-focus-mode-overlay__backdrop" onClick={onExit} />
+        <div className="bt-focus-mode__panel bt-focus-mode__panel--all-done" ref={panelRef}>
+          <div className="bt-focus-mode__all-done">
+            <h2>{s.allDoneTitle || "All done!"}</h2>
+            <p>{s.allDoneSubtitle || "You've cleared the queue."}</p>
+            <button type="button" className="bp3-button bp3-intent-primary" onClick={onExit}>
+              {s.allDoneReturn || "Return to dashboard"}
+            </button>
+          </div>
+        </div>
+      </div>,
+      portalRoot
+    );
+  }
+
+  if (!currentTask) return null;
+
+  const progressLabel = (s.progressLabel || "Task {{current}} of {{total}}")
+    .replace("{{current}}", String(safeIndex + 1))
+    .replace("{{total}}", String(total));
+
+  const subtaskUids = Array.isArray(currentTask.subtaskUids) ? currentTask.subtaskUids : [];
+  const subtasks = subtaskUids.map((uid) => liveByUid.get(uid)).filter(Boolean);
+
+  return createPortal(
+    <div className="bt-focus-mode-overlay" role="dialog" aria-label={s.title || "Focus Mode"}>
+      <div className="bt-focus-mode-overlay__backdrop" onClick={onExit} />
+      <div className="bt-focus-mode__panel" ref={panelRef}>
+        {/* Header: progress + close */}
+        <div className="bt-focus-mode__header">
+          <div className="bt-focus-mode__progress-block">
+            <div className="bt-focus-mode__progress-text">{progressLabel}</div>
+            <div className="bt-focus-mode__progress-bar" aria-hidden="true">
+              <div className="bt-focus-mode__progress-fill" style={{ width: `${progressPct}%` }} />
+            </div>
+          </div>
+          <button
+            type="button"
+            className="bp3-button bp3-minimal bp3-small bt-focus-mode__close"
+            onClick={onExit}
+            aria-label={s.exitButton || "Exit"}
+            title={s.exitButton || "Exit"}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Stale-queue banner */}
+        {isStale && (
+          <div className="bt-focus-mode__stale-banner" role="alert">
+            <div className="bt-focus-mode__stale-banner-text">
+              <strong>{s.staleBannerTitle || "Queue is out of sync"}</strong>
+              <div>{s.staleBannerBody || "Some tasks have changed since you entered Focus Mode."}</div>
+            </div>
+            <div className="bt-focus-mode__stale-banner-actions">
+              {onRefreshQueue && (
+                <button type="button" className="bp3-button bp3-small" onClick={onRefreshQueue}>
+                  {s.staleBannerRefresh || "Refresh queue"}
+                </button>
+              )}
+              <button
+                type="button"
+                className="bp3-button bp3-small bp3-minimal"
+                onClick={() => setIsStale(false)}
+              >
+                {s.staleBannerDismiss || "Dismiss"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Title */}
+        <div className="bt-focus-mode__title">
+          {currentTask.isBlocked ? (
+            <span className="bt-focus-mode__lock" aria-hidden="true">🔒 </span>
+          ) : null}
+          {currentTask.title || "(Untitled)"}
+        </div>
+
+        {/* Blocked hint */}
+        {currentTask.isBlocked && (
+          <div className="bt-focus-mode__blocked-hint">
+            {s.blockedHint || "This task is blocked and can't be completed from here."}
+          </div>
+        )}
+
+        {/* Pills */}
+        {Array.isArray(currentTask.metaPills) && currentTask.metaPills.length > 0 && (
+          <div className="bt-focus-mode__pills">
+            {currentTask.metaPills.map((pill) => (
+              <div key={`${currentTask.uid}-fm-${pill.type}`} className="bt-pill-wrap">
+                <Pill icon={pill.icon} label={pill.label} value={pill.value} muted={!pill.value} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Subtasks (read-only) */}
+        {subtasks.length > 0 && (
+          <div className="bt-focus-mode__subtasks">
+            <div className="bt-focus-mode__subtasks-heading">{s.subtasksHeading || "Subtasks"}</div>
+            <ul>
+              {subtasks.map((sub) => (
+                <li
+                  key={sub.uid}
+                  className={`bt-focus-mode__subtask${sub.isCompleted ? " bt-focus-mode__subtask--done" : ""}`}
+                >
+                  <span className="bt-focus-mode__subtask-checkbox" aria-hidden="true">
+                    {sub.isCompleted ? "☑" : "☐"}
+                  </span>
+                  <span className="bt-focus-mode__subtask-title">{sub.title || "(Untitled)"}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Shortcuts overlay */}
+        <div
+          className={`bt-focus-mode__shortcut-help${
+            helpCollapsed ? " bt-focus-mode__shortcut-help--collapsed" : ""
+          }`}
+        >
+          <button
+            type="button"
+            className="bp3-button bp3-minimal bp3-small bt-focus-mode__shortcut-toggle"
+            onClick={() => setHelpCollapsed((c) => !c)}
+          >
+            {helpCollapsed ? (s.shortcutsShow || "Show shortcuts") : (s.shortcutsHide || "Hide shortcuts")}
+          </button>
+          {!helpCollapsed && (
+            <div className="bt-focus-mode__shortcut-list">
+              <div className="bt-focus-mode__shortcut-title">{s.shortcutsTitle || "Shortcuts"}</div>
+              <dl>
+                <div><dt>j / n / →</dt><dd>{s.shortcutNext || "Next task"}</dd></div>
+                <div><dt>k / p / ←</dt><dd>{s.shortcutPrev || "Previous task"}</dd></div>
+                <div><dt>c</dt><dd>{s.shortcutComplete || "Complete (auto-advance)"}</dd></div>
+                <div><dt>s</dt><dd>{s.shortcutSnooze1 || "Snooze +1 day"}</dd></div>
+                <div><dt>Shift+S</dt><dd>{s.shortcutSnooze7 || "Snooze +7 days"}</dd></div>
+                <div><dt>Enter</dt><dd>{s.shortcutOpen || "Open task in Roam"}</dd></div>
+                <div><dt>r</dt><dd>{s.shortcutRefresh || "Refresh task data"}</dd></div>
+                <div><dt>Esc</dt><dd>{s.shortcutExit || "Exit Focus Mode"}</dd></div>
+                <div><dt>?</dt><dd>{s.shortcutHelp || "Toggle shortcuts overlay"}</dd></div>
+              </dl>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    portalRoot
+  );
+}
+
 // ========================= Recurring Series View Panel =========================
 
 function SeriesViewPanel({ task, controller, language, onClose }) {
@@ -2508,6 +2821,8 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   const [menuOpenForUid, setMenuOpenForUid] = useState(null);
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [focusModeOpen, setFocusModeOpen] = useState(false);
+  const [focusQueue, setFocusQueue] = useState(null);
 
   const sortedViews = useMemo(() => {
     const views = Array.isArray(viewsStore?.views) ? viewsStore.views : [];
@@ -2732,6 +3047,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     [tt]
   );
   const taskMenuStrings = useMemo(() => tPath(["taskMenu"], lang) || {}, [lang]);
+  const focusModeStrings = useMemo(() => tPath(["focusMode"], lang) || {}, [lang]);
   const ui = useMemo(
     () => ({
       taskMenu: taskMenuStrings,
@@ -2841,8 +3157,9 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
         retry: tt(["dashboard", "empty", "retry"], "Try again"),
         noMatch: tt(["dashboard", "empty", "noMatch"], "No tasks match the selected filters."),
       },
+      focusMode: focusModeStrings,
     }),
-    [tt, groupingOptions, groupLabels, metaLabels, taskMenuStrings]
+    [tt, groupingOptions, groupLabels, metaLabels, taskMenuStrings, focusModeStrings]
   );
   const [filtersOpen, setFiltersOpen] = useState(false);
   const stalledDays = controller?.getStalledDays?.() || 14;
@@ -3066,6 +3383,8 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   seriesViewTaskRef.current = seriesViewTask;
   const showKeyboardHelpRef = useRef(showKeyboardHelp);
   showKeyboardHelpRef.current = showKeyboardHelp;
+  const focusModeActiveRef = useRef(focusModeOpen);
+  focusModeActiveRef.current = focusModeOpen;
 
   // Single-registration keydown handler
   useEffect(() => {
@@ -3077,6 +3396,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       }
       // Don't capture when a modal overlay is open
       if (seriesViewTaskRef.current) return;
+      if (focusModeActiveRef.current) return;
 
       const keybindings = { ...DEFAULT_KEYBINDINGS, ...(controller?.getKeyboardBindings?.() || {}) };
       const key = normalizeKey(event);
@@ -3298,6 +3618,14 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   }, [controller]);
 
   useEffect(() => {
+    if (!controller?.subscribeDashFocusModeRequests) return undefined;
+    const unsub = controller.subscribeDashFocusModeRequests((req) => {
+      if (req?.type === "start") handleEnterFocusMode();
+    });
+    return unsub;
+  }, [controller, handleEnterFocusMode]);
+
+  useEffect(() => {
     if (!reviewStartRequested) return;
     if (!viewsLoaded) return;
     const reqType = typeof reviewStartRequested === "string" ? reviewStartRequested : "weekly";
@@ -3471,6 +3799,56 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     if (isMobileLayout) return;
     controller.toggleDashboardFullPage?.();
   }, [controller, isMobileLayout]);
+
+  const handleEnterFocusMode = useCallback(() => {
+    // Use the ref (synced every render) instead of the state value to avoid
+    // stale-closure issues when this callback is invoked from a controller subscriber.
+    if (focusModeActiveRef.current) {
+      iziToast.info({ message: ui.focusMode?.alreadyOpenToast || "Focus Mode is already open." });
+      return;
+    }
+    if (showAnalytics || seriesViewTask || showKeyboardHelp || menuOpenForUid) {
+      iziToast.info({
+        message: ui.focusMode?.modalBlockedToast || "Close other panels before entering Focus Mode.",
+      });
+      return;
+    }
+    // Include every visible, non-completed task — subtasks get their own focus turn
+    // even when their parent is also in the queue (the parent card still shows them
+    // as a read-only checklist for context).
+    const candidates = (filteredTasks || []).filter((t) => !t.isCompleted);
+    if (!candidates.length) {
+      iziToast.info({ message: ui.focusMode?.emptyToast || "No tasks to focus on." });
+      return;
+    }
+    setFocusQueue(candidates);
+    setFocusModeOpen(true);
+  }, [
+    filteredTasks,
+    showAnalytics,
+    seriesViewTask,
+    showKeyboardHelp,
+    menuOpenForUid,
+    ui.focusMode,
+  ]);
+
+  const handleExitFocusMode = useCallback(() => {
+    try {
+      if (typeof document !== "undefined" && document.activeElement?.blur) {
+        document.activeElement.blur();
+      }
+    } catch (_) {
+      // ignore
+    }
+    setFocusModeOpen(false);
+    setFocusQueue(null);
+  }, []);
+
+  const handleRefreshFocusQueue = useCallback(() => {
+    handleExitFocusMode();
+    // Defer one tick so React/snapshot state has flushed before re-entering
+    setTimeout(() => handleEnterFocusMode(), 0);
+  }, [handleEnterFocusMode, handleExitFocusMode]);
   const rootClasses = [
     "bt-dashboard",
     isTouchDevice ? "bt-touch" : "",
@@ -4221,6 +4599,15 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             <p>{ui.headerSubtitle}</p>
           </div>
           <div className="bt-dashboard__header-actions">
+            <button
+              type="button"
+              className="bp3-button bp3-small bt-focus-mode-btn"
+              onClick={handleEnterFocusMode}
+              disabled={!filteredTasks || filteredTasks.length === 0}
+              title={ui.focusMode?.enterTooltip || "Enter distraction-free Focus Mode"}
+            >
+              {ui.focusMode?.enterButton || "Focus"}
+            </button>
             <button type="button" className="bp3-button bp3-small" onClick={() => setShowAnalytics(true)}>
               {tPath(["analytics", "title"], lang) || "Analytics"}
             </button>
@@ -4590,6 +4977,17 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
         {showAnalytics && (
           <AnalyticsPanel controller={controller} language={language} onClose={() => setShowAnalytics(false)} />
         )}
+        {focusModeOpen && focusQueue && (
+          <FocusModePanel
+            queue={focusQueue}
+            controller={controller}
+            language={language}
+            liveSnapshot={snapshot}
+            strings={ui.focusMode}
+            onExit={handleExitFocusMode}
+            onRefreshQueue={handleRefreshFocusQueue}
+          />
+        )}
       </div>
     );
   }
@@ -4602,6 +5000,15 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           <p>{ui.headerSubtitle}</p>
         </div>
         <div className="bt-dashboard__header-actions">
+          <button
+            type="button"
+            className="bp3-button bp3-small bt-focus-mode-btn"
+            onClick={handleEnterFocusMode}
+            disabled={!filteredTasks || filteredTasks.length === 0}
+            title={ui.focusMode?.enterTooltip || "Enter distraction-free Focus Mode"}
+          >
+            {ui.focusMode?.enterButton || "Focus"}
+          </button>
           <button type="button" className="bp3-button bp3-small" onClick={() => setShowAnalytics(true)}>
             {tPath(["analytics", "title"], lang) || "Analytics"}
           </button>
@@ -5202,6 +5609,17 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       )}
       {showAnalytics && (
         <AnalyticsPanel controller={controller} language={language} onClose={() => setShowAnalytics(false)} />
+      )}
+      {focusModeOpen && focusQueue && (
+        <FocusModePanel
+          queue={focusQueue}
+          controller={controller}
+          language={language}
+          liveSnapshot={snapshot}
+          strings={ui.focusMode}
+          onExit={handleExitFocusMode}
+          onRefreshQueue={handleRefreshFocusQueue}
+        />
       )}
     </div>
   );

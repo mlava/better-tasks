@@ -171,12 +171,21 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - ✅ Streak tracking (current streak, best streak, on-time completion rate)
 - ✅ Exception handling (add/remove exception dates, carry-forward on completion)
 
-### Focus / Do Mode
-- Single-task execution view
-- Distraction-free display
-- Keyboard-first navigation
-- Progress indicator (3 of 12 tasks done)
-- Optional Pomodoro timer integration
+### Focus / Do Mode — Complete ✅
+- ✅ Distraction-free single-task execution surface, launched from the dashboard header (Focus button) or command palette ("Better Tasks: Enter Focus Mode")
+- ✅ Frozen-snapshot queue built from the dashboard's currently-visible filtered/sorted tasks at entry time (subtasks become independent queue entries)
+- ✅ Live metadata: pills, blocked state, and subtask progress re-derived from the live snapshot on every render — frozen queue, fresh display
+- ✅ Progress indicator ("Task N of M" + progress bar)
+- ✅ Read-only subtask checklist on parent cards (subtasks also get their own focus turn for completion)
+- ✅ Blocked tasks rendered with 🔒 + amber hint; `c` is disabled and shows a toast (no accidental completion of blocked work)
+- ✅ All-done celebration screen when the queue is cleared
+- ✅ Stale-queue banner (title / blocked-state / deletion) with one-click **Refresh queue**
+- ✅ Keyboard shortcuts: `j`/`n`/`→` next, `k`/`p`/`←` previous, `c` complete (auto-advance), `s` snooze +1d, `Shift+S` snooze +7d, `Enter` open in Roam, `r` refresh, `?` toggle shortcut overlay, `Esc` exit
+- ✅ Belt-and-braces keyboard isolation: ref-gate at the dashboard handler + capture-phase listener inside the panel with `stopPropagation`
+- ✅ Modal-stacking guard prevents launching from inside Analytics / Series View / Keyboard Help / open three-dot menu
+- ✅ Click-outside-the-panel exits Focus Mode; backdrop click also exits
+- ✅ Subscription-free: panel reads `liveSnapshot` as a prop (no new controller subscriptions, no leak risk)
+- ✅ Internationalised across all 13 supported locales (English authoritative; native translations to land in a follow-up)
 
 ### Expanded Reviews — Complete ✅
 - ✅ Daily review: Due Today → Completed Yesterday → Overdue (3-step flow)
@@ -281,6 +290,10 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - Real-time collaboration features
 - Native mobile app (beyond responsive web)
 - Time-of-day scheduling (hour-level granularity — Roam is date-level; use ICS export for calendar integration)
+- Dash Focus Mode Phase 2
+  - ⏳ Optional Pomodoro timer (deferred to v2)
+  - ⏳ Per-subtask completion from inside the parent card (deferred to v2)
+  - ⏳ Custom Focus Mode keybindings (deferred — currently shares dashboard defaults)
 
 ### Multi-Language NLP — Deprioritised
 - Recurrence rule parsing beyond English — ~500-800 lines per language of keyword/regex mapping; low ROI given most Roam users type English recurrence rules regardless of UI language
@@ -301,4 +314,4 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 
 ---
 
-*Last updated: 2026-04-09*
+*Last updated: 2026-04-09 — Focus / Do Mode shipped*

@@ -4961,3 +4961,259 @@ body.bt-theme-dark .bt-kb-help-footer kbd {
     .bt-analytics-overlay__panel { width: 100%; }
     .bt-analytics-summary { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ── Focus Mode ──────────────────────────────────────────────── */
+
+.bt-focus-mode-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1060;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.bt-focus-mode-overlay__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+}
+
+.bt-focus-mode__panel {
+    position: relative;
+    width: 100%;
+    max-width: 720px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    background: var(--bt-panel-bg);
+    color: var(--bt-panel-text);
+    border: 1px solid var(--bt-border-strong);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+    padding: 24px 28px 20px;
+    animation: bt-focus-mode-pop 0.16s ease-out;
+}
+
+@keyframes bt-focus-mode-pop {
+    from { transform: scale(0.97); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+}
+
+.bt-focus-mode__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.bt-focus-mode__progress-block {
+    flex: 1;
+    min-width: 0;
+}
+
+.bt-focus-mode__progress-text {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--bt-muted);
+    margin-bottom: 6px;
+}
+
+.bt-focus-mode__progress-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--bt-border);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.bt-focus-mode__progress-fill {
+    height: 100%;
+    background: var(--bt-chart-bar);
+    transition: width 0.18s ease-out;
+}
+
+.bt-focus-mode__close {
+    flex-shrink: 0;
+}
+
+.bt-focus-mode__stale-banner {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    background: rgba(217, 130, 43, 0.12);
+    border: 1px solid rgba(217, 130, 43, 0.45);
+    color: var(--bt-panel-text);
+    font-size: 12px;
+}
+
+.bt-focus-mode__stale-banner-text strong {
+    display: block;
+    margin-bottom: 2px;
+}
+
+.bt-focus-mode__stale-banner-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.bt-focus-mode__title {
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.25;
+    margin: 8px 0 16px;
+    color: var(--bt-panel-text);
+    word-wrap: break-word;
+}
+
+.bt-focus-mode__lock {
+    margin-right: 4px;
+}
+
+.bt-focus-mode__blocked-hint {
+    padding: 8px 12px;
+    margin-bottom: 14px;
+    border-radius: 6px;
+    background: rgba(217, 130, 43, 0.10);
+    border: 1px solid rgba(217, 130, 43, 0.35);
+    font-size: 12px;
+    color: var(--bt-muted);
+}
+
+.bt-focus-mode__pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 18px;
+}
+
+.bt-focus-mode__subtasks {
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    background: var(--bt-panel-bg-soft, rgba(127, 127, 127, 0.06));
+    border-radius: 8px;
+    border: 1px solid var(--bt-border);
+}
+
+.bt-focus-mode__subtasks-heading {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--bt-muted);
+    margin-bottom: 8px;
+}
+
+.bt-focus-mode__subtasks ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.bt-focus-mode__subtask {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 13px;
+}
+
+.bt-focus-mode__subtask--done .bt-focus-mode__subtask-title {
+    text-decoration: line-through;
+    color: var(--bt-muted);
+}
+
+.bt-focus-mode__subtask-checkbox {
+    flex-shrink: 0;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--bt-muted);
+}
+
+.bt-focus-mode__subtask-title {
+    flex: 1;
+    word-wrap: break-word;
+}
+
+.bt-focus-mode__shortcut-help {
+    margin-top: 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--bt-border);
+}
+
+.bt-focus-mode__shortcut-toggle {
+    margin-bottom: 8px;
+}
+
+.bt-focus-mode__shortcut-list {
+    font-size: 11px;
+    color: var(--bt-muted);
+}
+
+.bt-focus-mode__shortcut-title {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+}
+
+.bt-focus-mode__shortcut-list dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 16px;
+    margin: 0;
+}
+
+.bt-focus-mode__shortcut-list dl > div {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+}
+
+.bt-focus-mode__shortcut-list dt {
+    flex-shrink: 0;
+    min-width: 64px;
+    font-family: var(--bt-mono, ui-monospace, "SF Mono", Menlo, monospace);
+    font-size: 11px;
+    color: var(--bt-panel-text);
+}
+
+.bt-focus-mode__shortcut-list dd {
+    margin: 0;
+    flex: 1;
+}
+
+.bt-focus-mode__panel--all-done {
+    text-align: center;
+    padding: 48px 32px;
+}
+
+.bt-focus-mode__all-done h2 {
+    font-size: 28px;
+    margin: 0 0 8px;
+    color: var(--bt-panel-text);
+}
+
+.bt-focus-mode__all-done p {
+    color: var(--bt-muted);
+    margin: 0 0 20px;
+    font-size: 14px;
+}
+
+.bt-focus-mode-btn {
+    /* Inherits .bp3-button styling; this is a hook for any future tweaks */
+}
+
+@media (max-width: 640px) {
+    .bt-focus-mode-overlay { padding: 12px; }
+    .bt-focus-mode__panel { padding: 18px 18px 14px; }
+    .bt-focus-mode__title { font-size: 22px; }
+    .bt-focus-mode__shortcut-list dl { grid-template-columns: 1fr; }
+}

@@ -1478,6 +1478,19 @@ export default {
       },
     });
     extensionAPI.ui.commandPalette.addCommand({
+      label: t(["commands", "startFocusMode"], getLanguageSetting()) || "Better Tasks: Enter Focus Mode",
+      callback: async () => {
+        try {
+          if (!activeDashboardController?.isOpen?.()) {
+            activeDashboardController?.open?.();
+          }
+          activeDashboardController?.requestStartDashFocusMode?.();
+        } catch (err) {
+          console.warn("[BetterTasks] start focus mode command failed", err);
+        }
+      },
+    });
+    extensionAPI.ui.commandPalette.addCommand({
       label:
         t(["commands", "reinstallPresetDashViews"], getLanguageSetting()) ||
         "Better Tasks: Reinstall preset dashboard views",
@@ -14399,8 +14412,10 @@ export default {
       const dashViewRequestSubscribers = new Set();
       const dashViewsStoreSubscribers = new Set();
       const dashReviewRequestSubscribers = new Set();
+      const dashFocusModeRequestSubscribers = new Set();
       const reviewStepSettingsSubscribers = new Set();
       let dashReviewStartPending = false;
+      let dashFocusModeStartPending = false;
       let lastDashViewState = null;
       let container = null;
       let root = null;
@@ -14528,6 +14543,8 @@ export default {
         subscribeReviewStepSettings,
         notifyReviewStepSettingsChanged,
         requestStartDashReview,
+        subscribeDashFocusModeRequests,
+        requestStartDashFocusMode,
         getKeyboardBindings: () => {
           try {
             const raw = extensionAPI.settings.get("bt-keyboard-bindings");
@@ -14846,6 +14863,35 @@ export default {
             listener({ type: "start", reviewType: reviewType || "weekly" });
           } catch (err) {
             console.warn("[BetterTasks] dashboard review request subscriber failed", err);
+          }
+        });
+      }
+
+      function subscribeDashFocusModeRequests(listener) {
+        if (typeof listener === "function") {
+          dashFocusModeRequestSubscribers.add(listener);
+          if (dashFocusModeStartPending) {
+            dashFocusModeStartPending = false;
+            try {
+              listener({ type: "start" });
+            } catch (err) {
+              console.warn("[BetterTasks] dashboard focus mode request subscriber failed", err);
+            }
+          }
+        }
+        return () => dashFocusModeRequestSubscribers.delete(listener);
+      }
+
+      function requestStartDashFocusMode() {
+        if (dashFocusModeRequestSubscribers.size === 0) {
+          dashFocusModeStartPending = true;
+          return;
+        }
+        dashFocusModeRequestSubscribers.forEach((listener) => {
+          try {
+            listener({ type: "start" });
+          } catch (err) {
+            console.warn("[BetterTasks] dashboard focus mode request subscriber failed", err);
           }
         });
       }

@@ -154,7 +154,8 @@ const locale = {
     startReview: "Better Tasks: Weekly Review",
     startDailyReview: "Better Tasks: Daily Review",
     startMonthlyReview: "Better Tasks: Monthly Review",
-    toggleDashboardFullPage: "Toggle Better Tasks Dashboard (Full page)"
+    toggleDashboardFullPage: "Toggle Better Tasks Dashboard (Full page)",
+    startFocusMode: "Better Tasks: Enter Focus Mode"
   },
   prompts: {
     addProject: {
@@ -571,6 +572,37 @@ const locale = {
     busiestDays: "Busiest days",
     noData: "No completed tasks in this period.",
     loading: "Computing analytics...",
+  },
+  focusMode: {
+    title: "Focus Mode",
+    enterButton: "Focus",
+    enterTooltip: "Enter distraction-free Focus Mode",
+    exitButton: "Exit",
+    progressLabel: "Task {{current}} of {{total}}",
+    emptyToast: "No tasks to focus on.",
+    modalBlockedToast: "Close other panels before entering Focus Mode.",
+    alreadyOpenToast: "Focus Mode is already open.",
+    allDoneTitle: "All done!",
+    allDoneSubtitle: "You've cleared the queue.",
+    allDoneReturn: "Return to dashboard",
+    staleBannerTitle: "Queue is out of sync",
+    staleBannerBody: "Some tasks have changed since you entered Focus Mode.",
+    staleBannerRefresh: "Refresh queue",
+    staleBannerDismiss: "Dismiss",
+    blockedHint: "This task is blocked and can't be completed from here.",
+    subtasksHeading: "Subtasks",
+    shortcutsTitle: "Shortcuts",
+    shortcutsShow: "Show shortcuts",
+    shortcutsHide: "Hide shortcuts",
+    shortcutNext: "Next task",
+    shortcutPrev: "Previous task",
+    shortcutComplete: "Complete (auto-advance)",
+    shortcutSnooze1: "Snooze +1 day",
+    shortcutSnooze7: "Snooze +7 days",
+    shortcutOpen: "Open task in Roam",
+    shortcutRefresh: "Refresh task data",
+    shortcutExit: "Exit Focus Mode",
+    shortcutHelp: "Toggle shortcuts overlay"
   },
   today: {
     title: "Better Tasks - Today",
