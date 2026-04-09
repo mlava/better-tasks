@@ -172,6 +172,7 @@ function buildEnStringLookup(obj, prefix = []) {
 buildEnStringLookup(I18N_MAP?.en || {});
 let todayWidgetRenderTimer = null;
 let todayTitleChangeDebounceTimer = null;
+let picklistExcludeDebounceTimer = null;
 let todayWidgetPanelRoot = null;
 let todayWidgetPanelContainer = null;
 let lastTodayWidgetSignature = null;
@@ -241,6 +242,7 @@ let registeredBlockCtxCreateLabel = null;
 let registeredSlashCreateLabel = null;
 let registeredSlashConvertLabel = null;
 const MAX_DASHBOARD_WATCHERS = 200;
+const MAX_MUTATION_QUEUE = 500;
 const ReactDOMGlobal = typeof window !== "undefined" ? window.ReactDOM || null : null;
 const ReactGlobal = typeof window !== "undefined" ? window.React || null : null;
 
@@ -871,11 +873,15 @@ export default {
                   try {
                     extensionAPI?.settings?.set?.(PICKLIST_EXCLUDE_PAGES_SETTING, String(normalized || ""));
                   } catch (_) { }
-                  try {
-                    void refreshProjectOptions(true);
-                    void refreshWaitingOptions(true);
-                    void refreshContextOptions(true);
-                  } catch (_) { }
+                  if (picklistExcludeDebounceTimer) clearTimeout(picklistExcludeDebounceTimer);
+                  picklistExcludeDebounceTimer = setTimeout(() => {
+                    picklistExcludeDebounceTimer = null;
+                    try {
+                      void refreshProjectOptions(true);
+                      void refreshWaitingOptions(true);
+                      void refreshContextOptions(true);
+                    } catch (_) { }
+                  }, 400);
                 },
               },
             },
@@ -1215,20 +1221,24 @@ export default {
       label: cmdConvert,
       callback: () => convertTODO(null),
     });
-    window.roamAlphaAPI.ui.blockContextMenu.addCommand({
-      label: cmdConvert,
-      callback: (e) => convertTODO(e),
-    });
+    if (window.roamAlphaAPI?.ui?.blockContextMenu) {
+      window.roamAlphaAPI.ui.blockContextMenu.addCommand({
+        label: cmdConvert,
+        callback: (e) => convertTODO(e),
+      });
+    }
     const cmdCreate = translateString("Create a Better Task", getLanguageSetting());
     registeredBlockCtxCreateLabel = cmdCreate;
     extensionAPI.ui.commandPalette.addCommand({
       label: cmdCreate,
       callback: () => createBetterTaskEntryPoint(),
     });
-    window.roamAlphaAPI.ui.blockContextMenu.addCommand({
-      label: cmdCreate,
-      callback: (e) => createBetterTaskEntryPoint(e),
-    });
+    if (window.roamAlphaAPI?.ui?.blockContextMenu) {
+      window.roamAlphaAPI.ui.blockContextMenu.addCommand({
+        label: cmdCreate,
+        callback: (e) => createBetterTaskEntryPoint(e),
+      });
+    }
     const slashCommandAPI = window.roamAlphaAPI?.ui?.slashCommand;
     if (slashCommandAPI) {
       const slashCreate = translateString("Create a Better Task", getLanguageSetting());
@@ -1457,7 +1467,7 @@ export default {
       dashboardRefreshTimer = window.setInterval(() => {
         try {
           if (!dashboardEverOpened) return;
-          if (!activeDashboardController?.isOpen?.()) {
+          if (activeDashboardController?.isOpen?.()) {
             if (window.__btDebugRefreshTimer) {
               const now = Date.now();
               if (now - dashboardRefreshLogAt >= DASHBOARD_REFRESH_LOG_INTERVAL_MS) {
@@ -3474,6 +3484,9 @@ export default {
       observer = new MutationObserver((mutationsList) => {
         if (!mutationsList || !mutationsList.length) return;
         mutationQueue.push(...mutationsList);
+        if (mutationQueue.length > MAX_MUTATION_QUEUE) {
+          mutationQueue = mutationQueue.slice(-MAX_MUTATION_QUEUE);
+        }
         if (mutationScheduled) return;
         mutationScheduled = true;
         setTimeout(flushMutationQueue, 0);
@@ -10957,12 +10970,6 @@ export default {
           lastTodayAnchorUid = null;
           return;
         } catch (_) { }
-        // Fallback: try to blank the block so it disappears even if delete fails.
-        try {
-          await window.roamAlphaAPI.updateBlock({ block: { uid, string: "" } });
-          lastTodayAnchorUid = null;
-          return;
-        } catch (_) { }
         await delay(120);
         uid = (await findTodayAnchorUid()) || uid;
       }
@@ -11004,9 +11011,18 @@ export default {
         }
 
         // Fallback: text-based scan (backward compat for anchors created before UID tracking).
+        // Read-only lookup — teardown must never create pages.
+        const dnpUid = await getPageUidByTitle(toDnpTitle(todayLocal()));
+        if (!dnpUid) {
+          lastTodayAnchorUid = null;
+          return;
+        }
         const cache = createTodayRenderCache();
-        const dnpUid = await getOrCreatePageUidCached(toDnpTitle(todayLocal()), cache);
-        const { headingUid } = await getTodayParentInfo(cache);
+        let headingUid = null;
+        try {
+          const info = await getTodayParentInfo(cache);
+          headingUid = info?.headingUid || null;
+        } catch (_) { }
         const baseTexts = Array.isArray(textsOverride)
           ? textsOverride
           : [getTodayAnchorText(), ...TODAY_WIDGET_ANCHOR_TEXT_LEGACY];
@@ -11040,11 +11056,7 @@ export default {
       } catch (_) { }
       try {
         await deleteBlock(uid);
-      } catch (_) {
-        try {
-          await window.roamAlphaAPI.updateBlock({ block: { uid, string: "" } });
-        } catch (_) { }
-      }
+      } catch (_) { }
     }
 
     function createTodayRenderCache() {
@@ -15789,8 +15801,15 @@ export default {
       // Set up watches AFTER all subtask passes complete and state is updated
       // This prevents watch callbacks from interfering with subtask detection
       if (attachWatches) {
+        const currentTaskUids = new Set(result.map((t) => t.uid));
         for (const task of result) {
           if (!task.isCompleted) ensureDashboardWatch(task.uid);
+        }
+        // Remove watches for tasks no longer in the result set
+        for (const watchedUid of Array.from(dashboardWatchers.keys())) {
+          if (!currentTaskUids.has(watchedUid)) {
+            removeDashboardWatch(watchedUid);
+          }
         }
       }
       return result;
@@ -16312,11 +16331,7 @@ export default {
         try {
           await deleteBlock(uid);
         } catch (err) {
-          try {
-            await window.roamAlphaAPI.updateBlock({ block: { uid, string: "" } });
-          } catch (_) {
-            console.warn("[BetterTasks] failed to clear Today widget child", err);
-          }
+          console.warn("[BetterTasks] failed to clear Today widget child", err);
         } finally {
           todayInlineChildUids.delete(uid);
         }
@@ -17007,6 +17022,10 @@ export default {
       clearTimeout(todayTitleChangeDebounceTimer);
       todayTitleChangeDebounceTimer = null;
     }
+    if (picklistExcludeDebounceTimer) {
+      clearTimeout(picklistExcludeDebounceTimer);
+      picklistExcludeDebounceTimer = null;
+    }
     if (bulkOperationCooldownTimer) {
       clearTimeout(bulkOperationCooldownTimer);
       bulkOperationCooldownTimer = null;
@@ -17045,11 +17064,11 @@ export default {
       activeDashboardController = null;
     }
 
-    if (registeredBlockCtxConvertLabel) {
+    if (registeredBlockCtxConvertLabel && window.roamAlphaAPI?.ui?.blockContextMenu) {
       window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: registeredBlockCtxConvertLabel });
       registeredBlockCtxConvertLabel = null;
     }
-    if (registeredBlockCtxCreateLabel) {
+    if (registeredBlockCtxCreateLabel && window.roamAlphaAPI?.ui?.blockContextMenu) {
       window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: registeredBlockCtxCreateLabel });
       registeredBlockCtxCreateLabel = null;
     }
