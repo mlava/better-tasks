@@ -210,11 +210,21 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - ✅ Customisable bindings via JSON in Advanced Dashboard settings
 - ✅ Bulk-aware: c/s operate on selection when active
 
-### Task Templates
-- Save task configurations as templates
-- Template includes: title pattern, metadata defaults, subtask structure
-- Quick-create from template
-- Parameterized templates: "Weekly report for {project}"
+### Task Templates — Complete ✅
+- ✅ Save task configurations as reusable templates (title pattern, metadata defaults, subtask structure)
+- ✅ Persistent template store via `extensionAPI.settings` (`src/template-store.js`)
+- ✅ Parameterised titles: `Weekly report for {project}` — placeholders prompted at instantiation
+- ✅ Compact relative date syntax (`+3d`, `+1w`, `+1m`) plus full natural language (`next Monday`, `end of month`, etc.)
+- ✅ Date defaults stored as relative expressions and resolved at instantiation time
+- ✅ "Save as Better Task template" via block context menu — captures parent metadata and subtask structure (including subtask dates)
+- ✅ "Create Better Task template" command palette entry for building from scratch
+- ✅ Template picker dialog with filter, plus parameter prompt for `{param}` resolution
+- ✅ Template management UI (list / edit / duplicate / delete) via "Manage Better Task templates"
+- ✅ Dashboard Template button (panel + full-page render paths) — clears quick-add input after use
+- ✅ Extension Tools API: `bt_list_templates`, `bt_create_from_template`, `bt_manage_templates`
+- ✅ Settings panel entry for template management
+- ✅ Limits enforced: 50 templates, 20 subtasks per template
+- ✅ Internationalised across all 13 supported locales
 
 ---
 
@@ -291,4 +301,4 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 
 ---
 
-*Last updated: 2026-03-30*
+*Last updated: 2026-04-09*

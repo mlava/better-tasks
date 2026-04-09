@@ -44,6 +44,9 @@ const locale = {
     excludePicklistPagesPlaceholder: "Templates, SmartBlocks, [[December 18th, 2025]]",
     pillThreshold: "Schwellenwert für Inline-Pill-Kontrollkästchen",
     pillThresholdDescription: "Maximale Anzahl von Kontrollkästchen, bevor Inline-Pills das initiale Rendering überspringen (Standard 100). Höhere Werte werden gerendert, aber die Seite kann langsamer sein.",
+    templates: "Aufgabenvorlagen",
+    templatesDescription: "Speichere Aufgabenkonfigurationen als wiederverwendbare Vorlagen mit Metadaten-Standards und Unteraufgabenstrukturen.",
+    manageTemplates: "Vorlagen verwalten",
     advancedDashboard: "Erweiterte Dashboard-Optionen",
     advancedDashboardDescription: "Einstellungen für Rückschau-Schritte (Täglich, Wöchentlich, Monatlich) anzeigen.",
     keyboardBindings: "Keyboard bindings (JSON)",
@@ -685,6 +688,29 @@ const locale = {
     noItems: "Keine passenden Aufgaben gefunden",
     cycleDetected: "Kann nicht hinzugefügt werden — würde zirkuläre Abhängigkeit erzeugen",
     alreadyAdded: "Bereits eine Abhängigkeit"
+  },
+  templates: {
+    createFromTemplate: "Aus Better-Tasks-Vorlage erstellen",
+    manageTemplates: "Better-Tasks-Vorlagen verwalten",
+    saveAsTemplate: "Als Better-Tasks-Vorlage speichern",
+    createNew: "Vorlage erstellen",
+    templateButton: "Vorlage",
+    noTemplates: "Noch keine Vorlagen gespeichert.",
+    pickTemplate: "Vorlage auswählen",
+    filterTemplates: "Vorlagen filtern\u2026",
+    created: "Aufgabe aus Vorlage erstellt",
+    saved: "Vorlage gespeichert",
+    deleted: "Vorlage gelöscht",
+    duplicated: "Vorlage dupliziert",
+    edit: "Bearbeiten",
+    duplicate: "Duplizieren",
+    delete: "Löschen",
+    confirmDelete: "Diese Vorlage löschen?",
+    paramTitle: "Vorlagenparameter",
+    paramMessage: "Vorlagenparameter ausfüllen:",
+    namePlaceholder: "Vorlagenname",
+    titlePatternLabel: "Titelmuster",
+    titlePatternPlaceholder: "Wöchentlicher Bericht für {project}"
   }
 };
 

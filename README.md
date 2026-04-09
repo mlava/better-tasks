@@ -32,12 +32,14 @@ If you use TODOs in Roam, Better Tasks gives you:
 - **Bulk operations** to complete, snooze, or update metadata across multiple tasks
 - Optional **Today widget** (on today's DNP) and **Today badge** (left sidebar)
 - **Subtasks** with progress indicators, structural nesting or explicit cross-graph linking
+- **Task templates** with parameterised titles, metadata defaults, and subtask structures
 - Optional metadata: **Project, Context, Waiting-for, GTD, Priority, Energy, Dependencies**
 
 ---
 
 ## ✅ Recent updates
 
+- **Task Templates:** save reusable task configurations with a title pattern, metadata defaults, and a subtask structure. Parameterised titles like `Weekly report for {project}` prompt for values at instantiation. Save any existing task as a template via the block context menu, or build one from scratch via `Create Better Task template`. Instantiate from the Command Palette, the dashboard's Template button, or programmatically via the Extension Tools API. Date defaults support compact relative syntax (`+3d`, `+1w`, `+1m`) plus the full natural language vocabulary (`next Monday`, `end of month`, etc.) and resolve at instantiation time.
 - **Clean exit / deconvert:** remove Better Tasks metadata from individual tasks or all tasks at once via Command Palette. Your `{{[[TODO]]}}` blocks remain as plain Roam — just the BT child blocks and RT props are removed. Fully reversible (re-convert anytime).
 - **Data export:** export all tasks via Command Palette — JSON (full data), CSV (spreadsheet-ready), or ICS (calendar import). All use ISO dates and include every attribute. Also available programmatically via `bt_export` in the Extension Tools API.
 - **Quick rescheduling:** the date picker now includes a natural language text input — type "friday", "in 3 days", "+7", or "end of month" with live green/red parse feedback and Enter to save. Quick-select buttons expanded: Today, Tomorrow, +3d, Next Mon, +1w, +1m. Works in all date editing contexts (dashboard ⋯ menu, pill edit, snooze pick).
@@ -158,6 +160,66 @@ Priority / Energy cycles: **low → medium → high → none**
 
 ---
 
+## 📋 Task templates
+
+Save reusable task configurations and instantiate them in seconds. A template captures:
+
+- **Title pattern** with optional `{param}` placeholders (e.g. `Weekly report for {project}`)
+- **Metadata defaults** — repeat rule, due / start / defer dates, project, context, waiting-for, priority, energy, GTD status
+- **Subtask structure** — ordered list of child tasks, each with their own title pattern and metadata
+
+**Date defaults** are stored as relative expressions and resolved at instantiation time. Supported:
+- Compact offsets: `+3d`, `+1w`, `+2m`
+- Natural language: `next Monday`, `in 2 weeks`, `end of month`, `tomorrow`, `early next week`
+
+### Parameters
+
+Parameters use `{name}` placeholders. **Any word works** — `{project}`, `{client}`, `{topic}`, `{week}`, etc. Parameters can be reused across the title and subtask titles, and they can appear inside metadata values too — not just the title.
+
+| Syntax | Meaning |
+|---|---|
+| `{client}` | Required parameter — user enters value at instantiation |
+| `{priority:high}` | Parameter with default — pre-fills `high`, user can override |
+| `{client}` reused in multiple places | Single prompt, value substituted everywhere |
+
+**Where parameters can appear:**
+- ✅ The template title (`Sprint review for {team}`)
+- ✅ Subtask titles (`Gather data from {client}`)
+- ✅ Project (`{client} — Engagement`)
+- ✅ Context (`@{location}`)
+- ✅ Waiting-for (`{stakeholder}`)
+- ✅ Date fields, *if* the resolved value is a parseable date expression (e.g. `{when}` → `next Monday`)
+- ✅ Repeat rule, *if* the resolved value is a valid repeat rule
+
+**Example templates:**
+
+| Template title | Other fields | Use case |
+|---|---|---|
+| `Weekly report for {project}` | repeat `every Friday`, priority `medium`, subtasks `Gather data from {project}`, `Draft report`, `Review and send` | Recurring deliverable with project-specific subtasks |
+| `1:1 with {person}` | repeat `every 2 weeks`, context `@office`, GTD `next action` | Routine meetings — one template, many people |
+| `Onboard new {client}` | priority `high`, project `{client} — Engagement`, subtasks `Send welcome email to {client}`, `Schedule kickoff with {client}`, `Prepare {client} brief` | Multi-step workflow parameterised by customer |
+| `Submit {form} to legal` | due `+5d`, GTD `delegated`, waiting-for `Legal team` | Recurring shape with a different attachment each time |
+| `Investigate {ticket}` | priority `high`, context `@computer`, subtasks `Reproduce {ticket}`, `Root cause {ticket}`, `Write fix and tests` | Bug triage workflow |
+| `Plan {quarter} OKRs` | due `end of month`, project `Strategy`, priority `high` | Quarterly planning shape |
+
+**Creating a template:**
+- **From scratch:** Command Palette → **Create Better Task template** → fill in the form
+- **From an existing task:** right-click any Better Task → **Save as Better Task template** → enter a name. Existing metadata and any direct child Better Tasks are captured automatically.
+
+**Using a template:**
+- Command Palette → **Create from Better Task template** → pick template → fill any `{param}` values → done
+- Dashboard **Template** button (next to OK in the quick-add bar)
+- Programmatically via `bt_create_from_template` (Extension Tools API)
+
+**Managing templates:**
+- Command Palette → **Manage Better Task templates** → edit, duplicate, or delete
+
+**Notes:**
+- Parameter values are sanitised: `{{` and `}}` are stripped to prevent accidental Roam macro injection.
+- Limits: 50 templates, 20 subtasks per template.
+
+---
+
 ## 💊 Inline pills
 
 <p align="center">
@@ -216,7 +278,7 @@ Features:
 - Draggable floating panel (position remembered)
 - Optional **full-page mode** with persistent filter sidebar
 - Metadata chips + filtering
-- Quick-add input (uses AI parsing if enabled)
+- Quick-add input (local NLP parsing first, then AI if enabled) plus a **Template** button to instantiate saved templates
 - Recurring series view (past completions, future projections, streak tracking, exceptions)
 - Mobile-friendly layout (full-page with slide-in filters and sticky quick-add)
 - **Graph Analytics** — slide-in panel with completion trends, time-to-completion, overdue frequency, project breakdown, recurring adherence, and busiest-days heatmap (press `Shift+G` or click Analytics in the header)
@@ -424,6 +486,10 @@ The quick-add input parses natural language locally using rule-based extraction.
 - Export Better Tasks (JSON)
 - Export Better Tasks (CSV)
 - Export Better Tasks (ICS Calendar)
+- Create Better Task template
+- Create from Better Task template
+- Manage Better Task templates
+- Save as Better Task template (block context menu)
 - Deconvert Better Task to plain TODO
 - Batch Deconvert All Better Tasks
 
@@ -587,6 +653,9 @@ Better Tasks registers tools on `window.RoamExtensionTools["better-tasks"]` so o
 | `bt_get_analytics_detailed` | Full analytics: summary, completion over time, time-to-completion distribution, overdue frequency, project breakdown, recurring adherence, busiest-days heatmap |
 | `bt_get_task_by_uid` | Fetch a single task by its block UID with full details |
 | `bt_export` | Export tasks as JSON, CSV, or ICS with optional status/project filters (returns data, no browser download) |
+| `bt_list_templates` | List saved task templates with their parameters |
+| `bt_create_from_template` | Create a task from a saved template; resolves parameters and creates subtasks |
+| `bt_manage_templates` | Create, update, delete, or duplicate templates programmatically |
 
 ### `bt_search` blocked filter values
 

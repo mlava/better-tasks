@@ -44,6 +44,9 @@ const locale = {
     excludePicklistPagesPlaceholder: "Templates, SmartBlocks, [[December 18th, 2025]]",
     pillThreshold: "인라인 필 체크박스 임계값",
     pillThresholdDescription: "Better Tasks 인라인 필이 초기 렌더링을 건너뛰기 전 최대 체크박스 수(기본 100). 값을 높이면 렌더링되지만 페이지가 느려질 수 있습니다.",
+    templates: "작업 템플릿",
+    templatesDescription: "메타데이터 기본값과 하위 작업 구조가 포함된 재사용 가능한 템플릿으로 작업 구성을 저장합니다.",
+    manageTemplates: "템플릿 관리",
     advancedDashboard: "대시보드 고급 옵션",
     advancedDashboardDescription: "리뷰 단계 설정 표시(일일, 주간, 월간).",
     keyboardBindings: "Keyboard bindings (JSON)",
@@ -685,6 +688,29 @@ const locale = {
     noItems: "일치하는 작업이 없습니다",
     cycleDetected: "추가할 수 없음 — 순환 의존성이 발생합니다",
     alreadyAdded: "이미 의존성입니다"
+  },
+  templates: {
+    createFromTemplate: "Better Task 템플릿에서 생성",
+    manageTemplates: "Better Task 템플릿 관리",
+    saveAsTemplate: "Better Task 템플릿으로 저장",
+    createNew: "템플릿 생성",
+    templateButton: "템플릿",
+    noTemplates: "저장된 템플릿이 없습니다.",
+    pickTemplate: "템플릿 선택",
+    filterTemplates: "템플릿 필터\u2026",
+    created: "템플릿에서 작업이 생성되었습니다",
+    saved: "템플릿이 저장되었습니다",
+    deleted: "템플릿이 삭제되었습니다",
+    duplicated: "템플릿이 복제되었습니다",
+    edit: "편집",
+    duplicate: "복제",
+    delete: "삭제",
+    confirmDelete: "이 템플릿을 삭제하시겠습니까?",
+    paramTitle: "템플릿 매개변수",
+    paramMessage: "템플릿 매개변수를 입력하세요:",
+    namePlaceholder: "템플릿 이름",
+    titlePatternLabel: "제목 패턴",
+    titlePatternPlaceholder: "{project}의 주간 보고서"
   }
 };
 

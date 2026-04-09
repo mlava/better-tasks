@@ -2764,6 +2764,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       ),
       quickAddPlaceholder: tt(["dashboard", "quickAddPlaceholder"], "Add a Better Task"),
       quickAddButton: tt(["dashboard", "quickAddButton"], "OK"),
+      templateButton: tt(["templates", "templateButton"], "Template"),
       searchPlaceholder: tt(["dashboard", "searchPlaceholder"], "Search Better Tasks"),
       filtersLabel: tt(["dashboard", "filtersLabel"], "Filters"),
       filtersShow: tt(["dashboard", "filters", "show"], "Show filters"),
@@ -4252,9 +4253,14 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
               onChange={(e) => setQuickText(e.target.value)}
               onKeyDown={handleQuickAddKeyDown}
             />
-            <button type="button" className="bp3-button bp3-small" onClick={handleQuickAddSubmit}>
-              {ui.quickAddButton}
-            </button>
+            <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+              <button type="button" className="bp3-button bp3-small" onClick={handleQuickAddSubmit}>
+                {ui.quickAddButton}
+              </button>
+              <button type="button" className="bp3-button bp3-small bp3-minimal" title={ui.templateButton} onClick={async () => { await controller.createFromTemplate?.(); setQuickText(""); }}>
+                {ui.templateButton}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -4710,9 +4716,14 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             onChange={(e) => setQuickText(e.target.value)}
             onKeyDown={handleQuickAddKeyDown}
           />
-          <button type="button" className="bp3-button bp3-small" onClick={handleQuickAddSubmit}>
-            {ui.quickAddButton}
-          </button>
+          <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+            <button type="button" className="bp3-button bp3-small" onClick={handleQuickAddSubmit}>
+              {ui.quickAddButton}
+            </button>
+            <button type="button" className="bp3-button bp3-small bp3-minimal" title={ui.templateButton} onClick={async () => { await controller.createFromTemplate?.(); setQuickText(""); }}>
+              {ui.templateButton}
+            </button>
+          </div>
         </div>
       </div>
 

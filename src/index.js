@@ -53,6 +53,18 @@ import {
   setActiveView as setActiveDashView,
   installPresetDashboardViews,
 } from "./dashboard/viewsStore";
+import {
+  loadTemplateStore,
+  saveTemplateStore,
+  getTemplate,
+  createTemplate as createTmpl,
+  updateTemplate as updateTmpl,
+  duplicateTemplate as dupTmpl,
+  deleteTemplate as delTmpl,
+  extractParameters,
+  resolveTitle,
+  normalizeTemplate,
+} from "./template-store";
 
 const ADV_ATTR_NAMES_SETTING = "bt-advanced-attr-names";
 const DEFAULT_REPEAT_ATTR = "BT_attrRepeat";
@@ -241,6 +253,8 @@ let registeredBlockCtxConvertLabel = null;
 let registeredBlockCtxCreateLabel = null;
 let registeredSlashCreateLabel = null;
 let registeredSlashConvertLabel = null;
+let registeredBlockCtxSaveTemplateLabel = null;
+let registeredSlashCreateFromTemplateLabel = null;
 const MAX_DASHBOARD_WATCHERS = 200;
 const MAX_MUTATION_QUEUE = 500;
 const ReactDOMGlobal = typeof window !== "undefined" ? window.ReactDOM || null : null;
@@ -1072,6 +1086,19 @@ export default {
           action: { type: "input", placeholder: '{"moveDown":"j","moveUp":"k"}' },
         }] : []),
         ...picklistAdvanced,
+        {
+          id: "bt-templates-manage",
+          name: tr("settings.templates", "Task Templates"),
+          description: tr(
+            "settings.templatesDescription",
+            "Save task configurations as reusable templates with metadata defaults and subtask structures."
+          ),
+          action: {
+            type: "button",
+            content: tr("settings.manageTemplates", "Manage templates"),
+            onClick: () => openTemplateManagement(),
+          },
+        },
         ...attributeSettingsToggle,
         ...(advancedAttrNamesEnabled ? attributeSettings : []),
       ];
@@ -1258,6 +1285,49 @@ export default {
         callback: (args) => {
           const blockUid = args["block-uid"];
           convertTODO({ "block-uid": blockUid });
+          return "";
+        },
+      });
+    }
+
+    // Template commands
+    const cmdCreateFromTemplate = translateString("Create from Better Task template", getLanguageSetting());
+    extensionAPI.ui.commandPalette.addCommand({
+      label: cmdCreateFromTemplate,
+      callback: () => createFromTemplate(),
+    });
+    const cmdCreateNewTemplate = translateString("Create Better Task template", getLanguageSetting());
+    extensionAPI.ui.commandPalette.addCommand({
+      label: cmdCreateNewTemplate,
+      callback: async () => {
+        const result = await promptForTemplateEdit({});
+        if (!result) return;
+        let store = loadTemplateStore(extensionAPI);
+        store = createTmpl(store, result);
+        saveTemplateStore(extensionAPI, store);
+        toast(t(["templates", "saved"], getLanguageSetting()) || "Template saved");
+      },
+    });
+    const cmdManageTemplates = translateString("Manage Better Task templates", getLanguageSetting());
+    extensionAPI.ui.commandPalette.addCommand({
+      label: cmdManageTemplates,
+      callback: () => openTemplateManagement(),
+    });
+    const cmdSaveAsTemplate = translateString("Save as Better Task template", getLanguageSetting());
+    registeredBlockCtxSaveTemplateLabel = cmdSaveAsTemplate;
+    if (window.roamAlphaAPI?.ui?.blockContextMenu) {
+      window.roamAlphaAPI.ui.blockContextMenu.addCommand({
+        label: cmdSaveAsTemplate,
+        callback: (e) => saveTaskAsTemplate(e["block-uid"]),
+      });
+    }
+    if (slashCommandAPI) {
+      const slashCreateFromTemplate = translateString("Create from Better Task template", getLanguageSetting());
+      registeredSlashCreateFromTemplateLabel = slashCreateFromTemplate;
+      slashCommandAPI.addCommand({
+        label: slashCreateFromTemplate,
+        callback: () => {
+          createFromTemplate();
           return "";
         },
       });
@@ -5344,7 +5414,88 @@ export default {
               }
               return { format: "json", count: data.length, tasks: data };
             })
-          }
+          },
+          {
+            name: "bt_list_templates",
+            readOnly: true,
+            description: "List saved task templates.",
+            parameters: { type: "object", properties: {} },
+            execute: async () => runToolSafely("bt_list_templates", {}, () => {
+              const store = loadTemplateStore(extensionAPI);
+              return {
+                templates: store.templates.map((tmpl) => ({
+                  id: tmpl.id,
+                  name: tmpl.name,
+                  titlePattern: tmpl.titlePattern,
+                  parameters: extractParameters(tmpl.titlePattern, tmpl.subtasks).map((p) => p.name),
+                  subtaskCount: tmpl.subtasks?.length || 0,
+                })),
+              };
+            }),
+          },
+          {
+            name: "bt_create_from_template",
+            readOnly: false,
+            description: "Create a new task from a saved template. Resolves parameters and creates the task with subtasks.",
+            parameters: {
+              type: "object",
+              properties: {
+                template_id: { type: "string", description: "Template ID." },
+                parameters: { type: "object", description: "Parameter values for template placeholders." },
+                parent_uid: { type: "string", description: "Optional parent block UID." },
+              },
+              required: ["template_id"],
+            },
+            execute: async (args = {}) => runToolSafely("bt_create_from_template", args, () =>
+              instantiateTemplate(args.template_id, args.parameters || {}, { parent_uid: args.parent_uid })
+            ),
+          },
+          {
+            name: "bt_manage_templates",
+            readOnly: false,
+            description: "Manage task templates: create, update, delete, or duplicate.",
+            parameters: {
+              type: "object",
+              properties: {
+                action: { type: "string", enum: ["create", "update", "delete", "duplicate"], description: "Management action." },
+                template_id: { type: "string", description: "Template ID (for update/delete/duplicate)." },
+                template: { type: "object", description: "Template data (for create/update). Keys: name, titlePattern, attributes, subtasks." },
+              },
+              required: ["action"],
+            },
+            execute: async (args = {}) => runToolSafely("bt_manage_templates", args, () => {
+              const action = args.action;
+              let store = loadTemplateStore(extensionAPI);
+              if (action === "create") {
+                if (!args.template?.name) return { error: "template.name is required" };
+                store = createTmpl(store, args.template);
+                const saved = saveTemplateStore(extensionAPI, store);
+                const created = saved.templates[saved.templates.length - 1];
+                return { success: true, template: created ? { id: created.id, name: created.name } : null };
+              }
+              if (action === "update") {
+                if (!args.template_id) return { error: "template_id is required" };
+                if (!args.template) return { error: "template data is required" };
+                store = updateTmpl(store, args.template_id, args.template);
+                saveTemplateStore(extensionAPI, store);
+                return { success: true };
+              }
+              if (action === "delete") {
+                if (!args.template_id) return { error: "template_id is required" };
+                store = delTmpl(store, args.template_id);
+                saveTemplateStore(extensionAPI, store);
+                return { success: true };
+              }
+              if (action === "duplicate") {
+                if (!args.template_id) return { error: "template_id is required" };
+                store = dupTmpl(store, args.template_id);
+                const saved = saveTemplateStore(extensionAPI, store);
+                const dup = saved.templates[saved.templates.length - 1];
+                return { success: true, template: dup ? { id: dup.id, name: dup.name } : null };
+              }
+              return { error: `Unknown action: ${action}` };
+            }),
+          },
         ],
       };
     }
@@ -5996,6 +6147,272 @@ export default {
       const meta = block ? await readRecurringMeta(block, set) : null;
       const task = block && meta ? deriveDashboardTask(block, meta, set) : null;
       return task ? buildToolTaskSummary(task, set) : { uid, text: taskText, status: requestedStatus };
+    }
+
+    async function instantiateTemplate(templateId, paramOverrides = {}, options = {}) {
+      const store = loadTemplateStore(extensionAPI);
+      const template = getTemplate(store, templateId);
+      if (!template) return { error: "Template not found" };
+
+      const params = {};
+      const paramDefs = extractParameters(template.titlePattern, template.subtasks);
+      for (const p of paramDefs) {
+        params[p.name] =
+          typeof paramOverrides[p.name] === "string" && paramOverrides[p.name].trim()
+            ? paramOverrides[p.name].trim()
+            : p.defaultValue || "";
+      }
+
+      const resolvedTitle = resolveTitle(template.titlePattern, params) || template.name;
+      const set = S();
+      const attrs = {};
+      const tAttrs = template.attributes || {};
+      for (const key of Object.keys(tAttrs)) {
+        if (tAttrs[key] == null) continue;
+        attrs[key] = tAttrs[key];
+      }
+      // Resolve parameter placeholders in attribute values
+      for (const key of Object.keys(attrs)) {
+        if (typeof attrs[key] === "string") {
+          attrs[key] = resolveTitle(attrs[key], params);
+        }
+      }
+
+      const createArgs = {
+        text: resolvedTitle,
+        status: "TODO",
+        attributes: attrs,
+      };
+      if (options.parent_uid) {
+        createArgs.parent_uid = options.parent_uid;
+      }
+      const result = await executeToolCreate(createArgs);
+      if (result?.error) return result;
+      const parentUid = result?.uid;
+      if (!parentUid) return { error: "Failed to create parent task" };
+
+      const subtaskUids = [];
+      if (Array.isArray(template.subtasks) && template.subtasks.length) {
+        for (let i = 0; i < template.subtasks.length; i++) {
+          const sub = template.subtasks[i];
+          const subTitle = resolveTitle(sub.titlePattern, params);
+          if (!subTitle) continue;
+          const subUid = window.roamAlphaAPI.util.generateUID();
+          const subTodoText = normalizeToTodoMacro(subTitle);
+          await createBlock(parentUid, "last", subTodoText, subUid);
+          // Let Roam index the new block before applying child attrs
+          await new Promise((r) => setTimeout(r, 150));
+          invalidateBlockCache(subUid);
+          invalidateBlockCache(parentUid);
+          await updateBlockProps(subUid, { rt: { id: shortId(), tz: set.timezone } });
+          const subAttrs = {};
+          const sAttrs = sub.attributes || {};
+          for (const key of Object.keys(sAttrs)) {
+            if (sAttrs[key] == null) continue;
+            subAttrs[key] = typeof sAttrs[key] === "string" ? resolveTitle(sAttrs[key], params) : sAttrs[key];
+          }
+          if (Object.keys(subAttrs).length) {
+            const subPatch = parseToolAttributePatch(subAttrs);
+            // Normalise dates to Roam format
+            for (const dateKey of ["due", "start", "defer"]) {
+              if (dateKey in subPatch && subPatch[dateKey] != null) {
+                const parsed = parseDateFromText(String(subPatch[dateKey]), set).date;
+                if (parsed) subPatch[dateKey] = formatDate(parsed, set);
+              }
+            }
+            try {
+              await applyToolAttributePatch(subUid, subPatch, set);
+            } catch (err) {
+              console.warn(`[BetterTasks] template subtask[${i}] applyToolAttributePatch failed`, err);
+            }
+          }
+          subtaskUids.push(subUid);
+        }
+      }
+
+      scheduleSurfaceSync(set.attributeSurface);
+      activeDashboardController?.notifyBlockChange?.(parentUid, { bypassFilters: true });
+      return { success: true, uid: parentUid, subtaskUids };
+    }
+
+    async function saveTaskAsTemplate(blockUid) {
+      if (!blockUid) {
+        toast(t(["toasts", "placeCursorCreate"], getLanguageSetting()) || "Place the cursor on a Better Task block.");
+        return;
+      }
+      const block = await getBlock(blockUid);
+      if (!block || !isTaskBlock(block)) {
+        toast("This block is not a Better Task.");
+        return;
+      }
+      const set = S();
+      const meta = await readRecurringMeta(block, set);
+      const rawTitle = (block.string || "")
+        .replace(/^\{\{\[\[(?:TODO|DONE)\]\]\}\}\s*/i, "")
+        .trim();
+      // Helper: convert a Date (or date-like value from meta) to a Roam date string
+      // so it round-trips reliably through parseDateFromText on instantiation.
+      const dateToRoam = (val) => {
+        if (val == null) return null;
+        const d = val instanceof Date ? val : new Date(val);
+        if (Number.isNaN(d.getTime())) return null;
+        return formatDate(d, set);
+      };
+      const attrs = {};
+      if (meta.repeat) attrs.repeat = meta.repeat;
+      if (meta.due) { const v = dateToRoam(meta.due); if (v) attrs.due = v; }
+      if (meta.start) { const v = dateToRoam(meta.start); if (v) attrs.start = v; }
+      if (meta.defer) { const v = dateToRoam(meta.defer); if (v) attrs.defer = v; }
+      if (meta.metadata?.project) attrs.project = meta.metadata.project;
+      if (meta.metadata?.waitingFor) attrs.waitingFor = meta.metadata.waitingFor;
+      if (meta.metadata?.context && meta.metadata.context.length) {
+        attrs.context = Array.isArray(meta.metadata.context) ? meta.metadata.context.join(", ") : meta.metadata.context;
+      }
+      if (meta.metadata?.priority) attrs.priority = meta.metadata.priority;
+      if (meta.metadata?.energy) attrs.energy = meta.metadata.energy;
+      if (meta.metadata?.gtd) attrs.gtd = meta.metadata.gtd;
+
+      // Scan for child subtasks. The shallow children from getBlock() only
+      // include {:block/uid :block/string}, so we must re-fetch each child
+      // fully to read its metadata grandchildren.
+      const subtasks = [];
+      const shallowChildren = block.children || [];
+      for (const shallow of shallowChildren) {
+        if (!shallow || typeof shallow.uid !== "string") continue;
+        const child = await getBlock(shallow.uid);
+        if (!child || !isTaskBlock(child)) continue;
+        const childTitle = (child.string || "")
+          .replace(/^\{\{\[\[(?:TODO|DONE)\]\]\}\}\s*/i, "")
+          .trim();
+        if (!childTitle) continue;
+        const childMeta = await readRecurringMeta(child, set);
+        const childAttrs = {};
+        if (childMeta.repeat) childAttrs.repeat = childMeta.repeat;
+        if (childMeta.due) { const v = dateToRoam(childMeta.due); if (v) childAttrs.due = v; }
+        if (childMeta.start) { const v = dateToRoam(childMeta.start); if (v) childAttrs.start = v; }
+        if (childMeta.defer) { const v = dateToRoam(childMeta.defer); if (v) childAttrs.defer = v; }
+        if (childMeta.metadata?.priority) childAttrs.priority = childMeta.metadata.priority;
+        if (childMeta.metadata?.energy) childAttrs.energy = childMeta.metadata.energy;
+        if (childMeta.metadata?.gtd) childAttrs.gtd = childMeta.metadata.gtd;
+        if (childMeta.metadata?.project) childAttrs.project = childMeta.metadata.project;
+        if (childMeta.metadata?.context && childMeta.metadata.context.length) {
+          childAttrs.context = Array.isArray(childMeta.metadata.context) ? childMeta.metadata.context.join(", ") : childMeta.metadata.context;
+        }
+        subtasks.push({ titlePattern: childTitle, attributes: childAttrs });
+      }
+
+      const lang = getLanguageSetting();
+      const name = await promptForValue({
+        title: t(["templates", "saveAsTemplate"], lang) || "Save as Better Task template",
+        message: t(["templates", "namePlaceholder"], lang) || "Template name",
+        placeholder: t(["templates", "namePlaceholder"], lang) || "Template name",
+        initial: rawTitle,
+      });
+      if (!name) return;
+
+      let store = loadTemplateStore(extensionAPI);
+      store = createTmpl(store, { name, titlePattern: rawTitle, attributes: attrs, subtasks });
+      saveTemplateStore(extensionAPI, store);
+      toast(t(["templates", "saved"], lang) || "Template saved");
+    }
+
+    async function createFromTemplate() {
+      const lang = getLanguageSetting();
+      const store = loadTemplateStore(extensionAPI);
+      if (!store.templates.length) {
+        toast(t(["templates", "noTemplates"], lang) || "No templates saved yet.");
+        return;
+      }
+      const picked = await promptForTemplate(store.templates);
+      if (!picked || picked.action !== "select") return;
+      const template = getTemplate(store, picked.id);
+      if (!template) return;
+      const paramDefs = extractParameters(template.titlePattern, template.subtasks);
+      let params = {};
+      if (paramDefs.length) {
+        params = await promptForTemplateParams(template);
+        if (params === null) return;
+      }
+      const result = await instantiateTemplate(picked.id, params);
+      if (result?.error) {
+        toast(result.error);
+        return;
+      }
+      toast(t(["templates", "created"], lang) || "Task created from template");
+      activeDashboardController?.refresh?.({ reason: "template-create" });
+    }
+
+    async function openTemplateManagement() {
+      const lang = getLanguageSetting();
+      let store = loadTemplateStore(extensionAPI);
+      if (!store.templates.length) {
+        // No templates — offer to create one
+        const result = await promptForTemplateEdit({});
+        if (!result) return;
+        store = createTmpl(store, result);
+        saveTemplateStore(extensionAPI, store);
+        toast(t(["templates", "saved"], lang) || "Template saved");
+        return;
+      }
+      const picked = await promptForTemplate(store.templates, {
+        title: t(["templates", "manageTemplates"], lang) || "Manage Better Task templates",
+        manage: true,
+      });
+      if (!picked) return;
+      if (picked.action === "edit") {
+        const tmpl = getTemplate(store, picked.id);
+        if (!tmpl) return;
+        const result = await promptForTemplateEdit(tmpl);
+        if (!result) return;
+        store = updateTmpl(store, picked.id, result);
+        saveTemplateStore(extensionAPI, store);
+        toast(t(["templates", "saved"], lang) || "Template saved");
+      } else if (picked.action === "duplicate") {
+        store = dupTmpl(store, picked.id);
+        saveTemplateStore(extensionAPI, store);
+        toast(t(["templates", "duplicated"], lang) || "Template duplicated");
+      } else if (picked.action === "delete") {
+        const tmpl = getTemplate(store, picked.id);
+        const confirmMsg = t(["templates", "confirmDelete"], lang) || "Delete this template?";
+        const confirmed = await new Promise((resolve) => {
+          iziToast.question({
+            theme: "light",
+            color: "black",
+            layout: 2,
+            class: "betterTasks",
+            position: "center",
+            drag: false,
+            timeout: false,
+            close: true,
+            closeOnEscape: true,
+            overlay: true,
+            title: confirmMsg,
+            message: tmpl ? escapeHtml(tmpl.name) : "",
+            buttons: [
+              [
+                `<button>${escapeHtml(t(["templates", "delete"], lang) || "Delete")}</button>`,
+                (instance, toastInstance) => {
+                  instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
+                  resolve(true);
+                },
+                true,
+              ],
+              [
+                `<button>${escapeHtml(t("buttons.cancel", lang) || "Cancel")}</button>`,
+                (instance, toastInstance) => {
+                  instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
+                  resolve(false);
+                },
+              ],
+            ],
+            onClosed: () => resolve(false),
+          });
+        });
+        if (!confirmed) return;
+        store = delTmpl(store, picked.id);
+        saveTemplateStore(extensionAPI, store);
+        toast(t(["templates", "deleted"], lang) || "Template deleted");
+      }
     }
 
     async function executeToolModify(args = {}) {
@@ -8042,6 +8459,20 @@ export default {
       if (raw.startsWith("[[") && raw.endsWith("]]")) {
         raw = raw.slice(2, -2).trim();
       }
+      // Compact offset: +3d, +2w, +1m
+      const compactOffsetMatch = raw.match(/^\+(\d+)\s*(d|w|m)$/);
+      if (compactOffsetMatch) {
+        const n = parseInt(compactOffsetMatch[1], 10);
+        const unit = compactOffsetMatch[2];
+        if (unit === "d") return addDaysLocal(todayLocal(), n);
+        if (unit === "w") return addDaysLocal(todayLocal(), n * 7);
+        if (unit === "m") {
+          const now = todayLocal();
+          const targetMonth = now.getMonth() + n;
+          const maxDay = new Date(now.getFullYear(), targetMonth + 1, 0).getDate();
+          return new Date(now.getFullYear(), targetMonth, Math.min(now.getDate(), maxDay), 12, 0, 0, 0);
+        }
+      }
       if (raw === "today") return todayLocal();
       if (/^tomor+ow$/.test(raw) || raw === "tmr" || raw === "tmrw") {
         return addDaysLocal(todayLocal(), 1);
@@ -8596,6 +9027,471 @@ export default {
               const len = input.value.length;
               input.setSelectionRange(len, len);
             }
+          },
+          onClosed: () => finish(null),
+        });
+      });
+    }
+
+    let templatePickerStylesInjected = false;
+    function ensureTemplatePickerStyles() {
+      if (templatePickerStylesInjected || typeof document === "undefined") return;
+      templatePickerStylesInjected = true;
+      const style = document.createElement("style");
+      style.id = "bt-template-picker-style";
+      style.textContent = `
+        .bt-template-picker {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          max-width: 400px;
+        }
+        .bt-template-picker__filter {
+          width: 100%;
+          padding: 6px 8px;
+          border: 1px solid rgba(0,0,0,0.15);
+          border-radius: 6px;
+          font-size: 14px;
+          box-sizing: border-box;
+        }
+        .bt-template-picker__list {
+          max-height: 260px;
+          overflow-y: auto;
+          border: 1px solid rgba(0,0,0,0.1);
+          border-radius: 6px;
+          padding: 4px;
+          background: #fff;
+        }
+        .bt-template-picker__option {
+          all: unset;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          padding: 8px 10px;
+          border-radius: 4px;
+          cursor: pointer;
+          box-sizing: border-box;
+          font-size: 14px;
+        }
+        .bt-template-picker__option:hover {
+          background: rgba(0,0,0,0.06);
+        }
+        .bt-template-picker__name {
+          flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .bt-template-picker__params {
+          font-size: 11px;
+          color: rgba(0,0,0,0.45);
+          margin-left: 8px;
+          white-space: nowrap;
+        }
+        .bt-template-picker__empty {
+          color: rgba(0,0,0,0.6);
+          font-style: italic;
+          padding: 12px 8px;
+          text-align: center;
+        }
+        .bt-template-picker__actions {
+          display: flex;
+          gap: 4px;
+          margin-left: 8px;
+        }
+        .bt-template-picker__action-btn {
+          all: unset;
+          cursor: pointer;
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-size: 12px;
+          color: rgba(0,0,0,0.5);
+        }
+        .bt-template-picker__action-btn:hover {
+          background: rgba(0,0,0,0.08);
+          color: rgba(0,0,0,0.8);
+        }
+        .bt-template-picker__action-btn--danger:hover {
+          background: rgba(200,0,0,0.08);
+          color: #c00;
+        }
+        .bt-template-toast .iziToast-message {
+          overflow-y: auto !important;
+          max-height: 60vh !important;
+        }
+        .bt-template-param-form {
+          max-width: 440px;
+        }
+        .bt-template-field {
+          display: block;
+          margin-bottom: 12px;
+          font-size: 13px;
+          font-weight: 600;
+          color: rgb(0, 0, 0);
+        }
+        .bt-template-field input,
+        .bt-template-field select {
+          display: block;
+          width: 80%;
+          margin-top: 4px;
+          padding: 6px 8px;
+          border: 1px solid rgba(0,0,0,0.15);
+          border-radius: 6px;
+          font-size: 14px;
+          background: #fff;
+          color: inherit;
+          min-height: 32px;
+          box-sizing: border-box;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    function promptForTemplate(templates, { title, manage } = {}) {
+      ensureTemplatePickerStyles();
+      const lang = getLanguageSetting();
+      const titleText = title || t(["templates", "pickTemplate"], lang) || "Select a template";
+      const filterPlaceholder = t(["templates", "filterTemplates"], lang) || "Filter templates\u2026";
+      const emptyText = t(["templates", "noTemplates"], lang) || "No templates saved yet.";
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+        const containerHtml = `<div class="bt-template-picker"></div>`;
+        iziToast.question({
+          theme: "light",
+          color: "black",
+          layout: 2,
+          class: "betterTasks bt-toast-strong-icon",
+          position: "center",
+          drag: false,
+          timeout: false,
+          close: true,
+          closeOnEscape: true,
+          overlay: true,
+          icon: "icon-check",
+          iconText: "\u2713",
+          iconColor: "#1f7a34",
+          title: titleText,
+          message: containerHtml,
+          buttons: [
+            [
+              `<button>${escapeHtml(t("buttons.cancel", lang) || "Cancel")}</button>`,
+              (instance, toastInstance) => {
+                instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
+                finish(null);
+              },
+            ],
+          ],
+          onOpening: (_instance, toastEl) => {
+            applyToastA11y(toastEl);
+          },
+          onOpened: (_instance, toastEl) => {
+            const container = toastEl.querySelector(".bt-template-picker");
+            if (!container) return;
+            const filterInput = document.createElement("input");
+            filterInput.type = "text";
+            filterInput.className = "bt-template-picker__filter";
+            filterInput.placeholder = filterPlaceholder;
+            container.appendChild(filterInput);
+            const listEl = document.createElement("div");
+            listEl.className = "bt-template-picker__list";
+            container.appendChild(listEl);
+
+            const renderList = (filter) => {
+              const needle = (filter || "").trim().toLowerCase();
+              const filtered = templates.filter(
+                (tmpl) => !needle || tmpl.name.toLowerCase().includes(needle)
+              );
+              listEl.innerHTML = "";
+              if (!filtered.length) {
+                const empty = document.createElement("div");
+                empty.className = "bt-template-picker__empty";
+                empty.textContent = needle ? "No matching templates" : emptyText;
+                listEl.appendChild(empty);
+                return;
+              }
+              for (const tmpl of filtered) {
+                const row = document.createElement("button");
+                row.type = "button";
+                row.className = "bt-template-picker__option";
+                const nameSpan = document.createElement("span");
+                nameSpan.className = "bt-template-picker__name";
+                nameSpan.textContent = tmpl.name;
+                row.appendChild(nameSpan);
+                const paramDefs = extractParameters(tmpl.titlePattern, tmpl.subtasks);
+                if (paramDefs.length) {
+                  const paramSpan = document.createElement("span");
+                  paramSpan.className = "bt-template-picker__params";
+                  paramSpan.textContent = paramDefs.map((p) => `{${p.name}}`).join(" ");
+                  row.appendChild(paramSpan);
+                }
+                if (manage) {
+                  const actions = document.createElement("span");
+                  actions.className = "bt-template-picker__actions";
+                  const editBtn = document.createElement("button");
+                  editBtn.type = "button";
+                  editBtn.className = "bt-template-picker__action-btn";
+                  editBtn.textContent = t(["templates", "edit"], lang) || "Edit";
+                  editBtn.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    iziToast.destroy();
+                    finish({ action: "edit", id: tmpl.id });
+                  });
+                  actions.appendChild(editBtn);
+                  const dupBtn = document.createElement("button");
+                  dupBtn.type = "button";
+                  dupBtn.className = "bt-template-picker__action-btn";
+                  dupBtn.textContent = t(["templates", "duplicate"], lang) || "Duplicate";
+                  dupBtn.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    iziToast.destroy();
+                    finish({ action: "duplicate", id: tmpl.id });
+                  });
+                  actions.appendChild(dupBtn);
+                  const delBtn = document.createElement("button");
+                  delBtn.type = "button";
+                  delBtn.className = "bt-template-picker__action-btn bt-template-picker__action-btn--danger";
+                  delBtn.textContent = t(["templates", "delete"], lang) || "Delete";
+                  delBtn.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    iziToast.destroy();
+                    finish({ action: "delete", id: tmpl.id });
+                  });
+                  actions.appendChild(delBtn);
+                  row.appendChild(actions);
+                } else {
+                  row.addEventListener("click", () => {
+                    iziToast.destroy();
+                    finish({ action: "select", id: tmpl.id });
+                  });
+                }
+                listEl.appendChild(row);
+              }
+            };
+
+            renderList("");
+            filterInput.addEventListener("input", () => renderList(filterInput.value));
+            filterInput.focus();
+          },
+          onClosed: () => finish(null),
+        });
+      });
+    }
+
+    function promptForTemplateParams(template) {
+      ensureTemplatePickerStyles();
+      const lang = getLanguageSetting();
+      const paramDefs = extractParameters(template.titlePattern, template.subtasks);
+      if (!paramDefs.length) return Promise.resolve({});
+      const titleText = t(["templates", "paramTitle"], lang) || "Template parameters";
+      const messageText = t(["templates", "paramMessage"], lang) || "Fill in the template parameters:";
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+        const formId = `bt-param-form-${Date.now()}`;
+        const fieldsHtml = paramDefs
+          .map(
+            (p) =>
+              `<label class="bt-template-field">${escapeHtml(p.name)}<br/><input data-bt-param="${escapeHtml(p.name)}" type="text" placeholder="${escapeHtml(
+                p.defaultValue || p.name
+              )}" value="${escapeHtml(p.defaultValue || "")}" /></label>`
+          )
+          .join("");
+        const formHtml = `<div class="bt-template-param-form" id="${formId}">${fieldsHtml}</div>`;
+        const saveLabel = t("buttons.save", lang) || "OK";
+        const cancelLabel = t("buttons.cancel", lang) || "Cancel";
+        iziToast.question({
+          theme: "light",
+          color: "black",
+          layout: 2,
+          class: "betterTasks bt-toast-strong-icon bt-template-toast",
+          position: "center",
+          drag: false,
+          timeout: false,
+          close: true,
+          closeOnEscape: true,
+          overlay: true,
+          icon: "icon-check",
+          iconText: "\u2713",
+          iconColor: "#1f7a34",
+          title: titleText,
+          message: `${escapeHtml(messageText)}${formHtml}`,
+          buttons: [
+            [
+              `<button>${escapeHtml(saveLabel)}</button>`,
+              (instance, toastInstance) => {
+                const form = document.getElementById(formId);
+                const values = {};
+                if (form) {
+                  const inputs = form.querySelectorAll("[data-bt-param]");
+                  inputs.forEach((inp) => {
+                    values[inp.dataset.btParam] = (inp.value || "").trim();
+                  });
+                }
+                instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
+                finish(values);
+              },
+              true,
+            ],
+            [
+              `<button>${escapeHtml(cancelLabel)}</button>`,
+              (instance, toastInstance) => {
+                instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
+                finish(null);
+              },
+            ],
+          ],
+          onOpening: (_instance, toastEl) => {
+            applyToastA11y(toastEl);
+          },
+          onOpened: (_instance, toastEl) => {
+            const first = toastEl.querySelector(`#${formId} input`);
+            first?.focus?.();
+          },
+          onClosed: () => finish(null),
+        });
+      });
+    }
+
+    function promptForTemplateEdit(initial = {}) {
+      ensureTemplatePickerStyles();
+      const lang = getLanguageSetting();
+      const titleText = initial.id
+        ? t(["templates", "edit"], lang) || "Edit template"
+        : t(["templates", "createNew"], lang) || "Create template";
+      const saveLabel = t("buttons.save", lang) || "Save";
+      const cancelLabel = t("buttons.cancel", lang) || "Cancel";
+      const nameLabel = t(["templates", "namePlaceholder"], lang) || "Template name";
+      const titlePatternLabel = t(["templates", "titlePatternLabel"], lang) || "Title pattern";
+      const titlePatternPlaceholder =
+        t(["templates", "titlePatternPlaceholder"], lang) || "Weekly report for {project}";
+      const metaStrings = t("metadata", lang) || {};
+      const formStrings = t("prompts.form", lang) || {};
+      const labelOr = (key, fallback) => formStrings[key] || metaStrings[key] || fallback;
+      const filterValues = t("dashboard.filterValues", lang) || {};
+      const optionLabel = (group, val, fallback) => {
+        const grp = formStrings[group] || {};
+        if (grp && grp[val]) return grp[val];
+        if (filterValues && filterValues[val]) return filterValues[val];
+        return fallback;
+      };
+
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+        const attrs = initial.attributes || {};
+        const formId = `bt-template-edit-${Date.now()}`;
+        const f = (label, field, type, opts = {}) => {
+          const escaped = escapeHtml(label);
+          if (type === "select") {
+            const options = (opts.options || [])
+              .map((o) => `<option value="${escapeHtml(o.value)}"${o.value === (opts.selected || "") ? " selected" : ""}>${escapeHtml(o.label)}</option>`)
+              .join("");
+            return `<label class="bt-template-field">${escaped}<br/><select data-bt-tfield="${field}"><option value=""></option>${options}</select></label>`;
+          }
+          const ph = opts.placeholder ? ` placeholder="${escapeHtml(opts.placeholder)}"` : "";
+          const val = opts.value != null ? escapeHtml(opts.value) : "";
+          return `<label class="bt-template-field">${escaped}<br/><input data-bt-tfield="${field}" type="text"${ph} value="${val}" /></label>`;
+        };
+        const pOpts = (group, values) => values.map((v) => ({ value: v, label: optionLabel(group, v, v.charAt(0).toUpperCase() + v.slice(1)) }));
+        const formHtml = `<div class="bt-template-param-form" id="${formId}">${[
+          f(nameLabel, "name", "text", { value: initial.name || "" }),
+          f(titlePatternLabel, "titlePattern", "text", { placeholder: titlePatternPlaceholder, value: initial.titlePattern || "" }),
+          f(labelOr("repeatLabel", "Repeat"), "repeat", "text", { placeholder: "e.g. every Friday", value: attrs.repeat || "" }),
+          f(labelOr("dueLabel", "Due"), "due", "text", { placeholder: "e.g. +5d, next Monday", value: attrs.due || "" }),
+          f(labelOr("startLabel", "Start"), "start", "text", { placeholder: "e.g. +1d", value: attrs.start || "" }),
+          f(labelOr("deferLabel", "Defer"), "defer", "text", { placeholder: "e.g. +2d", value: attrs.defer || "" }),
+          f(labelOr("projectLabel", "Project"), "project", "text", { value: attrs.project || "" }),
+          f(labelOr("priorityLabel", "Priority"), "priority", "select", { selected: attrs.priority || "", options: pOpts("priorityOptions", ["low", "medium", "high"]) }),
+          f(labelOr("energyLabel", "Energy"), "energy", "select", { selected: attrs.energy || "", options: pOpts("energyOptions", ["low", "medium", "high"]) }),
+          f(labelOr("gtdLabel", "GTD status"), "gtd", "select", { selected: attrs.gtd || "", options: pOpts("gtdOptions", ["next action", "delegated", "deferred", "someday"]) }),
+          f(labelOr("waitingLabel", "Waiting-for"), "waitingFor", "text", { value: attrs.waitingFor || "" }),
+          f(labelOr("contextLabel", "Context(s)"), "context", "text", { value: attrs.context || "" }),
+        ].join("")}</div>`;
+        iziToast.question({
+          theme: "light",
+          color: "black",
+          layout: 2,
+          class: "betterTasks bt-toast-strong-icon bt-template-toast",
+          position: "center",
+          drag: false,
+          timeout: false,
+          close: true,
+          closeOnEscape: true,
+          overlay: true,
+          icon: "icon-check",
+          iconText: "\u2713",
+          iconColor: "#1f7a34",
+          title: titleText,
+          message: formHtml,
+          buttons: [
+            [
+              `<button>${escapeHtml(saveLabel)}</button>`,
+              (instance, toastInstance) => {
+                const form = document.getElementById(formId);
+                if (!form) {
+                  instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
+                  finish(null);
+                  return;
+                }
+                const readField = (name) => {
+                  const el = form.querySelector(`[data-bt-tfield="${name}"]`);
+                  return (el?.value || "").trim();
+                };
+                const name = readField("name");
+                if (!name) {
+                  toast(t(["templates", "namePlaceholder"], lang) || "Template name is required.");
+                  return;
+                }
+                const result = {
+                  name,
+                  titlePattern: readField("titlePattern"),
+                  attributes: {
+                    repeat: readField("repeat") || null,
+                    due: readField("due") || null,
+                    start: readField("start") || null,
+                    defer: readField("defer") || null,
+                    project: readField("project") || null,
+                    waitingFor: readField("waitingFor") || null,
+                    context: readField("context") || null,
+                    priority: readField("priority") || null,
+                    energy: readField("energy") || null,
+                    gtd: readField("gtd") || null,
+                  },
+                  subtasks: initial.subtasks || [],
+                };
+                instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
+                finish(result);
+              },
+              true,
+            ],
+            [
+              `<button>${escapeHtml(cancelLabel)}</button>`,
+              (instance, toastInstance) => {
+                instance.hide({ transitionOut: "fadeOut" }, toastInstance, "button");
+                finish(null);
+              },
+            ],
+          ],
+          onOpening: (_instance, toastEl) => {
+            applyToastA11y(toastEl);
+          },
+          onOpened: (_instance, toastEl) => {
+            const first = toastEl.querySelector(`#${formId} input`);
+            first?.focus?.();
           },
           onClosed: () => finish(null),
         });
@@ -13539,6 +14435,31 @@ export default {
         close,
         toggle,
         quickAdd,
+        createFromTemplate: async () => {
+          const lang = getLanguageSetting();
+          const store = loadTemplateStore(extensionAPI);
+          if (!store.templates.length) {
+            toast(t(["templates", "noTemplates"], lang) || "No templates saved yet.");
+            return;
+          }
+          const picked = await promptForTemplate(store.templates);
+          if (!picked || picked.action !== "select") return;
+          const template = getTemplate(store, picked.id);
+          if (!template) return;
+          const paramDefs = extractParameters(template.titlePattern, template.subtasks);
+          let params = {};
+          if (paramDefs.length) {
+            params = await promptForTemplateParams(template);
+            if (params === null) return;
+          }
+          const result = await instantiateTemplate(picked.id, params);
+          if (result?.error) {
+            toast(result.error);
+            return;
+          }
+          toast(t(["templates", "created"], lang) || "Task created from template");
+          refresh({ reason: "template-create" });
+        },
         toggleTask,
         snoozeTask,
         bulkToggleTask,
@@ -16992,8 +17913,10 @@ export default {
     if (slashCommandAPI) {
       if (registeredSlashCreateLabel) slashCommandAPI.removeCommand({ label: registeredSlashCreateLabel });
       if (registeredSlashConvertLabel) slashCommandAPI.removeCommand({ label: registeredSlashConvertLabel });
+      if (registeredSlashCreateFromTemplateLabel) slashCommandAPI.removeCommand({ label: registeredSlashCreateFromTemplateLabel });
       registeredSlashCreateLabel = null;
       registeredSlashConvertLabel = null;
+      registeredSlashCreateFromTemplateLabel = null;
     }
 
     removeDashboardTopbarButton();
@@ -17071,6 +17994,10 @@ export default {
     if (registeredBlockCtxCreateLabel && window.roamAlphaAPI?.ui?.blockContextMenu) {
       window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: registeredBlockCtxCreateLabel });
       registeredBlockCtxCreateLabel = null;
+    }
+    if (registeredBlockCtxSaveTemplateLabel && window.roamAlphaAPI?.ui?.blockContextMenu) {
+      window.roamAlphaAPI.ui.blockContextMenu.removeCommand({ label: registeredBlockCtxSaveTemplateLabel });
+      registeredBlockCtxSaveTemplateLabel = null;
     }
     // window.roamAlphaAPI.ui.blockContextMenu.removeCommand({label: "Convert Better Task to plain TODO",});
     disconnectThemeObserver();

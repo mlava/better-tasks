@@ -44,6 +44,9 @@ const locale = {
     excludePicklistPagesPlaceholder: "Templates, SmartBlocks, [[December 18th, 2025]]",
     pillThreshold: "حد عدد مربعات الاختيار للشارات المضمنة",
     pillThresholdDescription: "الحد الأقصى لعدد مربعات الاختيار قبل أن تتخطى شارات Better Tasks المضمنة العرض الأولي (الافتراضي 100). القيم الأعلى ستُعرض لكن قد تُبطئ الصفحة.",
+    templates: "قوالب المهام",
+    templatesDescription: "احفظ إعدادات المهام كقوالب قابلة لإعادة الاستخدام مع قيم بيانات وصفية افتراضية وبنية المهام الفرعية.",
+    manageTemplates: "إدارة القوالب",
     advancedDashboard: "خيارات متقدمة للوحة التحكم",
     advancedDashboardDescription: "إظهار إعدادات خطوات المراجعة (اليومية، الأسبوعية، الشهرية).",
     keyboardBindings: "Keyboard bindings (JSON)",
@@ -685,6 +688,29 @@ const locale = {
     noItems: "لم يتم العثور على مهام مطابقة",
     cycleDetected: "لا يمكن الإضافة — ستنشئ تبعية دائرية",
     alreadyAdded: "تبعية موجودة بالفعل"
+  },
+  templates: {
+    createFromTemplate: "إنشاء من قالب Better Task",
+    manageTemplates: "إدارة قوالب Better Task",
+    saveAsTemplate: "حفظ كقالب Better Task",
+    createNew: "إنشاء قالب",
+    templateButton: "قالب",
+    noTemplates: "لم يتم حفظ قوالب بعد.",
+    pickTemplate: "اختر قالباً",
+    filterTemplates: "تصفية القوالب\u2026",
+    created: "تم إنشاء المهمة من القالب",
+    saved: "تم حفظ القالب",
+    deleted: "تم حذف القالب",
+    duplicated: "تم نسخ القالب",
+    edit: "تعديل",
+    duplicate: "نسخ",
+    delete: "حذف",
+    confirmDelete: "حذف هذا القالب؟",
+    paramTitle: "معلمات القالب",
+    paramMessage: "املأ معلمات القالب:",
+    namePlaceholder: "اسم القالب",
+    titlePatternLabel: "نمط العنوان",
+    titlePatternPlaceholder: "تقرير أسبوعي عن {project}"
   }
 };
 

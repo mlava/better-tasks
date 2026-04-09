@@ -44,6 +44,9 @@ const locale = {
     excludePicklistPagesPlaceholder: "Templates, SmartBlocks, [[December 18th, 2025]]",
     pillThreshold: "Seuil de cases pour les pastilles en ligne",
     pillThresholdDescription: "Nombre maximal de cases avant que les pastilles en ligne ne sautent le rendu initial (par défaut 100). Des valeurs plus élevées seront rendues mais la page peut être plus lente.",
+    templates: "Modèles de tâches",
+    templatesDescription: "Enregistrez des configurations de tâches comme modèles réutilisables avec des valeurs par défaut et une structure de sous-tâches.",
+    manageTemplates: "Gérer les modèles",
     advancedDashboard: "Options avancées du tableau de bord",
     advancedDashboardDescription: "Afficher les réglages des étapes de revue (Quotidienne, Hebdomadaire, Mensuelle).",
     keyboardBindings: "Keyboard bindings (JSON)",
@@ -685,6 +688,29 @@ const locale = {
     noItems: "Aucune tâche correspondante trouvée",
     cycleDetected: "Impossible d'ajouter — créerait une dépendance circulaire",
     alreadyAdded: "Déjà une dépendance"
+  },
+  templates: {
+    createFromTemplate: "Créer depuis un modèle Better Task",
+    manageTemplates: "Gérer les modèles Better Task",
+    saveAsTemplate: "Enregistrer comme modèle Better Task",
+    createNew: "Créer un modèle",
+    templateButton: "Modèle",
+    noTemplates: "Aucun modèle enregistré.",
+    pickTemplate: "Sélectionner un modèle",
+    filterTemplates: "Filtrer les modèles\u2026",
+    created: "Tâche créée à partir du modèle",
+    saved: "Modèle enregistré",
+    deleted: "Modèle supprimé",
+    duplicated: "Modèle dupliqué",
+    edit: "Modifier",
+    duplicate: "Dupliquer",
+    delete: "Supprimer",
+    confirmDelete: "Supprimer ce modèle ?",
+    paramTitle: "Paramètres du modèle",
+    paramMessage: "Renseignez les paramètres du modèle :",
+    namePlaceholder: "Nom du modèle",
+    titlePatternLabel: "Motif du titre",
+    titlePatternPlaceholder: "Rapport hebdomadaire pour {project}"
   }
 };
 

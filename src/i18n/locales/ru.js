@@ -44,6 +44,9 @@ const locale = {
     excludePicklistPagesPlaceholder: "Templates, SmartBlocks, [[December 18th, 2025]]",
     pillThreshold: "Порог чекбоксов для инлайн-тегов",
     pillThresholdDescription: "Максимальное число чекбоксов до пропуска начальной отрисовки инлайн-тегов Better Tasks (по умолчанию 100). Большее значение рендерится, но может замедлить страницу.",
+    templates: "Шаблоны задач",
+    templatesDescription: "Сохраняйте конфигурации задач как многоразовые шаблоны со значениями метаданных по умолчанию и структурой подзадач.",
+    manageTemplates: "Управление шаблонами",
     advancedDashboard: "Расширенные опции панели",
     advancedDashboardDescription: "Показать настройки шагов обзора (Ежедневный, Еженедельный, Ежемесячный).",
     keyboardBindings: "Keyboard bindings (JSON)",
@@ -685,6 +688,29 @@ const locale = {
     noItems: "Подходящие задачи не найдены",
     cycleDetected: "Невозможно добавить — возникнет циклическая зависимость",
     alreadyAdded: "Уже является зависимостью"
+  },
+  templates: {
+    createFromTemplate: "Создать из шаблона Better Task",
+    manageTemplates: "Управление шаблонами Better Task",
+    saveAsTemplate: "Сохранить как шаблон Better Task",
+    createNew: "Создать шаблон",
+    templateButton: "Шаблон",
+    noTemplates: "Шаблоны ещё не сохранены.",
+    pickTemplate: "Выберите шаблон",
+    filterTemplates: "Фильтр шаблонов\u2026",
+    created: "Задача создана из шаблона",
+    saved: "Шаблон сохранён",
+    deleted: "Шаблон удалён",
+    duplicated: "Шаблон продублирован",
+    edit: "Редактировать",
+    duplicate: "Дублировать",
+    delete: "Удалить",
+    confirmDelete: "Удалить этот шаблон?",
+    paramTitle: "Параметры шаблона",
+    paramMessage: "Заполните параметры шаблона:",
+    namePlaceholder: "Имя шаблона",
+    titlePatternLabel: "Формат заголовка",
+    titlePatternPlaceholder: "Еженедельный отчёт для {project}"
   }
 };
 

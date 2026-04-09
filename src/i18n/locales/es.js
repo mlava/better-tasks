@@ -44,6 +44,9 @@ const locale = {
     excludePicklistPagesPlaceholder: "Templates, SmartBlocks, [[December 18th, 2025]]",
     pillThreshold: "Umbral de casillas para píldoras en línea",
     pillThresholdDescription: "Cantidad máxima de casillas antes de que las píldoras en línea omitan el renderizado inicial (por defecto 100). Valores más altos se renderizan pero la página puede ser más lenta.",
+    templates: "Plantillas de tareas",
+    templatesDescription: "Guarda configuraciones de tareas como plantillas reutilizables con metadatos predeterminados y estructura de subtareas.",
+    manageTemplates: "Administrar plantillas",
     advancedDashboard: "Opciones avanzadas del panel",
     advancedDashboardDescription: "Mostrar ajustes de los pasos de revisión (Diaria, Semanal, Mensual).",
     keyboardBindings: "Keyboard bindings (JSON)",
@@ -685,6 +688,29 @@ const locale = {
     noItems: "No se encontraron tareas coincidentes",
     cycleDetected: "No se puede añadir — crearía una dependencia circular",
     alreadyAdded: "Ya es una dependencia"
+  },
+  templates: {
+    createFromTemplate: "Crear desde plantilla de Better Task",
+    manageTemplates: "Administrar plantillas de Better Task",
+    saveAsTemplate: "Guardar como plantilla de Better Task",
+    createNew: "Crear plantilla",
+    templateButton: "Plantilla",
+    noTemplates: "Aún no hay plantillas guardadas.",
+    pickTemplate: "Selecciona una plantilla",
+    filterTemplates: "Filtrar plantillas\u2026",
+    created: "Tarea creada desde plantilla",
+    saved: "Plantilla guardada",
+    deleted: "Plantilla eliminada",
+    duplicated: "Plantilla duplicada",
+    edit: "Editar",
+    duplicate: "Duplicar",
+    delete: "Eliminar",
+    confirmDelete: "¿Eliminar esta plantilla?",
+    paramTitle: "Parámetros de la plantilla",
+    paramMessage: "Completa los parámetros de la plantilla:",
+    namePlaceholder: "Nombre de la plantilla",
+    titlePatternLabel: "Patrón del título",
+    titlePatternPlaceholder: "Informe semanal para {project}"
   }
 };
 

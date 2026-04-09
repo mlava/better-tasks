@@ -44,6 +44,9 @@ const locale = {
     excludePicklistPagesPlaceholder: "Templates, SmartBlocks, [[December 18th, 2025]]",
     pillThreshold: "Soglia checkbox per badge inline",
     pillThresholdDescription: "Numero massimo di checkbox prima che i badge inline di Better Tasks saltino il rendering iniziale (default 100). Valori più alti verranno renderizzati ma la pagina può rallentare.",
+    templates: "Modelli di attività",
+    templatesDescription: "Salva configurazioni di attività come modelli riutilizzabili con valori predefiniti e struttura di sottoattività.",
+    manageTemplates: "Gestisci modelli",
     advancedDashboard: "Opzioni avanzate Dashboard",
     advancedDashboardDescription: "Mostra impostazioni dei passaggi di revisione (Giornaliera, Settimanale, Mensile).",
     keyboardBindings: "Keyboard bindings (JSON)",
@@ -685,6 +688,29 @@ const locale = {
     noItems: "Nessuna attività corrispondente trovata",
     cycleDetected: "Impossibile aggiungere — creerebbe una dipendenza circolare",
     alreadyAdded: "Già una dipendenza"
+  },
+  templates: {
+    createFromTemplate: "Crea da modello Better Task",
+    manageTemplates: "Gestisci modelli Better Task",
+    saveAsTemplate: "Salva come modello Better Task",
+    createNew: "Crea modello",
+    templateButton: "Modello",
+    noTemplates: "Nessun modello salvato.",
+    pickTemplate: "Seleziona un modello",
+    filterTemplates: "Filtra modelli\u2026",
+    created: "Attività creata da modello",
+    saved: "Modello salvato",
+    deleted: "Modello eliminato",
+    duplicated: "Modello duplicato",
+    edit: "Modifica",
+    duplicate: "Duplica",
+    delete: "Elimina",
+    confirmDelete: "Eliminare questo modello?",
+    paramTitle: "Parametri del modello",
+    paramMessage: "Compila i parametri del modello:",
+    namePlaceholder: "Nome del modello",
+    titlePatternLabel: "Schema del titolo",
+    titlePatternPlaceholder: "Rapporto settimanale per {project}"
   }
 };
 

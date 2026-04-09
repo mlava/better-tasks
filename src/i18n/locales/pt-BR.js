@@ -44,6 +44,9 @@ const locale = {
     excludePicklistPagesPlaceholder: "Templates, SmartBlocks, [[December 18th, 2025]]",
     pillThreshold: "Limiar de caixas de verificação para pastilhas inline",
     pillThresholdDescription: "Número máximo de caixas de verificação antes de as pastilhas inline do Better Tasks saltarem a renderização inicial (omissão 100). Valores mais altos renderizam mas a página pode ficar mais lenta.",
+    templates: "Modelos de tarefas",
+    templatesDescription: "Salve configurações de tarefas como modelos reutilizáveis com metadados padrão e estrutura de subtarefas.",
+    manageTemplates: "Gerenciar modelos",
     advancedDashboard: "Opções avançadas do painel",
     advancedDashboardDescription: "Mostrar definições para os passos de revisão (Diária, Semanal, Mensal).",
     keyboardBindings: "Keyboard bindings (JSON)",
@@ -685,6 +688,29 @@ const locale = {
     noItems: "Nenhuma tarefa correspondente encontrada",
     cycleDetected: "Não é possível adicionar — criaria uma dependência circular",
     alreadyAdded: "Já é uma dependência"
+  },
+  templates: {
+    createFromTemplate: "Criar a partir de modelo Better Task",
+    manageTemplates: "Gerenciar modelos Better Task",
+    saveAsTemplate: "Salvar como modelo Better Task",
+    createNew: "Criar modelo",
+    templateButton: "Modelo",
+    noTemplates: "Nenhum modelo salvo ainda.",
+    pickTemplate: "Selecionar um modelo",
+    filterTemplates: "Filtrar modelos\u2026",
+    created: "Tarefa criada a partir do modelo",
+    saved: "Modelo salvo",
+    deleted: "Modelo excluído",
+    duplicated: "Modelo duplicado",
+    edit: "Editar",
+    duplicate: "Duplicar",
+    delete: "Excluir",
+    confirmDelete: "Excluir este modelo?",
+    paramTitle: "Parâmetros do modelo",
+    paramMessage: "Preencha os parâmetros do modelo:",
+    namePlaceholder: "Nome do modelo",
+    titlePatternLabel: "Padrão do título",
+    titlePatternPlaceholder: "Relatório semanal para {project}"
   }
 };
 

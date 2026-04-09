@@ -44,6 +44,9 @@ const locale = {
     excludePicklistPagesPlaceholder: "Templates, SmartBlocks, [[December 18th, 2025]]",
     pillThreshold: "內嵌標籤勾選框門檻",
     pillThresholdDescription: "當勾選框數量超過此值時，內嵌標籤會跳過初始渲染（預設 100）。較高數值會渲染但可能讓頁面變慢。",
+    templates: "任務範本",
+    templatesDescription: "將任務設定儲存為可重複使用的範本，包含中繼資料預設值和子任務結構。",
+    manageTemplates: "管理範本",
     advancedDashboard: "儀表板進階選項",
     advancedDashboardDescription: "顯示複盤步驟的設定（每日、每週、每月）。",
     keyboardBindings: "Keyboard bindings (JSON)",
@@ -685,6 +688,29 @@ const locale = {
     noItems: "未找到符合的任務",
     cycleDetected: "無法新增 — 會產生循環相依",
     alreadyAdded: "已是相依項"
+  },
+  templates: {
+    createFromTemplate: "從 Better Task 範本建立",
+    manageTemplates: "管理 Better Task 範本",
+    saveAsTemplate: "另存為 Better Task 範本",
+    createNew: "建立範本",
+    templateButton: "範本",
+    noTemplates: "尚未儲存任何範本。",
+    pickTemplate: "選擇範本",
+    filterTemplates: "篩選範本\u2026",
+    created: "已從範本建立任務",
+    saved: "範本已儲存",
+    deleted: "範本已刪除",
+    duplicated: "範本已複製",
+    edit: "編輯",
+    duplicate: "複製",
+    delete: "刪除",
+    confirmDelete: "刪除此範本？",
+    paramTitle: "範本參數",
+    paramMessage: "填寫範本參數：",
+    namePlaceholder: "範本名稱",
+    titlePatternLabel: "標題模式",
+    titlePatternPlaceholder: "{project} 的週報"
   }
 };
 

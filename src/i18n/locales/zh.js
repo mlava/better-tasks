@@ -44,6 +44,9 @@ const locale = {
     excludePicklistPagesPlaceholder: "Templates, SmartBlocks, [[December 18th, 2025]]",
     pillThreshold: "内联徽标复选框阈值",
     pillThresholdDescription: "当复选框数量超过此值时，内联徽标将跳过初始渲染（默认 100）。更高的值会渲染但可能使页面变慢。",
+    templates: "任务模板",
+    templatesDescription: "将任务配置保存为可重复使用的模板，包含元数据默认值和子任务结构。",
+    manageTemplates: "管理模板",
     advancedDashboard: "仪表板高级选项",
     advancedDashboardDescription: "显示复盘步骤的设置（每日、每周、每月）。",
     keyboardBindings: "Keyboard bindings (JSON)",
@@ -685,6 +688,29 @@ const locale = {
     noItems: "未找到匹配任务",
     cycleDetected: "无法添加 — 会产生循环依赖",
     alreadyAdded: "已是依赖项"
+  },
+  templates: {
+    createFromTemplate: "从 Better Task 模板创建",
+    manageTemplates: "管理 Better Task 模板",
+    saveAsTemplate: "另存为 Better Task 模板",
+    createNew: "创建模板",
+    templateButton: "模板",
+    noTemplates: "尚未保存任何模板。",
+    pickTemplate: "选择模板",
+    filterTemplates: "筛选模板\u2026",
+    created: "已从模板创建任务",
+    saved: "模板已保存",
+    deleted: "模板已删除",
+    duplicated: "模板已复制",
+    edit: "编辑",
+    duplicate: "复制",
+    delete: "删除",
+    confirmDelete: "删除此模板？",
+    paramTitle: "模板参数",
+    paramMessage: "填写模板参数：",
+    namePlaceholder: "模板名称",
+    titlePatternLabel: "标题模式",
+    titlePatternPlaceholder: "{project} 的周报"
   }
 };
 

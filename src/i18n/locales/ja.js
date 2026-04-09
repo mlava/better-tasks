@@ -44,6 +44,9 @@ const locale = {
     excludePicklistPagesPlaceholder: "Templates, SmartBlocks, [[December 18th, 2025]]",
     pillThreshold: "インラインピルのチェックボックス閾値",
     pillThresholdDescription: "インラインピルが初期レンダリングをスキップするチェックボックスの最大数（デフォルト100）。高い値はレンダリングされますがページが遅くなる可能性があります。",
+    templates: "タスクテンプレート",
+    templatesDescription: "メタデータのデフォルトとサブタスク構造を含む、再利用可能なテンプレートとしてタスク設定を保存します。",
+    manageTemplates: "テンプレートを管理",
     advancedDashboard: "ダッシュボードの詳細オプション",
     advancedDashboardDescription: "レビューステップの設定を表示（日次、週次、月次）。",
     keyboardBindings: "Keyboard bindings (JSON)",
@@ -685,6 +688,29 @@ const locale = {
     noItems: "一致するタスクが見つかりません",
     cycleDetected: "追加できません — 循環依存が発生します",
     alreadyAdded: "すでに依存関係です"
+  },
+  templates: {
+    createFromTemplate: "Better Task テンプレートから作成",
+    manageTemplates: "Better Task テンプレートを管理",
+    saveAsTemplate: "Better Task テンプレートとして保存",
+    createNew: "テンプレートを作成",
+    templateButton: "テンプレート",
+    noTemplates: "保存されたテンプレートはまだありません。",
+    pickTemplate: "テンプレートを選択",
+    filterTemplates: "テンプレートをフィルター\u2026",
+    created: "テンプレートからタスクを作成しました",
+    saved: "テンプレートを保存しました",
+    deleted: "テンプレートを削除しました",
+    duplicated: "テンプレートを複製しました",
+    edit: "編集",
+    duplicate: "複製",
+    delete: "削除",
+    confirmDelete: "このテンプレートを削除しますか？",
+    paramTitle: "テンプレートパラメーター",
+    paramMessage: "テンプレートパラメーターを入力してください：",
+    namePlaceholder: "テンプレート名",
+    titlePatternLabel: "タイトルパターン",
+    titlePatternPlaceholder: "{project} の週次レポート"
   }
 };
 

@@ -44,6 +44,9 @@ const locale = {
     excludePicklistPagesPlaceholder: "Templates, SmartBlocks, [[December 18th, 2025]]",
     pillThreshold: "Inline pill checkbox threshold",
     pillThresholdDescription: "Max checkbox count before Better Tasks inline pills skip initial rendering (default 100). Higher values will render but the page may be slower.",
+    templates: "Task Templates",
+    templatesDescription: "Save task configurations as reusable templates with metadata defaults and subtask structures.",
+    manageTemplates: "Manage templates",
     advancedDashboard: "Advanced Dashboard options",
     advancedDashboardDescription: "Show settings for review steps (Daily, Weekly, Monthly).",
     keyboardBindings: "Keyboard bindings (JSON)",
@@ -685,6 +688,29 @@ const locale = {
     noItems: "No matching tasks found",
     cycleDetected: "Cannot add — would create circular dependency",
     alreadyAdded: "Already a dependency"
+  },
+  templates: {
+    createFromTemplate: "Create from Better Task template",
+    manageTemplates: "Manage Better Task templates",
+    saveAsTemplate: "Save as Better Task template",
+    createNew: "Create template",
+    templateButton: "Template",
+    noTemplates: "No templates saved yet.",
+    pickTemplate: "Select a template",
+    filterTemplates: "Filter templates\u2026",
+    created: "Task created from template",
+    saved: "Template saved",
+    deleted: "Template deleted",
+    duplicated: "Template duplicated",
+    edit: "Edit",
+    duplicate: "Duplicate",
+    delete: "Delete",
+    confirmDelete: "Delete this template?",
+    paramTitle: "Template parameters",
+    paramMessage: "Fill in the template parameters:",
+    namePlaceholder: "Template name",
+    titlePatternLabel: "Title pattern",
+    titlePatternPlaceholder: "Weekly report for {project}"
   }
 };
 
