@@ -113,6 +113,14 @@ const locale = {
     dependsAttrDescription: "タスク依存関係属性のラベル（子ブロック）",
     parentAttr: "親タスク属性名",
     parentAttrDescription: "親タスク属性のラベル（子ブロック）",
+    notesAttr: "メモ属性名",
+    notesAttrDescription: "自由記述メモ属性のラベル（子ブロック）",
+    activityLogEnabled: "タスクの活動ログを有効化",
+    activityLogEnabledDescription: "各タスクの下に、変更履歴を追記専用で記録します（延期、完了、属性編集）。グラフ内では子ブロックとして保存されます。",
+    activityLogTextEdits: "タイトル編集を活動に記録",
+    activityLogTextEditsDescription: "タスクタイトルが編集されたときのイベントも記録します。入力中のノイズを避けるため、既定ではオフです。",
+    activityLogMaxEntries: "活動ログの最大件数",
+    activityLogMaxEntriesDescription: "タスクごとのエントリ数の任意上限です。超えた場合は、新しい書き込みごとに最も古いエントリが削除されます。無制限にするには空欄のままにしてください。",
     confirmBeforeSpawn: "次のタスク生成前に確認",
     confirmBeforeSpawnDescription: "繰り返しBetter Taskの完了時に次の発生を生成する前に確認を求める",
     weekStart: "週の最初の曜日",
@@ -496,6 +504,7 @@ const locale = {
     snoozePlus1: "+1日",
     snoozePlus7: "+7日",
     untitled: "（無題のタスク）",
+    notesLabel: "メモ",
     bulk: {
       select: "一括選択",
       selectTask: "選択",
@@ -659,7 +668,12 @@ const locale = {
     editDepends: "依存関係を編集",
     removeDepends: "依存関係を削除",
     metaHeading: "メタデータ",
-    viewSeries: "シリーズを表示"
+    viewSeries: "シリーズを表示",
+    addNotes: "メモを追加",
+    editNotes: "メモを編集",
+    removeNotes: "メモを削除",
+    activityHeading: "活動",
+    viewActivity: "活動を表示"
   },
   series: {
     title: "繰り返しシリーズ",
@@ -694,6 +708,7 @@ const locale = {
     start: "開始",
     defer: "延期",
     due: "期限",
+    notes: "メモ",
     next: "次回",
     repeatingTask: "繰り返しBetter Task",
     scheduledTask: "予定Better Task",
@@ -720,6 +735,25 @@ const locale = {
     noItems: "一致するタスクが見つかりません",
     cycleDetected: "追加できません — 循環依存が発生します",
     alreadyAdded: "すでに依存関係です"
+  },
+  activityLog: {
+    title: "活動ログ",
+    containerTitle: "**活動ログ**",
+    close: "閉じる",
+    openInRoam: "Roamで履歴を開く",
+    empty: "まだ活動はありません。",
+    loading: "読み込み中\u2026",
+    event: {
+      create: "作成",
+      complete: "完了に変更",
+      reopen: "再オープン",
+      snooze: (d) => `${d.field || ""}\u3092${d.days || ""}\u65E5\u5EF6\u671F (\u2192 ${d.to || ""})`,
+      reschedule: "{{field}} \u2192 {{to}}",
+      attr_change: "{{field}} \u2192 {{to}}",
+      attr_removed: "{{field}}を削除",
+      recurrence_spawned: "繰り返しを生成",
+      text_edit: "タイトルを編集"
+    }
   },
   templates: {
     createFromTemplate: "Better Task テンプレートから作成",

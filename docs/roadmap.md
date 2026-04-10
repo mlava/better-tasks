@@ -160,7 +160,7 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 
 ---
 
-## 🧠 Phase 9 — Execution, Recurrence & Review Mastery (In Progress)
+## 🧠 Phase 9 — Execution, Recurrence & Review Mastery (Complete ✅)
 
 **Mission:** Turn planning into flow.
 
@@ -199,11 +199,19 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 - ✅ Commands: Daily Review, Monthly Review (Weekly unchanged)
 - ⏳ Review history and completion stats (deferred — needs storage mechanism)
 
-### Notes & Activity Log
-- `notes::` attribute or dedicated child blocks
-- Append-only activity history ("Snoozed from Nov 15 to Nov 18")
-- Timestamps on all changes
-- Visible in task detail view
+### Notes & Activity Log — Complete ✅
+- ✅ Freeform `BT_attrNotes::` child block (configurable label, full attribute alias/back-compat) with inline preview on dashboard rows and edit affordance in the task actions menu
+- ✅ Append-only activity log stored as a dedicated **Activity log** container child block (identified by string match) with one event per child block
+- ✅ Captured events: `create`, `complete`, `reopen`, `snooze`, `reschedule`, `attr_change`, `recurrence_spawned`, `text_edit` (opt-in)
+- ✅ Each event block carries human-readable timestamped text **plus** structured `:block/props.bt` (event, ts, field, from, to, days, source, bulkId, nextUid). **Roam API note (verified 2026-04-10):** custom prop keys like `:bt` are persisted and readable via `data.pull` per-block, but `roamAlphaAPI.q` cannot query across blocks by prop content. Container identification therefore uses string match on the block text (`**Activity log**`), and `readActivityLog` parses event text as primary with props as enrichment via `data.pull`. Smart Suggestions can read structured props via `data.pull` on individual event blocks — no cross-block query needed.
+- ✅ Per-task activity context propagates through `setRichAttribute`/`ensureChildAttrForType` so all code paths (inline, dashboard, API, bulk) capture diffs at one site
+- ✅ Bulk operations tag every per-task event with a shared `bulkId` correlation id
+- ✅ Recurring spawn: new instance starts empty; prior instance gets a `recurrence_spawned` event referencing the new uid
+- ✅ Settings: master enable (default ON, seeded), text-edit opt-in, optional max-entries cap, notes attribute rename
+- ✅ "View activity" panel in task actions menu — reverse-chronological list with "Open history in Roam" sidebar link
+- ✅ `deconvertTask` removes the history container alongside attribute children — preserves Trust & Exit guarantee
+- ✅ i18n parity stubs in all 13 locales
+- ✅ Unblocks Phase 10 Smart Suggestions by providing the structured event data spine
 
 ### Keyboard Navigation — Complete ✅
 - ✅ j/k to move between tasks (skips group headers, scrolls into view)
@@ -256,6 +264,7 @@ This document is the **canonical Better Tasks roadmap**, integrating shipped wor
 ### Smart Suggestions
 - Advisory AI nudges only (never automatic)
 - "This task has been snoozed 5 times" → suggest someday/maybe
+- see ../../.codex/ROAM_EXTENSION_PATTERNS.md for context
 - "You usually do this on Mondays" → suggest reschedule
 - "No tasks scheduled for Thursday" → suggest load balancing
 

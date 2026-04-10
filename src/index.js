@@ -80,6 +80,10 @@ const DEFAULT_ENERGY_ATTR = "BT_attrEnergy";
 const DEFAULT_GTD_ATTR = "BT_attrGTD";
 const DEFAULT_DEPENDS_ATTR = "BT_attrDepends";
 const DEFAULT_PARENT_ATTR = "BT_attrParent";
+const DEFAULT_NOTES_ATTR = "BT_attrNotes";
+const ACTIVITY_LOG_ENABLED_SETTING = "bt-activity-log-enabled";
+const ACTIVITY_LOG_TEXT_EDITS_SETTING = "bt-activity-log-text-edits";
+const ACTIVITY_LOG_MAX_ENTRIES_SETTING = "bt-activity-log-max-entries";
 const ATTR_NAMES_PUBLIC_KEY_PREFIX = "betterTasks.attributeNames";
 const ATTR_NAMES_PUBLIC_VERSION = 1;
 const EXTENSION_TOOLS_ID = "better-tasks";
@@ -739,6 +743,63 @@ export default {
         },
       ];
 
+      const activityLogSettings = [
+        {
+          id: ACTIVITY_LOG_ENABLED_SETTING,
+          name: tr("settings.activityLogEnabled", "Enable task activity log"),
+          description: tr(
+            "settings.activityLogEnabledDescription",
+            "Record an append-only history of changes (snoozes, completions, attribute edits) under each task. Stored as a child block in your graph."
+          ),
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              extensionAPI.settings.set(ACTIVITY_LOG_ENABLED_SETTING, normalized);
+            },
+          },
+        },
+        {
+          id: ACTIVITY_LOG_TEXT_EDITS_SETTING,
+          name: tr("settings.activityLogTextEdits", "Log title edits in activity"),
+          description: tr(
+            "settings.activityLogTextEditsDescription",
+            "Also record events when a task title is edited. Off by default to avoid noise from typing."
+          ),
+          action: {
+            type: "switch",
+            onChange: (v) => {
+              const normalized = normalizeBooleanSetting(normalizeTodaySettingValue(v));
+              extensionAPI.settings.set(ACTIVITY_LOG_TEXT_EDITS_SETTING, normalized);
+            },
+          },
+        },
+        {
+          id: ACTIVITY_LOG_MAX_ENTRIES_SETTING,
+          name: tr("settings.activityLogMaxEntries", "Activity log maximum entries"),
+          description: tr(
+            "settings.activityLogMaxEntriesDescription",
+            "Optional cap on entries per task. When exceeded, the oldest entries are pruned on each new write. Leave blank for unlimited."
+          ),
+          action: {
+            type: "input",
+            placeholder: "",
+            onChange: (v) => {
+              const raw = v?.target?.value !== undefined ? v.target.value : v;
+              const text = String(raw == null ? "" : raw).trim();
+              if (!text) {
+                extensionAPI.settings.set(ACTIVITY_LOG_MAX_ENTRIES_SETTING, "");
+                return;
+              }
+              const num = parseInt(text, 10);
+              if (Number.isFinite(num) && num > 0) {
+                extensionAPI.settings.set(ACTIVITY_LOG_MAX_ENTRIES_SETTING, num);
+              }
+            },
+          },
+        },
+      ];
+
       const attributeSettings = [
         {
           id: "rt-repeat-attr",
@@ -817,6 +878,12 @@ export default {
           name: tr("settings.parentAttr", "Parent task attribute name"),
           description: tr("settings.parentAttrDescription", "Label for the parent task attribute (child block)"),
           action: { type: "input", placeholder: "BT_attrParent", onChange: handleAttributeNameChange },
+        },
+        {
+          id: "bt-attr-notes",
+          name: tr("settings.notesAttr", "Notes attribute name"),
+          description: tr("settings.notesAttrDescription", "Label for the freeform notes attribute (child block)"),
+          action: { type: "input", placeholder: DEFAULT_NOTES_ATTR, onChange: handleAttributeNameChange },
         },
       ];
 
@@ -1101,6 +1168,7 @@ export default {
         },
         ...attributeSettingsToggle,
         ...(advancedAttrNamesEnabled ? attributeSettings : []),
+        ...activityLogSettings,
       ];
 
       return {
@@ -1138,6 +1206,15 @@ export default {
     const config = buildSettingsConfig();
     extensionAPI.settings.panel.create(config);
 
+    if (extensionAPI.settings.get(ACTIVITY_LOG_ENABLED_SETTING) == null) {
+      extensionAPI.settings.set(ACTIVITY_LOG_ENABLED_SETTING, true);
+    }
+    if (extensionAPI.settings.get(ACTIVITY_LOG_TEXT_EDITS_SETTING) == null) {
+      extensionAPI.settings.set(ACTIVITY_LOG_TEXT_EDITS_SETTING, false);
+    }
+    if (extensionAPI.settings.get(ACTIVITY_LOG_MAX_ENTRIES_SETTING) == null) {
+      extensionAPI.settings.set(ACTIVITY_LOG_MAX_ENTRIES_SETTING, "");
+    }
     if (extensionAPI.settings.get(TODAY_WIDGET_ENABLE_SETTING) == null) {
       extensionAPI.settings.set(TODAY_WIDGET_ENABLE_SETTING, false);
     }
@@ -1596,7 +1673,9 @@ export default {
         const ok = await deconvertTask(uid);
         if (ok) {
           toast("Task deconverted \u2014 BT metadata removed. TODO preserved.");
-          activeDashboardController?.notifyBlockChange?.(uid);
+          // deconvertTask already calls removeTask internally; just refresh
+          // the dashboard list. Do NOT call notifyBlockChange — it re-reads
+          // the block and would re-add the now-plain TODO to the dashboard.
           activeDashboardController?.refresh?.({ reason: "deconvert" });
         } else {
           toast("Block is not a Better Task or has no BT metadata.");
@@ -2137,40 +2216,46 @@ export default {
       if (!rtProps.tz) rtProps.tz = set.timezone;
       await updateBlockProps(blockUid, { rt: rtProps });
 
-      if (repeatVal) await ensureChildAttrForType(blockUid, "repeat", repeatVal, set.attrNames);
-      else await removeChildAttrsForType(blockUid, "repeat", set.attrNames);
-      if (dueStr) await ensureChildAttrForType(blockUid, "due", dueStr, set.attrNames);
-      else await removeChildAttrsForType(blockUid, "due", set.attrNames);
-      if (startStr) await ensureChildAttrForType(blockUid, "start", startStr, set.attrNames);
-      else await removeChildAttrsForType(blockUid, "start", set.attrNames);
-      if (deferStr) await ensureChildAttrForType(blockUid, "defer", deferStr, set.attrNames);
-      else await removeChildAttrsForType(blockUid, "defer", set.attrNames);
-      const hasAiMeta = !!(
-        (parsed.project || "").trim() ||
-        (parsed.context || "").trim() ||
-        (parsed.priority || "").trim() ||
-        (parsed.energy || "").trim()
-      );
-      if (hasAiMeta) {
-        await applyMetadataFromPrompt(
-          blockUid,
-          {
-            project: parsed.project || "",
-            context: parsed.context || "",
-            priority: parsed.priority || "",
-            energy: parsed.energy || "",
-          },
-          set.attrNames
+      await withActivityContext(blockUid, { suppressLogging: true }, async () => {
+        if (repeatVal) await ensureChildAttrForType(blockUid, "repeat", repeatVal, set.attrNames);
+        else await removeChildAttrsForType(blockUid, "repeat", set.attrNames);
+        if (dueStr) await ensureChildAttrForType(blockUid, "due", dueStr, set.attrNames);
+        else await removeChildAttrsForType(blockUid, "due", set.attrNames);
+        if (startStr) await ensureChildAttrForType(blockUid, "start", startStr, set.attrNames);
+        else await removeChildAttrsForType(blockUid, "start", set.attrNames);
+        if (deferStr) await ensureChildAttrForType(blockUid, "defer", deferStr, set.attrNames);
+        else await removeChildAttrsForType(blockUid, "defer", set.attrNames);
+        const hasAiMeta = !!(
+          (parsed.project || "").trim() ||
+          (parsed.context || "").trim() ||
+          (parsed.priority || "").trim() ||
+          (parsed.energy || "").trim()
         );
-      }
-
-      // Auto-inherit project from current page if AI didn't set one
-      if (!(parsed.project || "").trim()) {
-        const inheritedProject = inferProjectFromPage(block);
-        if (inheritedProject) {
-          await setRichAttribute(blockUid, "project", inheritedProject, set.attrNames);
+        if (hasAiMeta) {
+          await applyMetadataFromPrompt(
+            blockUid,
+            {
+              project: parsed.project || "",
+              context: parsed.context || "",
+              priority: parsed.priority || "",
+              energy: parsed.energy || "",
+            },
+            set.attrNames
+          );
         }
-      }
+
+        // Auto-inherit project from current page if AI didn't set one
+        if (!(parsed.project || "").trim()) {
+          const inheritedProject = inferProjectFromPage(block);
+          if (inheritedProject) {
+            await setRichAttribute(blockUid, "project", inheritedProject, set.attrNames);
+          }
+        }
+      });
+
+      try {
+        void recordActivity(blockUid, "create", { source: "inline" });
+      } catch (_) { /* ignore */ }
 
       repeatOverrides.delete(blockUid);
       scheduleSurfaceSync(set.attributeSurface);
@@ -4453,6 +4538,7 @@ export default {
       const energyAliases = new Set(attrNames.energyAliases || []);
       const dependsAliases = new Set(attrNames.dependsAliases || []);
       const parentAliases = new Set(attrNames.parentAliases || []);
+      const notesAliases = new Set(attrNames.notesAliases || []);
       for (const child of children) {
         const text = typeof child?.string === "string" ? child.string : null;
         if (!text) continue;
@@ -4493,6 +4579,8 @@ export default {
             out.depends = out[key];
           } else if (parentAliases.has(key) && out.parent == null) {
             out.parent = out[key];
+          } else if (notesAliases.has(key) && out.notes == null) {
+            out.notes = out[key];
           }
         }
       }
@@ -4806,6 +4894,7 @@ export default {
       const gtdEntry = pickChildAttr(childAttrMap, attrNames.gtdAliases || [], { allowFallback: true });
       const dependsEntry = pickChildAttr(childAttrMap, attrNames.dependsAliases || [], { allowFallback: true });
       const parentEntry = pickChildAttr(childAttrMap, attrNames.parentAliases || [], { allowFallback: true });
+      const notesEntry = pickChildAttr(childAttrMap, attrNames.notesAliases || [], { allowFallback: true });
 
       const project = projectEntry?.value ? stripLinkOrTag(projectEntry.value) || null : null;
       const waitingFor = waitingEntry?.value ? stripLinkOrTag(waitingEntry.value) || null : null;
@@ -4818,7 +4907,8 @@ export default {
       // Flag when the child block has text but no valid ((uid)) refs — stale/orphaned entry
       const _hasStaleDependsValue = !!(dependsRaw.trim() && !depends.length);
       const parentTaskUid = parentEntry?.value ? parseDependsValue(parentEntry.value)[0] || null : null;
-      return { project, waitingFor, context, priority, energy, gtd, depends, _hasStaleDependsValue, parentTaskUid };
+      const notes = notesEntry?.value ? String(notesEntry.value).trim() : null;
+      return { project, waitingFor, context, priority, energy, gtd, depends, _hasStaleDependsValue, parentTaskUid, notes };
     }
 
     function escapeRegExp(str) {
@@ -4920,6 +5010,7 @@ export default {
         { type: "energy", settingId: "bt-attr-energy" },
         { type: "depends", settingId: "bt-attr-depends" },
         { type: "parent", settingId: "bt-attr-parent" },
+        { type: "notes", settingId: "bt-attr-notes" },
       ];
       map.forEach(({ type, settingId }) => {
         const prevLabel = prev?.[`${type}Attr`];
@@ -5034,6 +5125,7 @@ export default {
       const energy = buildAttrConfig("bt-attr-energy", DEFAULT_ENERGY_ATTR);
       const depends = buildAttrConfig("bt-attr-depends", DEFAULT_DEPENDS_ATTR);
       const parent = buildAttrConfig("bt-attr-parent", DEFAULT_PARENT_ATTR);
+      const notes = buildAttrConfig("bt-attr-notes", DEFAULT_NOTES_ATTR);
       const attrByType = {
         repeat,
         due,
@@ -5048,6 +5140,7 @@ export default {
         energy,
         depends,
         parent,
+        notes,
       };
       return {
         repeatAttr: repeat.attr,
@@ -5102,6 +5195,10 @@ export default {
         parentKey: parent.key,
         parentAliases: parent.aliases,
         parentRemovalKeys: parent.removalKeys,
+        notesAttr: notes.attr,
+        notesKey: notes.key,
+        notesAliases: notes.aliases,
+        notesRemovalKeys: notes.removalKeys,
         attrByType,
       };
     }
@@ -5986,6 +6083,7 @@ export default {
         ["energy", attrs.energyAttr, attrs.energyAliases, attrs.attrByType?.energy?.defaultName, "enum"],
         ["depends", attrs.dependsAttr, attrs.dependsAliases, attrs.attrByType?.depends?.defaultName, "list"],
         ["parent", attrs.parentAttr, attrs.parentAliases, attrs.attrByType?.parent?.defaultName, "ref"],
+        ["notes", attrs.notesAttr, attrs.notesAliases, attrs.attrByType?.notes?.defaultName, "string"],
       ];
       const attributes = map.map(([id, name, aliases, defaultName, type]) => ({
         id,
@@ -6030,6 +6128,7 @@ export default {
       if ("completed" in attrs) patch.completed = attrs.completed;
       if ("depends" in attrs) patch.depends = attrs.depends;
       if ("parent" in attrs) patch.parent = attrs.parent;
+      if ("notes" in attrs) patch.notes = attrs.notes;
       return patch;
     }
 
@@ -6112,6 +6211,11 @@ export default {
           await ensureChildAttrForType(uid, "parent", `((${parentUid}))`, attrNames);
         }
       }
+      if ("notes" in patch) {
+        const val = patch.notes == null ? null : String(patch.notes || "").trim();
+        if (!val) await removeChildAttrsForType(uid, "notes", attrNames);
+        else await ensureChildAttrForType(uid, "notes", val, attrNames);
+      }
     }
 
     async function executeToolCreate(args = {}) {
@@ -6150,10 +6254,15 @@ export default {
       if (requestedStatus === "DONE" && !("completed" in attrsPatch)) {
         attrsPatch.completed = formatDate(todayLocal(), set);
       }
-      await applyToolAttributePatch(uid, attrsPatch, set);
-      if (requestedStatus === "DONE") {
-        await setTaskTodoState(uid, "DONE");
-      }
+      await withActivityContext(uid, { suppressLogging: true }, async () => {
+        await applyToolAttributePatch(uid, attrsPatch, set);
+        if (requestedStatus === "DONE") {
+          await setTaskTodoState(uid, "DONE");
+        }
+      });
+      try {
+        void recordActivity(uid, "create", { source: "api" });
+      } catch (_) { /* ignore */ }
       scheduleSurfaceSync(set.attributeSurface);
       activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
       const block = await getBlock(uid);
@@ -6435,35 +6544,40 @@ export default {
       if (!block) return { error: `Task not found: ${uid}` };
       if (!isTaskBlock(block)) return { error: "Target block is not a TODO/DONE task block" };
       const set = S();
-      const nextTextRaw = typeof args.text === "string" ? args.text.trim() : "";
-      if (nextTextRaw) {
-        const stateNow = isBlockCompleted(block) ? "DONE" : "TODO";
-        const nextText = formatTodoStateString(nextTextRaw, stateNow);
-        await updateBlockString(uid, nextText);
-      }
-      const status = normalizeToolStatus(args.status || "");
-      if (status === "TODO" || status === "DONE") {
-        await setTaskTodoState(uid, status);
-      } else if (status) {
-        return { error: `Unsupported status: ${status}. Allowed: TODO, DONE.` };
-      }
-      const patch = parseToolAttributePatch(args.attributes || {});
-      // Normalise dates to Roam format
-      for (const dateKey of ["due", "start", "defer"]) {
-        if (dateKey in patch && patch[dateKey] != null) {
-          const parsed = parseDateFromText(String(patch[dateKey]), set).date;
-          if (parsed) patch[dateKey] = formatDate(parsed, set);
+      let resultError = null;
+      await withActivityContext(uid, { source: "api" }, async () => {
+        const nextTextRaw = typeof args.text === "string" ? args.text.trim() : "";
+        if (nextTextRaw) {
+          const stateNow = isBlockCompleted(block) ? "DONE" : "TODO";
+          const nextText = formatTodoStateString(nextTextRaw, stateNow);
+          await updateBlockString(uid, nextText);
         }
-      }
-      if (status === "DONE" && !("completed" in patch)) {
-        patch.completed = formatDate(todayLocal(), set);
-      } else if (status === "TODO" && !("completed" in patch)) {
-        patch.completed = null;
-      }
-      if (Object.keys(patch).length) {
-        await applyToolAttributePatch(uid, patch, set);
-        scheduleSurfaceSync(set.attributeSurface);
-      }
+        const status = normalizeToolStatus(args.status || "");
+        if (status === "TODO" || status === "DONE") {
+          await setTaskTodoState(uid, status);
+        } else if (status) {
+          resultError = `Unsupported status: ${status}. Allowed: TODO, DONE.`;
+          return;
+        }
+        const patch = parseToolAttributePatch(args.attributes || {});
+        // Normalise dates to Roam format
+        for (const dateKey of ["due", "start", "defer"]) {
+          if (dateKey in patch && patch[dateKey] != null) {
+            const parsed = parseDateFromText(String(patch[dateKey]), set).date;
+            if (parsed) patch[dateKey] = formatDate(parsed, set);
+          }
+        }
+        if (status === "DONE" && !("completed" in patch)) {
+          patch.completed = formatDate(todayLocal(), set);
+        } else if (status === "TODO" && !("completed" in patch)) {
+          patch.completed = null;
+        }
+        if (Object.keys(patch).length) {
+          await applyToolAttributePatch(uid, patch, set);
+          scheduleSurfaceSync(set.attributeSurface);
+        }
+      });
+      if (resultError) return { error: resultError };
       activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
       const nextBlock = await getBlock(uid);
       const meta = nextBlock ? await readRecurringMeta(nextBlock, set) : null;
@@ -6480,6 +6594,7 @@ export default {
         bulkOperationCooldownTimer = null;
       }
       bulkOperationInProgress = true;
+      const bulkId = `b_${shortId()}`;
       try {
         const set = S();
         const results = [];
@@ -6495,36 +6610,37 @@ export default {
             const block = await getBlock(uid);
             if (!block) { results.push({ uid, success: false, error: "Task not found" }); continue; }
             if (!isTaskBlock(block)) { results.push({ uid, success: false, error: "Target block is not a TODO/DONE task block" }); continue; }
-            const nextTextRaw = typeof item.text === "string" ? item.text.trim() : "";
-            if (nextTextRaw) {
-              const stateNow = isBlockCompleted(block) ? "DONE" : "TODO";
-              const nextText = formatTodoStateString(nextTextRaw, stateNow);
-              await updateBlockString(uid, nextText);
-            }
-            const status = normalizeToolStatus(item.status || "");
-            if (status === "TODO" || status === "DONE") {
-              await setTaskTodoState(uid, status);
-            } else if (status) {
-              results.push({ uid, success: false, error: `Unsupported status: ${status}. Allowed: TODO, DONE.` });
-              continue;
-            }
-            const patch = parseToolAttributePatch(item.attributes || {});
-            // Normalise dates to Roam format
-            for (const dateKey of ["due", "start", "defer"]) {
-              if (dateKey in patch && patch[dateKey] != null) {
-                const parsed = parseDateFromText(String(patch[dateKey]), set).date;
-                if (parsed) patch[dateKey] = formatDate(parsed, set);
+            await withActivityContext(uid, { source: "bulk", bulkId }, async () => {
+              const nextTextRaw = typeof item.text === "string" ? item.text.trim() : "";
+              if (nextTextRaw) {
+                const stateNow = isBlockCompleted(block) ? "DONE" : "TODO";
+                const nextText = formatTodoStateString(nextTextRaw, stateNow);
+                await updateBlockString(uid, nextText);
               }
-            }
-            if (status === "DONE" && !("completed" in patch)) {
-              patch.completed = formatDate(todayLocal(), set);
-            } else if (status === "TODO" && !("completed" in patch)) {
-              patch.completed = null;
-            }
-            if (Object.keys(patch).length) {
-              await applyToolAttributePatch(uid, patch, set);
-              anyPatchApplied = true;
-            }
+              const status = normalizeToolStatus(item.status || "");
+              if (status === "TODO" || status === "DONE") {
+                await setTaskTodoState(uid, status);
+              } else if (status) {
+                throw new Error(`Unsupported status: ${status}. Allowed: TODO, DONE.`);
+              }
+              const patch = parseToolAttributePatch(item.attributes || {});
+              // Normalise dates to Roam format
+              for (const dateKey of ["due", "start", "defer"]) {
+                if (dateKey in patch && patch[dateKey] != null) {
+                  const parsed = parseDateFromText(String(patch[dateKey]), set).date;
+                  if (parsed) patch[dateKey] = formatDate(parsed, set);
+                }
+              }
+              if (status === "DONE" && !("completed" in patch)) {
+                patch.completed = formatDate(todayLocal(), set);
+              } else if (status === "TODO" && !("completed" in patch)) {
+                patch.completed = null;
+              }
+              if (Object.keys(patch).length) {
+                await applyToolAttributePatch(uid, patch, set);
+                anyPatchApplied = true;
+              }
+            });
             const nextBlock = await getBlock(uid);
             const meta = nextBlock ? await readRecurringMeta(nextBlock, set) : null;
             const task = nextBlock && meta ? deriveDashboardTask(nextBlock, meta, set) : null;
@@ -6561,6 +6677,7 @@ export default {
         bulkOperationCooldownTimer = null;
       }
       bulkOperationInProgress = true;
+      const bulkId = `b_${shortId()}`;
       try {
         const set = S();
         const results = [];
@@ -6571,7 +6688,9 @@ export default {
             const block = await getBlock(uid);
             if (!block) { results.push({ uid, success: false, error: "Task not found" }); continue; }
             if (!isTaskBlock(block)) { results.push({ uid, success: false, error: "Target block is not a TODO/DONE task block" }); continue; }
-            await snoozeDeferByDays(uid, set, days);
+            await withActivityContext(uid, { source: "bulk", bulkId }, async () => {
+              await snoozeDeferByDays(uid, set, days);
+            });
             const nextBlock = await getBlock(uid);
             const meta = nextBlock ? await readRecurringMeta(nextBlock, set) : null;
             const task = nextBlock && meta ? deriveDashboardTask(nextBlock, meta, set) : null;
@@ -6639,6 +6758,8 @@ export default {
       priority: 10,
       energy: 11,
       depends: 12,
+      parent: 13,
+      notes: 14,
     };
 
     function getChildOrderForType(type) {
@@ -6817,6 +6938,28 @@ export default {
       const order = getChildOrderForType(type);
       const result = await ensureChildAttr(uid, getAttrLabel(type, attrNames), value, order);
       await enforceChildAttrOrder(uid, attrNames);
+      // Activity log diff capture (skip "completed" — handled by markCompleted)
+      try {
+        if (uid && type && type !== "completed") {
+          const ctx = getActivityContext(uid) || {};
+          if (!ctx.suppressLogging) {
+            const previousValue = result?.previousValue ?? null;
+            const newValue = value == null ? null : String(value);
+            if (String(previousValue || "") !== String(newValue || "")) {
+              const eventKind = ctx.eventKind || "attr_change";
+              const details = {
+                field: type,
+                from: previousValue ? String(previousValue) : null,
+                to: newValue ? String(newValue) : null,
+                source: ctx.source || null,
+                bulkId: ctx.bulkId || null,
+              };
+              if (ctx.days != null) details.days = ctx.days;
+              void recordActivity(uid, eventKind, details);
+            }
+          }
+        }
+      } catch (_) { /* never block writes on logging */ }
       return result;
     }
 
@@ -6968,9 +7111,34 @@ export default {
     }
 
     async function removeChildAttrsForType(uid, type, attrNames) {
+      // Activity log: capture previous value before removal for diff
+      let previousValue = null;
+      if (uid && type && type !== "completed") {
+        try {
+          const block = await getBlock(uid);
+          const childMap = parseAttrsFromChildBlocks(block?.children || []);
+          const aliases = (attrNames?.attrByType?.[type]?.aliases) || [];
+          const entry = pickChildAttr(childMap, aliases, { allowFallback: true });
+          if (entry?.value) previousValue = String(entry.value);
+        } catch (_) { /* ignore */ }
+      }
       for (const key of getAttrRemovalKeys(type, attrNames)) {
         await removeChildAttr(uid, key);
       }
+      try {
+        if (uid && type && type !== "completed" && previousValue) {
+          const ctx = getActivityContext(uid) || {};
+          if (!ctx.suppressLogging) {
+            void recordActivity(uid, ctx.eventKind || "attr_change", {
+              field: type,
+              from: previousValue,
+              to: null,
+              source: ctx.source || null,
+              bulkId: ctx.bulkId || null,
+            });
+          }
+        }
+      } catch (_) { /* ignore */ }
     }
 
     async function clearAttrForType(uid, type, options = {}) {
@@ -7217,6 +7385,404 @@ export default {
       });
     }
 
+    // ── Activity log ─────────────────────────────────────────────────
+    // Storage: each task may have one "history container" child block,
+    // identified by :block/props.bt.kind === "history". Activity events are
+    // children of that container, one per mutation. Each event block has
+    // human-readable text and structured :block/props.bt for analytics.
+
+    const HISTORY_CONTAINER_KEY = "__bt_history_container__";
+    // Cache lives until the entry is explicitly invalidated (deconvert /
+    // history container delete). The TTL guards against cross-graph weirdness
+    // but should be long enough that bulk operations and slow writes don't
+    // race the index.
+    const HISTORY_CONTAINER_CACHE_TTL_MS = 60_000;
+    const historyContainerCache = new Map();
+
+    // Per-task activity context — populated by call sites that want to tag
+    // events with source/bulkId/eventKind. Read by ensureChildAttrForType,
+    // removeChildAttrsForType, and other hook points.
+    const activityContexts = new Map();
+
+    function getActivityContext(taskUid) {
+      if (!taskUid) return null;
+      return activityContexts.get(taskUid) || null;
+    }
+
+    async function withActivityContext(taskUid, ctx, fn) {
+      if (!taskUid) return fn();
+      const previous = activityContexts.has(taskUid) ? activityContexts.get(taskUid) : undefined;
+      activityContexts.set(taskUid, { ...(previous || {}), ...(ctx || {}) });
+      try {
+        return await fn();
+      } finally {
+        if (previous === undefined) {
+          activityContexts.delete(taskUid);
+        } else {
+          activityContexts.set(taskUid, previous);
+        }
+      }
+    }
+
+    function activityLogEnabled() {
+      try {
+        const val = extensionAPI.settings.get(ACTIVITY_LOG_ENABLED_SETTING);
+        return val !== false && val !== "false";
+      } catch (_) {
+        return true;
+      }
+    }
+
+    function activityLogTextEditsEnabled() {
+      try {
+        const val = extensionAPI.settings.get(ACTIVITY_LOG_TEXT_EDITS_SETTING);
+        return val === true || val === "true";
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function activityLogMaxEntries() {
+      try {
+        const raw = extensionAPI.settings.get(ACTIVITY_LOG_MAX_ENTRIES_SETTING);
+        if (raw == null || raw === "") return 0;
+        const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+        return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    function pullBlockPropsSync(uid) {
+      if (!uid) return null;
+      try {
+        // Use the same `q` path the existing `rt` props code relies on.
+        // `data.pull` returns props with namespaced-keyword keys, which
+        // breaks our `props.bt.kind` lookups; `q` returns the JSON-encoded
+        // string, which `parseProps` reliably converts to a plain object.
+        const safeUid = escapeDatalogString(uid);
+        const rows = window.roamAlphaAPI.q(
+          `[:find ?p :where [?b :block/uid "${safeUid}"] [?b :block/props ?p]]`
+        );
+        return parseProps(rows?.[0]?.[0]) || {};
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function deepMergeProps(current, patch) {
+      const merged = { ...(current || {}) };
+      for (const key of Object.keys(patch || {})) {
+        const value = patch[key];
+        if (value && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
+          merged[key] = deepMergeProps(current?.[key], value);
+        } else {
+          merged[key] = value;
+        }
+      }
+      for (const key of Object.keys(merged)) {
+        if (merged[key] === undefined) delete merged[key];
+      }
+      return merged;
+    }
+
+    async function mergeRawBlockProps(uid, patch) {
+      if (!uid) return;
+      try {
+        const current = pullBlockPropsSync(uid) || {};
+        const next = deepMergeProps(current, patch);
+        await window.roamAlphaAPI.updateBlock({ block: { uid, props: next } });
+        invalidateBlockCache(uid);
+      } catch (err) {
+        console.warn("[BetterTasks] mergeRawBlockProps failed", err);
+      }
+    }
+
+    // The set of container title strings we recognise. Currently all locales
+    // share the same English string. If a locale is translated in the future,
+    // add the new title here so existing containers are still found.
+    const HISTORY_CONTAINER_TITLES = new Set(["**Activity log**"]);
+
+    function isHistoryContainerString(str) {
+      if (!str || typeof str !== "string") return false;
+      return HISTORY_CONTAINER_TITLES.has(str.trim());
+    }
+
+    // Returns all child UIDs of the given task that are history containers.
+    // Identification is by **string match** (not :block/props) because Roam's
+    // datalog index does not reliably surface custom prop keys like `bt`.
+    // Requires an already-fetched block object (from getBlock) to avoid
+    // async/sync mismatch issues.
+    function findAllHistoryContainerUidsFromBlock(block) {
+      if (!block) return [];
+      const children = Array.isArray(block.children) ? block.children : [];
+      return children
+        .filter((c) => isHistoryContainerString(c?.string))
+        .map((c) => c?.uid)
+        .filter(Boolean);
+    }
+
+    // Async version that fetches the block first.
+    async function findAllHistoryContainerUids(taskUid) {
+      if (!taskUid) return [];
+      try {
+        const block = await getBlock(taskUid);
+        return findAllHistoryContainerUidsFromBlock(block);
+      } catch (_) {
+        return [];
+      }
+    }
+
+    async function ensureHistoryContainer(taskUid) {
+      if (!taskUid) return null;
+      const now = Date.now();
+      const cached = historyContainerCache.get(taskUid);
+      if (cached && now - cached.at < HISTORY_CONTAINER_CACHE_TTL_MS && cached.uid) {
+        return cached.uid;
+      }
+      return withChildAttrLock(taskUid, HISTORY_CONTAINER_KEY, async () => {
+        // Re-check cache inside the lock.
+        const after = Date.now();
+        const recached = historyContainerCache.get(taskUid);
+        if (recached && after - recached.at < HISTORY_CONTAINER_CACHE_TTL_MS && recached.uid) {
+          return recached.uid;
+        }
+        // Invalidate the block cache so getBlock returns fresh children.
+        invalidateBlockCache(taskUid);
+        const taskBlock = await getBlock(taskUid);
+        if (!taskBlock) return null;
+        // Find existing containers by string match (reliable, no props dependency).
+        const existingUids = findAllHistoryContainerUidsFromBlock(taskBlock);
+        if (existingUids.length) {
+          const keepUid = existingUids[0];
+          // Dedupe: merge any extra containers into the first one.
+          if (existingUids.length > 1) {
+            for (let i = 1; i < existingUids.length; i += 1) {
+              const dupUid = existingUids[i];
+              try {
+                const dupBlock = await getBlock(dupUid);
+                const dupChildren = Array.isArray(dupBlock?.children) ? dupBlock.children : [];
+                for (const ch of dupChildren) {
+                  const cuid = typeof ch?.uid === "string" ? ch.uid : "";
+                  if (!cuid) continue;
+                  try {
+                    await window.roamAlphaAPI.moveBlock({
+                      location: { "parent-uid": keepUid, order: "last" },
+                      block: { uid: cuid },
+                    });
+                  } catch (mvErr) {
+                    console.warn("[BetterTasks] dedupe history move failed", mvErr);
+                  }
+                }
+                await deleteBlock(dupUid);
+              } catch (delErr) {
+                console.warn("[BetterTasks] dedupe history delete failed", delErr);
+              }
+            }
+            invalidateBlockCache(keepUid);
+            invalidateBlockCache(taskUid);
+          }
+          historyContainerCache.set(taskUid, { uid: keepUid, at: Date.now() });
+          return keepUid;
+        }
+        // No container yet — create one.
+        const lang = getLanguageSetting();
+        const title = (typeof t === "function" && t(["activityLog", "containerTitle"], lang)) || "**Activity log**";
+        const newUid = window.roamAlphaAPI.util.generateUID();
+        try {
+          await createBlock(taskUid, "last", title, newUid);
+          historyContainerCache.set(taskUid, { uid: newUid, at: Date.now() });
+          return newUid;
+        } catch (err) {
+          console.warn("[BetterTasks] ensureHistoryContainer create failed", err);
+          return null;
+        }
+      });
+    }
+
+    function formatActivityTimestamp(ts) {
+      try {
+        const d = new Date(ts);
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function renderActivityLine(event, details = {}, ts = Date.now()) {
+      const lang = getLanguageSetting();
+      const stamp = formatActivityTimestamp(ts);
+      // Treat attribute removals (to == null) as a distinct template so the
+      // line reads "X removed" rather than "X → ".
+      let templateKey = event;
+      if ((event === "attr_change" || event === "reschedule") && (details.to == null || details.to === "")) {
+        templateKey = "attr_removed";
+      }
+      let label = "";
+      try {
+        const tpl = typeof t === "function" ? t(["activityLog", "event", templateKey], lang) : null;
+        if (typeof tpl === "function") {
+          label = tpl(details);
+        } else if (typeof tpl === "string") {
+          label = tpl
+            .replace(/\{\{field\}\}/g, details.field == null ? "" : String(details.field))
+            .replace(/\{\{from\}\}/g, details.from == null ? "" : String(details.from))
+            .replace(/\{\{to\}\}/g, details.to == null ? "" : String(details.to))
+            .replace(/\{\{days\}\}/g, details.days == null ? "" : String(details.days))
+            .replace(/\{\{s\}\}/g, Math.abs(Number(details.days || 0)) === 1 ? "" : "s");
+        } else {
+          label = event;
+        }
+      } catch (_) {
+        label = event;
+      }
+      return `${stamp} — ${label}`.trim();
+    }
+
+    async function trimActivityLog(containerUid, max) {
+      if (!containerUid || !max || max <= 0) return;
+      try {
+        invalidateBlockCache(containerUid);
+        const container = await getBlock(containerUid);
+        if (!container) return;
+        const children = Array.isArray(container.children) ? container.children.slice() : [];
+        if (children.length <= max) return;
+        // Children are returned in :block/order; oldest first (we append "last").
+        const overflow = children.length - max;
+        for (let i = 0; i < overflow; i += 1) {
+          const victimUid = children[i]?.uid;
+          if (!victimUid) continue;
+          try {
+            await deleteBlock(victimUid);
+          } catch (_) { /* ignore */ }
+        }
+        invalidateBlockCache(containerUid);
+      } catch (err) {
+        console.warn("[BetterTasks] trimActivityLog failed", err);
+      }
+    }
+
+    async function recordActivity(taskUid, event, details = {}) {
+      if (!taskUid || !event) return;
+      try {
+        if (!activityLogEnabled()) return;
+        if (event === "text_edit" && !activityLogTextEditsEnabled()) return;
+        const containerUid = await ensureHistoryContainer(taskUid);
+        if (!containerUid) return;
+        const ts = Date.now();
+        const text = renderActivityLine(event, details, ts);
+        const entryUid = window.roamAlphaAPI.util.generateUID();
+        await createBlock(containerUid, "last", text, entryUid);
+        const propsBt = { kind: "event", event, ts };
+        const optionalKeys = ["field", "from", "to", "days", "source", "bulkId", "nextUid", "prevUid"];
+        for (const key of optionalKeys) {
+          const v = details[key];
+          if (v !== undefined && v !== null && v !== "") propsBt[key] = v;
+        }
+        await mergeRawBlockProps(entryUid, { bt: propsBt });
+        invalidateBlockCache(containerUid);
+        const max = activityLogMaxEntries();
+        if (max > 0) {
+          await trimActivityLog(containerUid, max);
+        }
+      } catch (err) {
+        console.warn("[BetterTasks] recordActivity failed", err);
+      }
+    }
+
+    // Parse an event entry from its human-readable text line.
+    // Format: "YYYY-MM-DD HH:MM — <label>"
+    // The label encodes the event type and details.
+    function parseEventFromText(text) {
+      if (!text || typeof text !== "string") return null;
+      const m = text.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})\s*[\u2014\-]\s*(.+)$/);
+      if (!m) return null;
+      const ts = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).getTime();
+      const label = m[6].trim();
+      // Attempt to classify the event from the label text
+      let event = "attr_change";
+      if (/^Created$/i.test(label)) event = "create";
+      else if (/^Marked complete$/i.test(label)) event = "complete";
+      else if (/^Reopened$/i.test(label)) event = "reopen";
+      else if (/^Snoozed\b/i.test(label)) event = "snooze";
+      else if (/^Recurrence spawned$/i.test(label)) event = "recurrence_spawned";
+      else if (/^Title edited$/i.test(label)) event = "text_edit";
+      else if (/\bremoved$/i.test(label)) event = "attr_change";
+      return { ts, event, label };
+    }
+
+    async function readActivityLog(taskUid, options = {}) {
+      if (!taskUid) return { containerUid: null, entries: [], total: 0 };
+      try {
+        const containerUids = await findAllHistoryContainerUids(taskUid);
+        if (!containerUids.length) {
+          return { containerUid: null, entries: [], total: 0 };
+        }
+        const entries = [];
+        for (const containerUid of containerUids) {
+          invalidateBlockCache(containerUid);
+          const container = await getBlock(containerUid);
+          if (!container) continue;
+          const children = Array.isArray(container.children) ? container.children.slice() : [];
+          for (const child of children) {
+            const cUid = typeof child?.uid === "string" ? child.uid : "";
+            if (!cUid) continue;
+            const text = child.string || "";
+            // Skip empty children or the container-title-like children
+            if (!text.trim() || isHistoryContainerString(text)) continue;
+            // Try to read structured props (best-effort — Roam may not
+            // persist custom `bt` keys). Fall back to text parsing.
+            const props = pullBlockPropsSync(cUid) || {};
+            const bt = props?.bt || props?.[":bt"] || {};
+            const parsed = parseEventFromText(text);
+            entries.push({
+              uid: cUid,
+              text,
+              ts: typeof bt.ts === "number" ? bt.ts : (parsed?.ts || 0),
+              event: bt.event || parsed?.event || "",
+              field: bt.field || null,
+              from: bt.from == null ? null : bt.from,
+              to: bt.to == null ? null : bt.to,
+              days: bt.days == null ? null : bt.days,
+              source: bt.source || null,
+              bulkId: bt.bulkId || null,
+              nextUid: bt.nextUid || null,
+              prevUid: bt.prevUid || null,
+            });
+          }
+        }
+        entries.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+        const limit = Number.isFinite(options.limit) && options.limit > 0 ? options.limit : entries.length;
+        return {
+          containerUid: containerUids[0],
+          entries: entries.slice(0, limit),
+          total: entries.length,
+        };
+      } catch (err) {
+        console.warn("[BetterTasks] readActivityLog failed", err);
+        return { containerUid: null, entries: [], total: 0 };
+      }
+    }
+
+    async function deleteHistoryContainer(taskUid) {
+      if (!taskUid) return false;
+      try {
+        const containerUids = await findAllHistoryContainerUids(taskUid);
+        if (!containerUids.length) return false;
+        for (const containerUid of containerUids) {
+          await deleteBlock(containerUid);
+        }
+        historyContainerCache.delete(taskUid);
+        invalidateBlockCache(taskUid);
+        return true;
+      } catch (err) {
+        console.warn("[BetterTasks] deleteHistoryContainer failed", err);
+        return false;
+      }
+    }
+    // ── End Activity log ─────────────────────────────────────────────
+
     async function markCompleted(block, meta, set) {
       const uid = block.uid;
       const beforeString = block.string || "";
@@ -7236,6 +7802,15 @@ export default {
           tz: set.timezone,
         },
       });
+
+      try {
+        const ctx = getActivityContext(uid) || {};
+        void recordActivity(uid, "complete", {
+          to: completedDate,
+          source: ctx.source || null,
+          bulkId: ctx.bulkId || null,
+        });
+      } catch (_) { /* never block completion on logging */ }
 
       return {
         processedAt,
@@ -7487,50 +8062,62 @@ export default {
       const newUid = window.roamAlphaAPI.util.generateUID();
       await createBlock(targetPageUid, 0, taskLine, newUid);
 
-      await ensureChildAttrForType(newUid, "repeat", meta.repeat, set.attrNames);
-      await ensureChildAttrForType(newUid, "due", nextDueStr, set.attrNames);
-      if (nextStartStr) {
-        await ensureChildAttrForType(newUid, "start", nextStartStr, set.attrNames);
-      } else {
-        await removeChildAttrsForType(newUid, "start", set.attrNames);
-      }
-      if (nextDeferStr) {
-        await ensureChildAttrForType(newUid, "defer", nextDeferStr, set.attrNames);
-      } else {
-        await removeChildAttrsForType(newUid, "defer", set.attrNames);
-      }
-      const advanceEntry = meta.childAttrMap?.[ADVANCE_ATTR.toLowerCase()];
-      if (advanceEntry?.value) {
-        await ensureChildAttr(newUid, ADVANCE_ATTR, advanceEntry.value, getChildOrderForType("advance"));
-        await enforceChildAttrOrder(newUid, set.attrNames);
-      }
+      // Suppress activity logging for the brand-new instance — its history starts empty.
+      await withActivityContext(newUid, { suppressLogging: true }, async () => {
+        await ensureChildAttrForType(newUid, "repeat", meta.repeat, set.attrNames);
+        await ensureChildAttrForType(newUid, "due", nextDueStr, set.attrNames);
+        if (nextStartStr) {
+          await ensureChildAttrForType(newUid, "start", nextStartStr, set.attrNames);
+        } else {
+          await removeChildAttrsForType(newUid, "start", set.attrNames);
+        }
+        if (nextDeferStr) {
+          await ensureChildAttrForType(newUid, "defer", nextDeferStr, set.attrNames);
+        } else {
+          await removeChildAttrsForType(newUid, "defer", set.attrNames);
+        }
+        const advanceEntry = meta.childAttrMap?.[ADVANCE_ATTR.toLowerCase()];
+        if (advanceEntry?.value) {
+          await ensureChildAttr(newUid, ADVANCE_ATTR, advanceEntry.value, getChildOrderForType("advance"));
+          await enforceChildAttrOrder(newUid, set.attrNames);
+        }
 
-      // Carry forward rich metadata from previous occurrence
-      const rm = meta.metadata;
-      if (rm) {
-        if (rm.project) await ensureChildAttrForType(newUid, "project", normalizeProjectValue(rm.project), set.attrNames);
-        if (rm.waitingFor) await ensureChildAttrForType(newUid, "waitingFor", rm.waitingFor, set.attrNames);
-        if (Array.isArray(rm.context) && rm.context.length) await ensureChildAttrForType(newUid, "context", rm.context.join(", "), set.attrNames);
-        if (rm.priority) await ensureChildAttrForType(newUid, "priority", formatPriorityEnergyDisplay(rm.priority), set.attrNames);
-        if (rm.energy) await ensureChildAttrForType(newUid, "energy", formatPriorityEnergyDisplay(rm.energy), set.attrNames);
-        if (rm.gtd) await ensureChildAttrForType(newUid, "gtd", formatGtdStatusDisplay(rm.gtd), set.attrNames);
-      }
+        // Carry forward rich metadata from previous occurrence
+        const rm = meta.metadata;
+        if (rm) {
+          if (rm.project) await ensureChildAttrForType(newUid, "project", normalizeProjectValue(rm.project), set.attrNames);
+          if (rm.waitingFor) await ensureChildAttrForType(newUid, "waitingFor", rm.waitingFor, set.attrNames);
+          if (Array.isArray(rm.context) && rm.context.length) await ensureChildAttrForType(newUid, "context", rm.context.join(", "), set.attrNames);
+          if (rm.priority) await ensureChildAttrForType(newUid, "priority", formatPriorityEnergyDisplay(rm.priority), set.attrNames);
+          if (rm.energy) await ensureChildAttrForType(newUid, "energy", formatPriorityEnergyDisplay(rm.energy), set.attrNames);
+          if (rm.gtd) await ensureChildAttrForType(newUid, "gtd", formatGtdStatusDisplay(rm.gtd), set.attrNames);
+        }
 
-      // Carry forward future exceptions, pruning dates in the past
-      const todayRef = todayLocal();
-      const todayIso = `${todayRef.getFullYear()}-${String(todayRef.getMonth() + 1).padStart(2, "0")}-${String(todayRef.getDate()).padStart(2, "0")}`;
-      const futureExceptions = Array.isArray(meta.exceptions)
-        ? meta.exceptions.filter((d) => typeof d === "string" && d >= todayIso)
-        : [];
-      const rtProps = { id: shortId(), parent: seriesId, tz: set.timezone };
-      if (futureExceptions.length) rtProps.exceptions = futureExceptions;
-      await updateBlockProps(newUid, {
-        repeat: meta.repeat,
-        due: nextDueStr,
-        start: nextStartStr || undefined,
-        defer: nextDeferStr || undefined,
-        rt: rtProps,
+        // Carry forward future exceptions, pruning dates in the past
+        const todayRef = todayLocal();
+        const todayIso = `${todayRef.getFullYear()}-${String(todayRef.getMonth() + 1).padStart(2, "0")}-${String(todayRef.getDate()).padStart(2, "0")}`;
+        const futureExceptions = Array.isArray(meta.exceptions)
+          ? meta.exceptions.filter((d) => typeof d === "string" && d >= todayIso)
+          : [];
+        const rtProps = { id: shortId(), parent: seriesId, tz: set.timezone };
+        if (futureExceptions.length) rtProps.exceptions = futureExceptions;
+        await updateBlockProps(newUid, {
+          repeat: meta.repeat,
+          due: nextDueStr,
+          start: nextStartStr || undefined,
+          defer: nextDeferStr || undefined,
+          rt: rtProps,
+        });
       });
+
+      // Record on the prior block that the next occurrence was spawned.
+      try {
+        void recordActivity(prevBlock.uid, "recurrence_spawned", {
+          to: nextDueStr,
+          nextUid: newUid,
+          source: "recurrence",
+        });
+      } catch (_) { /* ignore */ }
 
       return newUid;
     }
@@ -8966,7 +9553,7 @@ export default {
         const saveLabel = t("buttons.save", lang) || "Save";
         const cancelLabel = t("buttons.cancel", lang) || "Cancel";
         const inputClass = `rt-prompt-input-${Date.now()}`;
-        const inputHtml = `<input type="text" class="${inputClass}" placeholder="${escapeHtml(
+        const inputHtml = `<input type="text" class="${inputClass} bt-prompt-input" placeholder="${escapeHtml(
           placeholderText || ""
         )}" value="${escapeHtml(initial || "")}" />`;
         iziToast.question({
@@ -10224,6 +10811,7 @@ export default {
 
     async function deconvertTask(uid) {
       if (!uid) return false;
+      invalidateBlockCache(uid);
       const block = await getBlock(uid);
       if (!block) return false;
       const blockStr = block.string || "";
@@ -10231,19 +10819,57 @@ export default {
       const attrNames = resolveAttributeNames();
       const children = block.children || [];
       const btChildren = children.filter((c) => isBtChildBlock(c.string, attrNames));
-      if (!btChildren.length) return false;
+      const historyContainerUids = findAllHistoryContainerUidsFromBlock(block);
+      if (!btChildren.length && !historyContainerUids.length) return false;
       // Delete BT attribute child blocks
       for (const child of btChildren) {
         await deleteBlock(child.uid);
       }
-      // Clear RT props (series metadata) if present
-      try {
-        const props = window.roamAlphaAPI?.data?.pull?.("[:block/props]", [":block/uid", uid]);
-        if (props?.[":block/props"]?.rt) {
-          await updateBlockProps(uid, { rt: null });
+      // Delete every history container (and its event children) — if any
+      // duplicates were created by races in earlier builds, this cleans them
+      // all up in one pass.
+      for (const containerUid of historyContainerUids) {
+        try {
+          await deleteBlock(containerUid);
+        } catch (err) {
+          console.warn("[BetterTasks] deconvert delete history failed", err);
         }
+      }
+      historyContainerCache.delete(uid);
+      // Clear ALL block props — rt (series metadata), and the inline timing
+      // props (repeat, due, start, defer) that readRecurringMeta reads from
+      // :block/props. Without this, the task is re-detected as a Better Task
+      // on the next scan even though child blocks are gone.
+      try {
+        await window.roamAlphaAPI.updateBlock({
+          block: { uid, props: {} },
+        });
       } catch (_) { /* ignore */ }
       invalidateBlockCache(uid);
+      // Drop every cached reference so the block is no longer treated as
+      // a Better Task anywhere: pill signature, inline metadata, dashboard
+      // state, repeat overrides, subtask progress.
+      try {
+        window.__btPillSignatureCache?.delete?.(uid);
+        window.__btInlineMetaCache?.delete?.(uid);
+        subtaskProgressCache?.delete?.(uid);
+        repeatOverrides?.delete?.(uid);
+      } catch (_) { /* ignore */ }
+      // Remove from dashboard state so it disappears from the task list.
+      try {
+        activeDashboardController?.removeTask?.(uid);
+      } catch (_) { /* ignore */ }
+      // Immediately remove the pill DOM element so the user doesn't see a
+      // stale ghost while the async resync catches up.
+      try {
+        const main = document.querySelector(`.rm-block-main[data-uid="${uid}"]`);
+        if (main) {
+          main.querySelectorAll(".rt-pill-wrap")?.forEach((el) => el.remove());
+        }
+      } catch (_) { /* ignore */ }
+      try {
+        void syncPillsForSurface(lastAttrSurface);
+      } catch (_) { /* ignore */ }
       return true;
     }
 
@@ -13753,7 +14379,9 @@ export default {
       const block = await getBlock(uid);
       if (!block) return;
       const meta = await readRecurringMeta(block, set);
-      await shiftExistingDatesByDays(uid, set, days, { block, meta });
+      await withActivityContext(uid, { eventKind: "snooze", days }, async () => {
+        await shiftExistingDatesByDays(uid, set, days, { block, meta });
+      });
     }
 
     async function snoozeDeferToNextMonday(uid, set) {
@@ -13772,7 +14400,9 @@ export default {
         if (cursor.getDay() === 1) break;
       }
       const days = diffDaysLocal(cursor, anchor);
-      await shiftExistingDatesByDays(uid, set, days, { block, meta });
+      await withActivityContext(uid, { eventKind: "snooze", days }, async () => {
+        await shiftExistingDatesByDays(uid, set, days, { block, meta });
+      });
     }
 
     async function snoozePickDeferDate(uid, set) {
@@ -13798,11 +14428,15 @@ export default {
         meta.start ||
         null;
       if (!anchor) {
-        await updateDeferDate(uid, set, parsed, { block, meta });
+        await withActivityContext(uid, { eventKind: "snooze" }, async () => {
+          await updateDeferDate(uid, set, parsed, { block, meta });
+        });
         return;
       }
       const days = diffDaysLocal(parsed, anchor);
-      await shiftExistingDatesByDays(uid, set, days, { block, meta });
+      await withActivityContext(uid, { eventKind: "snooze", days }, async () => {
+        await shiftExistingDatesByDays(uid, set, days, { block, meta });
+      });
     }
 
     async function skipOccurrence(uid, set) {
@@ -14308,6 +14942,13 @@ export default {
           },
         });
         repeatOverrides.delete(uid);
+        try {
+          const ctx = getActivityContext(uid) || {};
+          void recordActivity(uid, "reopen", {
+            source: ctx.source || null,
+            bulkId: ctx.bulkId || null,
+          });
+        } catch (_) { /* ignore */ }
         activeDashboardController?.notifyBlockChange?.(uid);
         // Invalidate subtask progress caches so parent pills re-render
         invalidateBlockCache(uid);
@@ -14529,6 +15170,7 @@ export default {
         openPillMenuForTask,
         removeTaskAttribute,
         refreshLanguage,
+        getTaskActivity: (uid, opts) => readActivityLog(uid, opts || {}),
         loadViewsStore: () => loadViewsStore(extensionAPI),
         saveViewsStore: (store) => saveViewsStore(extensionAPI, store),
         subscribeDashViewRequests,
@@ -15435,12 +16077,21 @@ export default {
         if (!uid) return;
         try {
           if (action === "complete") {
+            // Mark DONE first so the block string reflects the new state,
+            // then route through processTaskCompletion which handles both
+            // one-off tasks (markCompleted) and recurring tasks
+            // (markCompleted + spawnNextOccurrence + undo toast).
             await setTaskTodoState(uid, "DONE");
-            const set = S();
-            await ensureChildAttrForType(uid, "completed", formatDate(todayLocal(), set), set.attrNames);
+            lastUserCheckboxInteraction = Date.now();
+            await processTaskCompletion(uid, {
+              userInitiated: true,
+              skipConfirmation: false,
+            });
           } else {
-            await setTaskTodoState(uid, "TODO");
-            await undoTaskCompletion(uid);
+            await withActivityContext(uid, { source: "dashboard" }, async () => {
+              await setTaskTodoState(uid, "TODO");
+              await undoTaskCompletion(uid);
+            });
           }
         } catch (err) {
           console.error("[BetterTasks] toggleTask failed", err);
@@ -15492,6 +16143,14 @@ export default {
             invalidateBlockCache(uid);
             invalidateBlockedState(uid);
           }
+          if ("notes" in patch) {
+            const text = patch.notes == null ? null : String(patch.notes).trim();
+            if (!text) {
+              await removeChildAttrsForType(uid, "notes", attrNames);
+            } else {
+              await ensureChildAttrForType(uid, "notes", text, attrNames);
+            }
+          }
         } catch (err) {
           console.warn("[BetterTasks] updateMetadata failed", err);
           toast("Could not update metadata.");
@@ -15515,13 +16174,15 @@ export default {
         if (!uid) return;
         try {
           const set = S();
-          if (preset === "pick") {
-            await snoozePickDeferDate(uid, set);
-          } else if (typeof preset === "number") {
-            await snoozeDeferByDays(uid, set, preset);
-          } else {
-            await snoozeDeferByDays(uid, set, 1);
-          }
+          await withActivityContext(uid, { source: "dashboard" }, async () => {
+            if (preset === "pick") {
+              await snoozePickDeferDate(uid, set);
+            } else if (typeof preset === "number") {
+              await snoozeDeferByDays(uid, set, preset);
+            } else {
+              await snoozeDeferByDays(uid, set, 1);
+            }
+          });
           activeDashboardController?.notifyBlockChange?.(uid);
         } catch (err) {
           console.error("[BetterTasks] snoozeTask failed", err);
@@ -15596,15 +16257,19 @@ export default {
           }
           // Apply action
           const errors = [];
+          const bulkId = `b_${shortId()}`;
           for (const uid of uids) {
             try {
-              if (action === "complete") {
-                await setTaskTodoState(uid, "DONE");
-                await ensureChildAttrForType(uid, "completed", completedDate, attrNames);
-              } else {
-                await setTaskTodoState(uid, "TODO");
-                await undoTaskCompletion(uid);
-              }
+              await withActivityContext(uid, { source: "bulk", bulkId }, async () => {
+                if (action === "complete") {
+                  await setTaskTodoState(uid, "DONE");
+                  await ensureChildAttrForType(uid, "completed", completedDate, attrNames);
+                  void recordActivity(uid, "complete", { to: completedDate, source: "bulk", bulkId });
+                } else {
+                  await setTaskTodoState(uid, "TODO");
+                  await undoTaskCompletion(uid);
+                }
+              });
             } catch (err) {
               errors.push({ uid, err });
             }
@@ -15633,15 +16298,19 @@ export default {
                 const undoSet = S();
                 const undoAttrNames = undoSet.attrNames;
                 const undoCompletedDate = formatDate(todayLocal(), undoSet);
+                const undoBulkId = `b_${shortId()}`;
                 for (const { uid, wasCompleted } of previousStates) {
                   try {
-                    if (wasCompleted) {
-                      await setTaskTodoState(uid, "DONE");
-                      await ensureChildAttrForType(uid, "completed", undoCompletedDate, undoAttrNames);
-                    } else {
-                      await setTaskTodoState(uid, "TODO");
-                      await undoTaskCompletion(uid);
-                    }
+                    await withActivityContext(uid, { source: "bulk", bulkId: undoBulkId }, async () => {
+                      if (wasCompleted) {
+                        await setTaskTodoState(uid, "DONE");
+                        await ensureChildAttrForType(uid, "completed", undoCompletedDate, undoAttrNames);
+                        void recordActivity(uid, "complete", { to: undoCompletedDate, source: "bulk", bulkId: undoBulkId });
+                      } else {
+                        await setTaskTodoState(uid, "TODO");
+                        await undoTaskCompletion(uid);
+                      }
+                    });
                   } catch (err) {
                     console.warn("[BetterTasks] bulk undo item failed", uid, err);
                   }
@@ -15711,9 +16380,12 @@ export default {
           }
           // Apply snooze
           const errors = [];
+          const bulkId = `b_${shortId()}`;
           for (const uid of uids) {
             try {
-              await snoozeDeferByDays(uid, set, days);
+              await withActivityContext(uid, { source: "bulk", bulkId }, async () => {
+                await snoozeDeferByDays(uid, set, days);
+              });
             } catch (err) {
               errors.push({ uid, err });
             }
@@ -15808,22 +16480,25 @@ export default {
           }
           // Apply patch
           const errors = [];
+          const bulkId = `b_${shortId()}`;
           for (const uid of uids) {
             try {
-              if (field === "project") {
-                await setRichAttribute(uid, "project", patch.project, attrNames);
-              } else if (field === "waitingFor") {
-                await setRichAttribute(uid, "waitingFor", patch.waitingFor, attrNames);
-              } else if (field === "context") {
-                const ctxArr = Array.isArray(patch.context) ? patch.context : [];
-                await setRichAttribute(uid, "context", ctxArr, attrNames);
-              } else if (field === "priority") {
-                await setRichAttribute(uid, "priority", patch.priority, attrNames);
-              } else if (field === "energy") {
-                await setRichAttribute(uid, "energy", patch.energy, attrNames);
-              } else if (field === "gtd") {
-                await setRichAttribute(uid, "gtd", patch.gtd, attrNames);
-              }
+              await withActivityContext(uid, { source: "bulk", bulkId }, async () => {
+                if (field === "project") {
+                  await setRichAttribute(uid, "project", patch.project, attrNames);
+                } else if (field === "waitingFor") {
+                  await setRichAttribute(uid, "waitingFor", patch.waitingFor, attrNames);
+                } else if (field === "context") {
+                  const ctxArr = Array.isArray(patch.context) ? patch.context : [];
+                  await setRichAttribute(uid, "context", ctxArr, attrNames);
+                } else if (field === "priority") {
+                  await setRichAttribute(uid, "priority", patch.priority, attrNames);
+                } else if (field === "energy") {
+                  await setRichAttribute(uid, "energy", patch.energy, attrNames);
+                } else if (field === "gtd") {
+                  await setRichAttribute(uid, "gtd", patch.gtd, attrNames);
+                }
+              });
             } catch (err) {
               errors.push({ uid, err });
             }
@@ -15846,22 +16521,25 @@ export default {
               }
               bulkOperationInProgress = true;
               try {
+                const undoBulkId = `b_${shortId()}`;
                 for (const { uid, previousValue } of previousStates) {
                   try {
-                    if (field === "project") {
-                      await setRichAttribute(uid, "project", previousValue, attrNames);
-                    } else if (field === "waitingFor") {
-                      await setRichAttribute(uid, "waitingFor", previousValue, attrNames);
-                    } else if (field === "context") {
-                      const ctxArr = Array.isArray(previousValue) ? previousValue : [];
-                      await setRichAttribute(uid, "context", ctxArr, attrNames);
-                    } else if (field === "priority") {
-                      await setRichAttribute(uid, "priority", previousValue, attrNames);
-                    } else if (field === "energy") {
-                      await setRichAttribute(uid, "energy", previousValue, attrNames);
-                    } else if (field === "gtd") {
-                      await setRichAttribute(uid, "gtd", previousValue, attrNames);
-                    }
+                    await withActivityContext(uid, { source: "bulk", bulkId: undoBulkId }, async () => {
+                      if (field === "project") {
+                        await setRichAttribute(uid, "project", previousValue, attrNames);
+                      } else if (field === "waitingFor") {
+                        await setRichAttribute(uid, "waitingFor", previousValue, attrNames);
+                      } else if (field === "context") {
+                        const ctxArr = Array.isArray(previousValue) ? previousValue : [];
+                        await setRichAttribute(uid, "context", ctxArr, attrNames);
+                      } else if (field === "priority") {
+                        await setRichAttribute(uid, "priority", previousValue, attrNames);
+                      } else if (field === "energy") {
+                        await setRichAttribute(uid, "energy", previousValue, attrNames);
+                      } else if (field === "gtd") {
+                        await setRichAttribute(uid, "gtd", previousValue, attrNames);
+                      }
+                    });
                   } catch (err) {
                     console.warn("[BetterTasks] bulk metadata undo item failed", uid, err);
                   }

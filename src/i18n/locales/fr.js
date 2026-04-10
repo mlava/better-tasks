@@ -113,6 +113,14 @@ const locale = {
     dependsAttrDescription: "Libellé de l'attribut de dépendances de tâche (bloc enfant)",
     parentAttr: "Nom de l'attribut de tâche parente",
     parentAttrDescription: "Libellé de l'attribut de tâche parente (bloc enfant)",
+    notesAttr: "Nom de l'attribut de notes",
+    notesAttrDescription: "Libellé de l'attribut de notes libres (bloc enfant)",
+    activityLogEnabled: "Activer le journal d'activité des tâches",
+    activityLogEnabledDescription: "Enregistrer un historique des changements en ajout seul (reports, complétions, modifications d'attributs) sous chaque tâche. Stocké comme un bloc enfant dans votre graphe.",
+    activityLogTextEdits: "Journaliser les modifications de titre dans l'activité",
+    activityLogTextEditsDescription: "Enregistrer aussi des événements lorsqu'un titre de tâche est modifié. Désactivé par défaut pour éviter le bruit pendant la saisie.",
+    activityLogMaxEntries: "Nombre maximal d'entrées du journal d'activité",
+    activityLogMaxEntriesDescription: "Limite facultative du nombre d'entrées par tâche. Lorsqu'elle est dépassée, les entrées les plus anciennes sont supprimées à chaque nouvelle écriture. Laissez vide pour illimité.",
     confirmBeforeSpawn: "Confirmer avant de générer la tâche suivante",
     confirmBeforeSpawnDescription: "Demander confirmation avant de générer la prochaine occurrence lors de la complétion d'une Better Task récurrente",
     weekStart: "Premier jour de la semaine",
@@ -496,6 +504,7 @@ const locale = {
     snoozePlus1: "+1j",
     snoozePlus7: "+7j",
     untitled: "(Tâche sans titre)",
+    notesLabel: "Notes",
     bulk: {
       select: "Sélection multiple",
       selectTask: "Sélectionner",
@@ -659,7 +668,12 @@ const locale = {
     editDepends: "Modifier les dépendances",
     removeDepends: "Supprimer les dépendances",
     metaHeading: "Métadonnées",
-    viewSeries: "Voir la série"
+    viewSeries: "Voir la série",
+    addNotes: "Ajouter des notes",
+    editNotes: "Modifier les notes",
+    removeNotes: "Supprimer les notes",
+    activityHeading: "Activité",
+    viewActivity: "Voir l'activité"
   },
   series: {
     title: "Série récurrente",
@@ -694,6 +708,7 @@ const locale = {
     start: "Début",
     defer: "Reporter",
     due: "Échéance",
+    notes: "Notes",
     next: "Suivant",
     repeatingTask: "Better Task Récurrente",
     scheduledTask: "Better Task Planifiée",
@@ -720,6 +735,25 @@ const locale = {
     noItems: "Aucune tâche correspondante trouvée",
     cycleDetected: "Impossible d'ajouter — créerait une dépendance circulaire",
     alreadyAdded: "Déjà une dépendance"
+  },
+  activityLog: {
+    title: "Journal d'activité",
+    containerTitle: "**Journal d'activité**",
+    close: "Fermer",
+    openInRoam: "Ouvrir l'historique dans Roam",
+    empty: "Aucune activité pour le moment.",
+    loading: "Chargement\u2026",
+    event: {
+      create: "Créée",
+      complete: "Marquée comme terminée",
+      reopen: "Rouverte",
+      snooze: (d) => `${d.field || ""} report\u00e9 de ${d.days || ""} jour${Math.abs(Number(d.days || 0)) === 1 ? "" : "s"} (\u2192 ${d.to || ""})`,
+      reschedule: "{{field}} \u2192 {{to}}",
+      attr_change: "{{field}} \u2192 {{to}}",
+      attr_removed: "{{field}} supprimé",
+      recurrence_spawned: "Récurrence générée",
+      text_edit: "Titre modifié"
+    }
   },
   templates: {
     createFromTemplate: "Créer depuis un modèle Better Task",

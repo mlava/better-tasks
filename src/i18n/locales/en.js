@@ -113,6 +113,14 @@ const locale = {
     dependsAttrDescription: "Label for task dependencies attribute (child block)",
     parentAttr: "Parent task attribute name",
     parentAttrDescription: "Label for the parent task attribute (child block)",
+    notesAttr: "Notes attribute name",
+    notesAttrDescription: "Label for the freeform notes attribute (child block)",
+    activityLogEnabled: "Enable task activity log",
+    activityLogEnabledDescription: "Record an append-only history of changes (snoozes, completions, attribute edits) under each task. Stored as a child block in your graph.",
+    activityLogTextEdits: "Log title edits in activity",
+    activityLogTextEditsDescription: "Also record events when a task title is edited. Off by default to avoid noise from typing.",
+    activityLogMaxEntries: "Activity log maximum entries",
+    activityLogMaxEntriesDescription: "Optional cap on entries per task. When exceeded, the oldest entries are pruned on each new write. Leave blank for unlimited.",
     confirmBeforeSpawn: "Confirm before spawning next task",
     confirmBeforeSpawnDescription: "Ask for confirmation before spawning when a repeating Better Task is completed",
     weekStart: "First day of the week",
@@ -496,6 +504,7 @@ const locale = {
     snoozePlus1: "+1d",
     snoozePlus7: "+7d",
     untitled: "(Untitled task)",
+    notesLabel: "Notes",
     bulk: {
       select: "Bulk",
       selectTask: "Select",
@@ -659,7 +668,12 @@ const locale = {
     editDepends: "Edit dependencies",
     removeDepends: "Remove dependencies",
     metaHeading: "Metadata",
-    viewSeries: "View series"
+    viewSeries: "View series",
+    addNotes: "Add notes",
+    editNotes: "Edit notes",
+    removeNotes: "Remove notes",
+    activityHeading: "Activity",
+    viewActivity: "View activity"
   },
   series: {
     title: "Recurring Series",
@@ -694,6 +708,7 @@ const locale = {
     start: "Start",
     defer: "Defer",
     due: "Due",
+    notes: "Notes",
     next: "Next",
     repeatingTask: "Repeating Better Task",
     scheduledTask: "Scheduled Better Task",
@@ -720,6 +735,25 @@ const locale = {
     noItems: "No matching tasks found",
     cycleDetected: "Cannot add — would create circular dependency",
     alreadyAdded: "Already a dependency"
+  },
+  activityLog: {
+    title: "Activity log",
+    containerTitle: "**Activity log**",
+    close: "Close",
+    openInRoam: "Open history in Roam",
+    empty: "No activity yet.",
+    loading: "Loading…",
+    event: {
+      create: "Created",
+      complete: "Marked complete",
+      reopen: "Reopened",
+      snooze: (d) => `Snoozed ${d.field || ""} by ${d.days || ""} day${Math.abs(Number(d.days || 0)) === 1 ? "" : "s"} (\u2192 ${d.to || ""})`,
+      reschedule: "{{field}} \u2192 {{to}}",
+      attr_change: "{{field}} \u2192 {{to}}",
+      attr_removed: "{{field}} removed",
+      recurrence_spawned: "Recurrence spawned",
+      text_edit: "Title edited"
+    }
   },
   templates: {
     createFromTemplate: "Create from Better Task template",

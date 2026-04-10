@@ -113,6 +113,14 @@ const locale = {
     dependsAttrDescription: "Beschriftung des Aufgabenabhängigkeits-Attributs (Unterblock)",
     parentAttr: "Name des Elternaufgaben-Attributs",
     parentAttrDescription: "Beschriftung des Elternaufgaben-Attributs (Unterblock)",
+    notesAttr: "Name des Notizattributs",
+    notesAttrDescription: "Beschriftung für das Freitext-Notizattribut (Unterblock)",
+    activityLogEnabled: "Aktivitätsprotokoll für Aufgaben aktivieren",
+    activityLogEnabledDescription: "Ein nur anhängbares Änderungsprotokoll (Verschiebungen, Abschlüsse, Attributänderungen) unter jeder Aufgabe aufzeichnen. Wird als Unterblock in deinem Graphen gespeichert.",
+    activityLogTextEdits: "Titeländerungen im Aktivitätsprotokoll erfassen",
+    activityLogTextEditsDescription: "Auch Ereignisse aufzeichnen, wenn ein Aufgabentitel bearbeitet wird. Standardmäßig aus, um Tipprauschen zu vermeiden.",
+    activityLogMaxEntries: "Maximale Einträge im Aktivitätsprotokoll",
+    activityLogMaxEntriesDescription: "Optionale Obergrenze für Einträge pro Aufgabe. Wird sie überschritten, werden bei jedem neuen Schreibvorgang die ältesten Einträge entfernt. Leer lassen für unbegrenzt.",
     confirmBeforeSpawn: "Vor der Erzeugung der nächsten Aufgabe bestätigen",
     confirmBeforeSpawnDescription: "Bestätigung anfordern, bevor die nächste Wiederholung beim Erledigen einer wiederkehrenden Aufgabe erzeugt wird",
     weekStart: "Erster Tag der Woche",
@@ -496,6 +504,7 @@ const locale = {
     snoozePlus1: "+1T",
     snoozePlus7: "+7T",
     untitled: "(Unbenannte Aufgabe)",
+    notesLabel: "Notizen",
     bulk: {
       select: "Mehrfachauswahl",
       selectTask: "Auswählen",
@@ -659,7 +668,12 @@ const locale = {
     editDepends: "Abhängigkeiten bearbeiten",
     removeDepends: "Abhängigkeiten entfernen",
     metaHeading: "Metadaten",
-    viewSeries: "Serie anzeigen"
+    viewSeries: "Serie anzeigen",
+    addNotes: "Notizen hinzufügen",
+    editNotes: "Notizen bearbeiten",
+    removeNotes: "Notizen entfernen",
+    activityHeading: "Aktivität",
+    viewActivity: "Aktivität anzeigen"
   },
   series: {
     title: "Wiederkehrende Serie",
@@ -694,6 +708,7 @@ const locale = {
     start: "Start",
     defer: "Zurückstellen",
     due: "Fällig",
+    notes: "Notizen",
     next: "Nächste",
     repeatingTask: "Wiederkehrende Better Task",
     scheduledTask: "Geplante Better Task",
@@ -720,6 +735,25 @@ const locale = {
     noItems: "Keine passenden Aufgaben gefunden",
     cycleDetected: "Kann nicht hinzugefügt werden — würde zirkuläre Abhängigkeit erzeugen",
     alreadyAdded: "Bereits eine Abhängigkeit"
+  },
+  activityLog: {
+    title: "Aktivitätsprotokoll",
+    containerTitle: "**Aktivitätsprotokoll**",
+    close: "Schließen",
+    openInRoam: "Verlauf in Roam öffnen",
+    empty: "Noch keine Aktivität.",
+    loading: "Wird geladen\u2026",
+    event: {
+      create: "Erstellt",
+      complete: "Als erledigt markiert",
+      reopen: "Wieder geöffnet",
+      snooze: (d) => `${d.field || ""} um ${d.days || ""} Tag${Math.abs(Number(d.days || 0)) === 1 ? "" : "e"} verschoben (\u2192 ${d.to || ""})`,
+      reschedule: "{{field}} \u2192 {{to}}",
+      attr_change: "{{field}} \u2192 {{to}}",
+      attr_removed: "{{field}} entfernt",
+      recurrence_spawned: "Wiederholung erzeugt",
+      text_edit: "Titel bearbeitet"
+    }
   },
   templates: {
     createFromTemplate: "Aus Better-Tasks-Vorlage erstellen",

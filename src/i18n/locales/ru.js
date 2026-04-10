@@ -113,6 +113,14 @@ const locale = {
     dependsAttrDescription: "Метка атрибута зависимостей задачи (дочерний блок)",
     parentAttr: "Имя атрибута родительской задачи",
     parentAttrDescription: "Метка атрибута родительской задачи (дочерний блок)",
+    notesAttr: "Имя атрибута заметок",
+    notesAttrDescription: "Метка для атрибута свободных заметок (дочерний блок)",
+    activityLogEnabled: "Включить журнал активности задачи",
+    activityLogEnabledDescription: "Записывать историю изменений только с добавлением (откладывания, завершения, изменения атрибутов) под каждой задачей. Хранится как дочерний блок в вашем графе.",
+    activityLogTextEdits: "Записывать изменения заголовка в активность",
+    activityLogTextEditsDescription: "Также записывать события при редактировании заголовка задачи. По умолчанию выключено, чтобы избежать шума во время набора текста.",
+    activityLogMaxEntries: "Максимум записей журнала активности",
+    activityLogMaxEntriesDescription: "Необязательный предел записей на задачу. При превышении самые старые записи удаляются при каждой новой записи. Оставьте пустым для безлимитного режима.",
     confirmBeforeSpawn: "Подтверждать перед созданием следующей задачи",
     confirmBeforeSpawnDescription: "Запрашивать подтверждение перед созданием следующего повторения при завершении повторяющейся Better Task",
     weekStart: "Первый день недели",
@@ -496,6 +504,7 @@ const locale = {
     snoozePlus1: "+1д",
     snoozePlus7: "+7д",
     untitled: "(Без названия)",
+    notesLabel: "Заметки",
     bulk: {
       select: "Массовые действия",
       selectTask: "Выбрать",
@@ -659,7 +668,12 @@ const locale = {
     editDepends: "Изменить зависимости",
     removeDepends: "Удалить зависимости",
     metaHeading: "Метаданные",
-    viewSeries: "Просмотр серии"
+    viewSeries: "Просмотр серии",
+    addNotes: "Добавить заметки",
+    editNotes: "Редактировать заметки",
+    removeNotes: "Удалить заметки",
+    activityHeading: "Активность",
+    viewActivity: "Показать активность"
   },
   series: {
     title: "Повторяющаяся серия",
@@ -694,6 +708,7 @@ const locale = {
     start: "Начало",
     defer: "Отложить",
     due: "Срок",
+    notes: "Заметки",
     next: "Следующая",
     repeatingTask: "Повторяющаяся Better Task",
     scheduledTask: "Запланированная Better Task",
@@ -720,6 +735,25 @@ const locale = {
     noItems: "Подходящие задачи не найдены",
     cycleDetected: "Невозможно добавить — возникнет циклическая зависимость",
     alreadyAdded: "Уже является зависимостью"
+  },
+  activityLog: {
+    title: "Журнал активности",
+    containerTitle: "**Журнал активности**",
+    close: "Закрыть",
+    openInRoam: "Открыть историю в Roam",
+    empty: "Пока нет активности.",
+    loading: "Загрузка\u2026",
+    event: {
+      create: "Создано",
+      complete: "Отмечено как завершённое",
+      reopen: "Переоткрыто",
+      snooze: (d) => `${d.field || ""} \u043E\u0442\u043B\u043E\u0436\u0435\u043D\u043E \u043D\u0430 ${d.days || ""} \u0434\u043D. (\u2192 ${d.to || ""})`,
+      reschedule: "{{field}} \u2192 {{to}}",
+      attr_change: "{{field}} \u2192 {{to}}",
+      attr_removed: "{{field}} удалено",
+      recurrence_spawned: "Повторение создано",
+      text_edit: "Заголовок изменён"
+    }
   },
   templates: {
     createFromTemplate: "Создать из шаблона Better Task",

@@ -113,6 +113,14 @@ const locale = {
     dependsAttrDescription: "Etiqueta del atributo de dependencias de tarea (bloque hijo)",
     parentAttr: "Nombre del atributo de tarea padre",
     parentAttrDescription: "Etiqueta del atributo de tarea padre (bloque hijo)",
+    notesAttr: "Nombre del atributo de notas",
+    notesAttrDescription: "Etiqueta del atributo de notas libres (bloque hijo)",
+    activityLogEnabled: "Activar registro de actividad de tareas",
+    activityLogEnabledDescription: "Registrar un historial solo acumulativo de cambios (posposiciones, finalizaciones, ediciones de atributos) bajo cada tarea. Se guarda como un bloque hijo en tu grafo.",
+    activityLogTextEdits: "Registrar ediciones del título en la actividad",
+    activityLogTextEditsDescription: "Registrar también eventos cuando se edita el título de una tarea. Desactivado por defecto para evitar ruido al escribir.",
+    activityLogMaxEntries: "Máximo de entradas del registro de actividad",
+    activityLogMaxEntriesDescription: "Límite opcional de entradas por tarea. Cuando se supera, las entradas más antiguas se eliminan con cada nueva escritura. Déjalo en blanco para ilimitado.",
     confirmBeforeSpawn: "Confirmar antes de generar la siguiente tarea",
     confirmBeforeSpawnDescription: "Pedir confirmación antes de generar la siguiente ocurrencia al completar una tarea recurrente",
     weekStart: "Primer día de la semana",
@@ -496,6 +504,7 @@ const locale = {
     snoozePlus1: "+1d",
     snoozePlus7: "+7d",
     untitled: "(Tarea sin título)",
+    notesLabel: "Notas",
     bulk: {
       select: "En lote",
       selectTask: "Seleccionar",
@@ -659,7 +668,12 @@ const locale = {
     editDepends: "Editar dependencias",
     removeDepends: "Eliminar dependencias",
     metaHeading: "Metadatos",
-    viewSeries: "Ver serie"
+    viewSeries: "Ver serie",
+    addNotes: "Añadir notas",
+    editNotes: "Editar notas",
+    removeNotes: "Eliminar notas",
+    activityHeading: "Actividad",
+    viewActivity: "Ver actividad"
   },
   series: {
     title: "Serie recurrente",
@@ -694,6 +708,7 @@ const locale = {
     start: "Inicio",
     defer: "Aplazar",
     due: "Vencimiento",
+    notes: "Notas",
     next: "Siguiente",
     repeatingTask: "Better Task Recurrente",
     scheduledTask: "Better Task Programada",
@@ -720,6 +735,25 @@ const locale = {
     noItems: "No se encontraron tareas coincidentes",
     cycleDetected: "No se puede añadir — crearía una dependencia circular",
     alreadyAdded: "Ya es una dependencia"
+  },
+  activityLog: {
+    title: "Registro de actividad",
+    containerTitle: "**Registro de actividad**",
+    close: "Cerrar",
+    openInRoam: "Abrir historial en Roam",
+    empty: "Aún no hay actividad.",
+    loading: "Cargando\u2026",
+    event: {
+      create: "Creada",
+      complete: "Marcada como completada",
+      reopen: "Reabierta",
+      snooze: (d) => `${d.field || ""} pospuesto ${d.days || ""} d\u00eda${Math.abs(Number(d.days || 0)) === 1 ? "" : "s"} (\u2192 ${d.to || ""})`,
+      reschedule: "{{field}} \u2192 {{to}}",
+      attr_change: "{{field}} \u2192 {{to}}",
+      attr_removed: "{{field}} eliminado",
+      recurrence_spawned: "Recurrencia generada",
+      text_edit: "Título editado"
+    }
   },
   templates: {
     createFromTemplate: "Crear desde plantilla de Better Task",

@@ -40,6 +40,7 @@ If you use TODOs in Roam, Better Tasks gives you:
 
 ## ✅ Recent updates
 
+- **Notes & Activity Log:** attach freeform notes to any task (`BT_attrNotes::` child block, configurable label). An append-only activity log records every change — snoozes, completions, reopens, attribute edits, recurrence spawns — as children of an **Activity log** container block under the task. Events are timestamped, tagged by source (dashboard / inline / API / bulk), and carry structured data for future Smart Suggestions. View the history from the dashboard ⋯ menu → **View activity** (slide-in panel, reverse-chronological). Settings: master enable toggle (on by default), opt-in title-edit logging, optional max-entries cap. Notes appear as a clamped preview under the task title in the dashboard. All stored as plain Roam blocks — fully removed on deconvert.
 - **Focus / Do Mode:** distraction-free single-task execution view launched from the dashboard's **Focus** button or `Better Tasks: Enter Focus Mode` in the Command Palette. Takes a frozen snapshot of your currently-visible filtered and sorted tasks at entry time, then guides you through one task at a time with progress indicator and keyboard-first controls (`j`/`k` navigate, `c` complete with auto-advance, `s`/`Shift+S` snooze +1d/+7d, `Enter` opens in Roam, `r` refresh, `?` shortcut help, `Esc` exit). Subtasks appear as a read-only checklist on the parent card and also get their own focus turn. Blocked tasks render with a 🔒 hint and disable `c` to prevent accidental completion. Live pills: metadata refreshes while the queue order stays stable. Stale-queue banner if any queued task is renamed or deleted, with a one-click rebuild.
 - **Task Templates:** save reusable task configurations with a title pattern, metadata defaults, and a subtask structure. Parameterised titles like `Weekly report for {project}` prompt for values at instantiation. Save any existing task as a template via the block context menu, or build one from scratch via `Create Better Task template`. Instantiate from the Command Palette, the dashboard's Template button, or programmatically via the Extension Tools API. Date defaults support compact relative syntax (`+3d`, `+1w`, `+1m`) plus the full natural language vocabulary (`next Monday`, `end of month`, etc.) and resolve at instantiation time.
 - **Clean exit / deconvert:** remove Better Tasks metadata from individual tasks or all tasks at once via Command Palette. Your `{{[[TODO]]}}` blocks remain as plain Roam — just the BT child blocks and RT props are removed. Fully reversible (re-convert anytime).
@@ -98,6 +99,7 @@ Optional attributes:
 - `BT_attrStart::` — when the task becomes available
 - `BT_attrDefer::` — when it should resurface
 - `BT_attrCompleted::` — written on completion
+- `BT_attrNotes::` — freeform notes (user-authored text)
 - `BT_attrDepends::` — task dependencies (one or more `((uid))` refs, comma-separated)
 - `BT_attrParent::` — explicit subtask link to a parent task (`((uid))`)
 
@@ -123,6 +125,7 @@ Leave the repeat field blank while setting any combination of `start::`, `defer:
     - BT_attrContext:: @computer, #office
     - BT_attrPriority:: high
     - BT_attrEnergy:: medium
+    - BT_attrNotes:: Customer wants this before the demo
     - BT_attrDepends:: ((uid1)), ((uid2))
     - BT_attrParent:: ((uid))
 
@@ -255,6 +258,8 @@ Common actions:
 | Add / Edit dependency | Open dependency picker to search and select blocking tasks |
 | Remove all dependencies | Clear all dependencies from the task |
 | View series | Open the recurring series timeline (recurring tasks only) |
+| Add / Edit notes | Set or edit freeform notes on the task |
+| View activity | Open the activity log panel (reverse-chronological event history) |
 
 All actions support **Undo**.
 
@@ -456,7 +461,8 @@ Additional sections appear only when enabled.
 - **Today Widget** — layout (panel or Roam-style inline), placement (top/bottom), heading level, overdue/completed inclusion, and per-button toggles (complete, snooze +1d, snooze +7d, copy ref, open sidebar).
 - **Advanced Dashboard options** unlock the Weekly Review step toggles (on/off per step; order is fixed).
 - **Advanced Project/Context/Waiting options** let you exclude specific pages from picklists.
-- **Customise attribute names (advanced)** exposes settings to rename Better Tasks attribute labels/keys.
+- **Customise attribute names (advanced)** exposes settings to rename Better Tasks attribute labels/keys (including the notes attribute).
+- **Activity log** settings: master enable/disable toggle, opt-in title-edit logging, optional maximum entries cap per task.
 
 ---
 
@@ -677,7 +683,7 @@ Better Tasks registers tools on `window.RoamExtensionTools["better-tasks"]` so o
 | `bt_get_projects` | List projects with derived status and optional task counts |
 | `bt_get_waiting_for` | List waiting-for values with optional counts |
 | `bt_get_context` | List context values with optional counts |
-| `bt_get_attributes` | Get configured attribute schema — all 13 attributes with names, types, aliases, and allowed values |
+| `bt_get_attributes` | Get configured attribute schema — all 14 attributes with names, types, aliases, and allowed values |
 | `bt_search` | Search tasks by status, due, project, assignee, blocked state, or free text. Results include `is_subtask`, `parent_task_uid`, `subtask_uids`, `subtask_progress`. |
 | `bt_create` | Create a new task (defaults to today's daily page). Supports all attributes including `parent` and `depends`. |
 | `bt_modify` | Update an existing task's status, text, or attributes |

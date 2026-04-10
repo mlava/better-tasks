@@ -113,6 +113,14 @@ const locale = {
     dependsAttrDescription: "تسمية سمة تبعيات المهمة (بلوك فرعي)",
     parentAttr: "اسم سمة المهمة الأصلية",
     parentAttrDescription: "تسمية سمة المهمة الأصلية (بلوك فرعي)",
+    notesAttr: "اسم سمة الملاحظات",
+    notesAttrDescription: "التسمية الخاصة بسمة الملاحظات الحرة (بلوك فرعي)",
+    activityLogEnabled: "تفعيل سجل نشاط المهمة",
+    activityLogEnabledDescription: "سجّل تاريخاً تراكمياً فقط للتغييرات (التأجيل، الإكمال، تعديل السمات) تحت كل مهمة. يُخزَّن كبلوك فرعي في الرسم البياني لديك.",
+    activityLogTextEdits: "تسجيل تعديلات العنوان في النشاط",
+    activityLogTextEditsDescription: "سجّل أيضاً الأحداث عند تعديل عنوان المهمة. يكون معطلاً افتراضياً لتجنب الضوضاء أثناء الكتابة.",
+    activityLogMaxEntries: "الحد الأقصى لإدخالات سجل النشاط",
+    activityLogMaxEntriesDescription: "حد اختياري لعدد الإدخالات لكل مهمة. عند تجاوزه، تُزال أقدم الإدخالات مع كل كتابة جديدة. اتركه فارغاً لعدم وجود حد.",
     confirmBeforeSpawn: "تأكيد قبل إنشاء المهمة التالية",
     confirmBeforeSpawnDescription: "طلب التأكيد قبل الإنشاء عند إكمال مهمة Better Tasks متكررة",
     weekStart: "أول يوم في الأسبوع",
@@ -496,6 +504,7 @@ const locale = {
     snoozePlus1: "+1ي",
     snoozePlus7: "+7ي",
     untitled: "(مهمة بدون عنوان)",
+    notesLabel: "ملاحظات",
     bulk: {
       select: "تحديد جماعي",
       selectTask: "تحديد",
@@ -659,7 +668,12 @@ const locale = {
     editDepends: "تعديل التبعيات",
     removeDepends: "إزالة التبعيات",
     metaHeading: "البيانات الوصفية",
-    viewSeries: "عرض السلسلة"
+    viewSeries: "عرض السلسلة",
+    addNotes: "إضافة ملاحظات",
+    editNotes: "تعديل الملاحظات",
+    removeNotes: "إزالة الملاحظات",
+    activityHeading: "النشاط",
+    viewActivity: "عرض النشاط"
   },
   series: {
     title: "سلسلة متكررة",
@@ -694,6 +708,7 @@ const locale = {
     start: "البدء",
     defer: "التأجيل",
     due: "الاستحقاق",
+    notes: "ملاحظات",
     next: "التالي",
     repeatingTask: "Better Task متكررة",
     scheduledTask: "Better Task مجدولة",
@@ -720,6 +735,33 @@ const locale = {
     noItems: "لم يتم العثور على مهام مطابقة",
     cycleDetected: "لا يمكن الإضافة — ستنشئ تبعية دائرية",
     alreadyAdded: "تبعية موجودة بالفعل"
+  },
+  activityLog: {
+    title: "سجل النشاط",
+    containerTitle: "**سجل النشاط**",
+    close: "إغلاق",
+    openInRoam: "فتح السجل في Roam",
+    empty: "لا يوجد نشاط بعد.",
+    loading: "جارٍ التحميل\u2026",
+    event: {
+      create: "تم الإنشاء",
+      complete: "تم وضع علامة مكتملة",
+      reopen: "أُعيد فتحها",
+      snooze: (d) => {
+        const n = Math.abs(Number(d.days || 0));
+        const field = d.field || "";
+        const to = d.to || "";
+        if (n === 1) return `تم تأجيل ${field} بمقدار يوم واحد (→ ${to})`;
+        if (n === 2) return `تم تأجيل ${field} بمقدار يومين (→ ${to})`;
+        if (n >= 3 && n <= 10) return `تم تأجيل ${field} بمقدار ${d.days || ""} أيام (→ ${to})`;
+        return `تم تأجيل ${field} بمقدار ${d.days || ""} يوماً (→ ${to})`;
+      },
+      reschedule: "{{field}} \u2192 {{to}}",
+      attr_change: "{{field}} \u2192 {{to}}",
+      attr_removed: "تمت إزالة {{field}}",
+      recurrence_spawned: "تم إنشاء التكرار",
+      text_edit: "تم تعديل العنوان"
+    }
   },
   templates: {
     createFromTemplate: "إنشاء من قالب Better Task",

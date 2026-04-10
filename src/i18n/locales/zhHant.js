@@ -113,6 +113,14 @@ const locale = {
     dependsAttrDescription: "任務相依屬性的標籤（子區塊）",
     parentAttr: "父任務屬性名稱",
     parentAttrDescription: "父任務屬性的標籤（子區塊）",
+    notesAttr: "備註屬性名稱",
+    notesAttrDescription: "自由備註屬性的標籤（子區塊）",
+    activityLogEnabled: "啟用任務活動日誌",
+    activityLogEnabledDescription: "在每個任務下記錄僅追加的變更歷史（延後、完成、屬性編輯）。作為子區塊儲存在你的圖譜中。",
+    activityLogTextEdits: "在活動中記錄標題編輯",
+    activityLogTextEditsDescription: "當任務標題被編輯時也記錄事件。預設關閉，以避免輸入時產生雜訊。",
+    activityLogMaxEntries: "活動日誌最大條目數",
+    activityLogMaxEntriesDescription: "每個任務的可選條目上限。超過後，每次新寫入都會修剪最舊的條目。留空表示無限制。",
     confirmBeforeSpawn: "生成下一個任務前需確認",
     confirmBeforeSpawnDescription: "在重複任務完成時生成下一次前提示確認",
     weekStart: "每週的第一天",
@@ -496,6 +504,7 @@ const locale = {
     snoozePlus1: "+1天",
     snoozePlus7: "+7天",
     untitled: "（未命名任務）",
+    notesLabel: "備註",
     bulk: {
       select: "批量",
       selectTask: "選擇",
@@ -659,7 +668,12 @@ const locale = {
     editDepends: "編輯相依",
     removeDepends: "移除相依",
     metaHeading: "中繼資料",
-    viewSeries: "查看系列"
+    viewSeries: "查看系列",
+    addNotes: "新增備註",
+    editNotes: "編輯備註",
+    removeNotes: "移除備註",
+    activityHeading: "活動",
+    viewActivity: "檢視活動"
   },
   series: {
     title: "重複系列",
@@ -694,6 +708,7 @@ const locale = {
     start: "開始",
     defer: "延後",
     due: "到期",
+    notes: "備註",
     next: "下一步",
     repeatingTask: "重複 Better Task",
     scheduledTask: "排程 Better Task",
@@ -720,6 +735,25 @@ const locale = {
     noItems: "未找到符合的任務",
     cycleDetected: "無法新增 — 會產生循環相依",
     alreadyAdded: "已是相依項"
+  },
+  activityLog: {
+    title: "活動日誌",
+    containerTitle: "**活動日誌**",
+    close: "關閉",
+    openInRoam: "在 Roam 中開啟歷史",
+    empty: "尚無活動。",
+    loading: "載入中\u2026",
+    event: {
+      create: "已建立",
+      complete: "已標記完成",
+      reopen: "已重新開啟",
+      snooze: (d) => `${d.field || ""} \u5EF6\u5F8C ${d.days || ""} \u5929 (\u2192 ${d.to || ""})`,
+      reschedule: "{{field}} \u2192 {{to}}",
+      attr_change: "{{field}} \u2192 {{to}}",
+      attr_removed: "{{field}} 已移除",
+      recurrence_spawned: "已產生重複項",
+      text_edit: "標題已編輯"
+    }
   },
   templates: {
     createFromTemplate: "從 Better Task 範本建立",

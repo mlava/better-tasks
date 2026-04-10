@@ -113,6 +113,14 @@ const locale = {
     dependsAttrDescription: "작업 의존성 속성 라벨 (하위 블록)",
     parentAttr: "상위 작업 속성 이름",
     parentAttrDescription: "상위 작업 속성 라벨 (하위 블록)",
+    notesAttr: "메모 속성 이름",
+    notesAttrDescription: "자유 형식 메모 속성의 라벨(하위 블록)",
+    activityLogEnabled: "작업 활동 로그 활성화",
+    activityLogEnabledDescription: "각 작업 아래에 변경 이력을 추가 전용으로 기록합니다(미루기, 완료, 속성 편집). 그래프 내에서는 하위 블록으로 저장됩니다.",
+    activityLogTextEdits: "제목 편집을 활동에 기록",
+    activityLogTextEditsDescription: "작업 제목이 편집될 때의 이벤트도 기록합니다. 입력 중 발생하는 잡음을 피하기 위해 기본적으로 꺼져 있습니다.",
+    activityLogMaxEntries: "활동 로그 최대 항목 수",
+    activityLogMaxEntriesDescription: "작업당 항목 수의 선택적 상한입니다. 이를 초과하면 새로 기록할 때마다 가장 오래된 항목이 제거됩니다. 무제한으로 두려면 비워 두세요.",
     confirmBeforeSpawn: "다음 작업 생성 전 확인",
     confirmBeforeSpawnDescription: "반복 Better Task 완료 시 다음 발생 생성 전에 확인 요청",
     weekStart: "한 주의 시작 요일",
@@ -496,6 +504,7 @@ const locale = {
     snoozePlus1: "+1일",
     snoozePlus7: "+7일",
     untitled: "(제목 없는 작업)",
+    notesLabel: "메모",
     bulk: {
       select: "일괄",
       selectTask: "선택",
@@ -659,7 +668,12 @@ const locale = {
     editDepends: "의존성 편집",
     removeDepends: "의존성 제거",
     metaHeading: "메타데이터",
-    viewSeries: "시리즈 보기"
+    viewSeries: "시리즈 보기",
+    addNotes: "메모 추가",
+    editNotes: "메모 편집",
+    removeNotes: "메모 제거",
+    activityHeading: "활동",
+    viewActivity: "활동 보기"
   },
   series: {
     title: "반복 시리즈",
@@ -694,6 +708,7 @@ const locale = {
     start: "시작",
     defer: "연기",
     due: "마감",
+    notes: "메모",
     next: "다음",
     repeatingTask: "반복 Better Task",
     scheduledTask: "예약 Better Task",
@@ -720,6 +735,25 @@ const locale = {
     noItems: "일치하는 작업이 없습니다",
     cycleDetected: "추가할 수 없음 — 순환 의존성이 발생합니다",
     alreadyAdded: "이미 의존성입니다"
+  },
+  activityLog: {
+    title: "활동 로그",
+    containerTitle: "**활동 로그**",
+    close: "닫기",
+    openInRoam: "Roam에서 기록 열기",
+    empty: "아직 활동이 없습니다.",
+    loading: "불러오는 중\u2026",
+    event: {
+      create: "생성됨",
+      complete: "완료로 표시됨",
+      reopen: "다시 열림",
+      snooze: (d) => `${d.field || ""}\uC744(\uB97C) ${d.days || ""}\uC77C \uBBF8\uB8F0 (\u2192 ${d.to || ""})`,
+      reschedule: "{{field}} \u2192 {{to}}",
+      attr_change: "{{field}} \u2192 {{to}}",
+      attr_removed: "{{field}} 제거됨",
+      recurrence_spawned: "반복 생성됨",
+      text_edit: "제목 편집됨"
+    }
   },
   templates: {
     createFromTemplate: "Better Task 템플릿에서 생성",

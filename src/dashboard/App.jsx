@@ -702,6 +702,25 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings, forceOpen, o
   const menuSizeRef = useRef({ width: 240, height: 200 });
   const metadata = task.metadata || {};
   const handleEditText = async (key, currentValue) => {
+    if (key === "notes") {
+      const next = controller.promptValue
+        ? await controller.promptValue({
+          title: "Better Tasks",
+          message: strings?.taskMenu?.editNotes || "Notes",
+          placeholder: strings?.notesLabel || "Notes",
+          initial: currentValue || "",
+        })
+        : null;
+      if (next == null) return;
+      const trimmed = String(next).trim();
+      await controller.updateMetadata?.(task.uid, { notes: trimmed || null });
+      // Notes render in the row body (not as a pill), so the pill-only
+      // re-render path doesn't pick them up — force a full refresh.
+      try {
+        await controller.refresh?.({ reason: "notes-update" });
+      } catch (_) { /* ignore */ }
+      return;
+    }
     if (key === "project") {
       await controller?.refreshProjectOptions?.();
       const selection = controller?.promptProject
@@ -969,6 +988,50 @@ function TaskActionsMenu({ task, controller, onOpenChange, strings, forceOpen, o
         meta.energy ? `: ${valueLabel("energy", meta.energy)}` : ""
       }`,
       handler: () => cycleValue("energy"),
+    });
+
+    // Notes (freeform user prose)
+    if (meta.notes) {
+      list.push({
+        key: "meta-notes-edit",
+        label: tm.editNotes || "Edit notes",
+        handler: () => {
+          setOpenState(false);
+          handleEditText("notes", meta.notes || "");
+        },
+      });
+      list.push({
+        key: "meta-notes-remove",
+        label: tm.removeNotes || "Remove notes",
+        handler: async () => {
+          setOpenState(false);
+          await controller.updateMetadata?.(task.uid, { notes: null });
+          try {
+            await controller.refresh?.({ reason: "notes-remove" });
+          } catch (_) { /* ignore */ }
+        },
+        danger: true,
+      });
+    } else {
+      list.push({
+        key: "meta-notes-add",
+        label: tm.addNotes || "Add notes",
+        handler: () => {
+          setOpenState(false);
+          handleEditText("notes", "");
+        },
+      });
+    }
+
+    // Activity log
+    list.push({ key: "activity-separator", label: tm.activityHeading || "Activity", separator: true });
+    list.push({
+      key: "view-activity",
+      label: tm.viewActivity || "View activity",
+      handler: () => {
+        setOpenState(false);
+        controller._onActivityViewRequest?.(task);
+      },
     });
 
     return list;
@@ -1418,6 +1481,16 @@ function TaskRow({ task, controller, strings, selectionActive, isSelected, onTog
           ) : null}
           {task.isBlocked ? "🔒 " : ""}{renderTitleWithLinks(task.title, controller) || strings?.untitled || "(Untitled task)"}
         </div>
+        {metadata.notes ? (
+          <div
+            className="bt-task-row__notes"
+            title={metadata.notes}
+            aria-label={`${strings?.notesLabel || "Notes"}: ${metadata.notes}`}
+          >
+            <span className="bt-task-row__notes-icon">📝</span>
+            <span className="bt-task-row__notes-text">{metadata.notes}</span>
+          </div>
+        ) : null}
         <span id={metaDescriptionId} className="bt-sr-only">
           {contextBits.map((bit) => bit.text).filter(Boolean).join(", ")}
         </span>
@@ -2165,6 +2238,161 @@ function FocusModePanel({ queue, controller, language, liveSnapshot, strings, on
   );
 }
 
+// ========================= Activity Log Panel =========================
+
+function ActivityLogPanel({ task, entries, containerUid, loading, controller, language, strings, onClose }) {
+  const panelRef = useRef(null);
+  const lang = I18N_MAP[language] ? language : "en";
+  const s = useMemo(() => {
+    const base = tPath(["activityLog"], lang) || {};
+    const en = tPath(["activityLog"], "en") || {};
+    return { ...en, ...base };
+  }, [lang]);
+
+  const formatTimestamp = (ts) => {
+    if (!ts) return "—";
+    try {
+      const d = new Date(ts);
+      return new Intl.DateTimeFormat(lang !== "en" ? lang : undefined, {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(d);
+    } catch {
+      return new Date(ts).toLocaleString();
+    }
+  };
+
+  const eventLabel = (entry) => {
+    let key = entry.event;
+    if ((key === "attr_change" || key === "reschedule") && (entry.to == null || entry.to === "")) {
+      key = "attr_removed";
+    }
+    const tplPath = ["activityLog", "event", key];
+    const tpl = tPath(tplPath, lang) || tPath(tplPath, "en") || entry.event;
+    if (typeof tpl === "function") {
+      try { return tpl(entry); } catch (_) { return entry.event; }
+    }
+    if (typeof tpl === "string") {
+      return tpl
+        .replace(/\{\{field\}\}/g, entry.field == null ? "" : String(entry.field))
+        .replace(/\{\{from\}\}/g, entry.from == null ? "" : String(entry.from))
+        .replace(/\{\{to\}\}/g, entry.to == null ? "" : String(entry.to))
+        .replace(/\{\{days\}\}/g, entry.days == null ? "" : String(entry.days))
+        .replace(/\{\{s\}\}/g, Math.abs(Number(entry.days || 0)) === 1 ? "" : "s");
+    }
+    return String(tpl);
+  };
+
+  // Close on Escape
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  // Close on click outside panel
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) onClose?.();
+    };
+    const timer = setTimeout(() => document.addEventListener("mousedown", handleClick), 50);
+    return () => { clearTimeout(timer); document.removeEventListener("mousedown", handleClick); };
+  }, [onClose]);
+
+  const portalRoot = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const el = document.createElement("div");
+    el.className = "bt-activity-portal";
+    el.setAttribute("data-bt-portal", "activity-log");
+    return el;
+  }, []);
+
+  useEffect(() => {
+    if (!portalRoot) return undefined;
+    const host = document.querySelector(".bt-dashboard-host") || document.body;
+    host.appendChild(portalRoot);
+    return () => portalRoot.remove();
+  }, [portalRoot]);
+
+  const handleOpenInRoam = () => {
+    if (!containerUid) return;
+    try {
+      const api = window?.roamAlphaAPI?.ui?.rightSidebar;
+      if (typeof api?.addWindow === "function") {
+        api.addWindow({ window: { type: "block", "block-uid": containerUid } });
+      } else if (typeof window?.roamAlphaAPI?.ui?.mainWindow?.openBlock === "function") {
+        window.roamAlphaAPI.ui.mainWindow.openBlock({ block: { uid: containerUid } });
+      }
+    } catch (err) {
+      console.warn("[BetterTasks] open history block failed", err);
+    }
+  };
+
+  if (!portalRoot) return null;
+
+  const list = Array.isArray(entries) ? entries : [];
+  const title = s.title || "Activity log";
+
+  return createPortal(
+    <div className="bt-activity-overlay" role="dialog" aria-label={title}>
+      <div className="bt-activity-overlay__backdrop" onClick={onClose} />
+      <div className="bt-activity-overlay__panel" ref={panelRef}>
+        <div className="bt-activity-header">
+          <div className="bt-activity-header__info">
+            <h3 className="bt-activity-header__title">
+              {renderTitleWithLinks(task.title, controller) || tPath(["dashboard", "untitled"], lang) || "(Untitled task)"}
+            </h3>
+            <span className="bt-activity-header__subtitle">{title}</span>
+          </div>
+          <button
+            type="button"
+            className="bt-activity-header__close bp3-button bp3-minimal bp3-small"
+            onClick={onClose}
+            aria-label={s.close || "Close"}
+          >
+            ✕
+          </button>
+        </div>
+        <div className="bt-activity-body">
+          {loading ? (
+            <div className="bt-activity-empty">{s.loading || "Loading…"}</div>
+          ) : list.length === 0 ? (
+            <div className="bt-activity-empty">{s.empty || "No activity yet."}</div>
+          ) : (
+            <ul className="bt-activity-list">
+              {list.map((entry) => (
+                <li key={entry.uid} className={`bt-activity-item bt-activity-item--${entry.event}`}>
+                  <div className="bt-activity-item__time">{formatTimestamp(entry.ts)}</div>
+                  <div className="bt-activity-item__label">{eventLabel(entry)}</div>
+                  {entry.source && entry.source !== "inline" ? (
+                    <div className="bt-activity-item__source">{entry.source}</div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="bt-activity-footer">
+          {containerUid ? (
+            <button
+              type="button"
+              className="bp3-button bp3-minimal bp3-small"
+              onClick={handleOpenInRoam}
+            >
+              {s.openInRoam || "Open history in Roam"}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>,
+    portalRoot
+  );
+}
+
 // ========================= Recurring Series View Panel =========================
 
 function SeriesViewPanel({ task, controller, language, onClose }) {
@@ -2797,6 +3025,10 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
   );
   const [showArchivedContexts, setShowArchivedContexts] = useState(false);
   const [seriesViewTask, setSeriesViewTask] = useState(null);
+  const [activityViewTask, setActivityViewTask] = useState(null);
+  const [activityEntries, setActivityEntries] = useState(null);
+  const [activityContainerUid, setActivityContainerUid] = useState(null);
+  const [activityLoading, setActivityLoading] = useState(false);
   const initialViewAppliedRef = useRef(false);
   const defaultStatePersistTimerRef = useRef(null);
   const lastDefaultStateSigRef = useRef(null);
@@ -3150,6 +3382,7 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
       snoozePlus1: tt(["dashboard", "snoozePlus1"], "+1d"),
       snoozePlus7: tt(["dashboard", "snoozePlus7"], "+7d"),
       untitled: tt(["dashboard", "untitled"], "(Untitled task)"),
+      notesLabel: tt(["dashboard", "notesLabel"], "Notes"),
       completedLabel: tt(["dashboard", "filterValues", "completed"], "Completed"),
       empty: {
         loading: tt(["dashboard", "empty", "loading"], "Loading tasks…"),
@@ -3581,6 +3814,33 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
     if (!controller) return undefined;
     controller._onSeriesViewRequest = (task) => setSeriesViewTask(task);
     return () => { delete controller._onSeriesViewRequest; };
+  }, [controller]);
+
+  // Set up activity-view request callback on controller
+  useEffect(() => {
+    if (!controller) return undefined;
+    controller._onActivityViewRequest = async (task) => {
+      if (!task?.uid) return;
+      setActivityViewTask(task);
+      setActivityLoading(true);
+      setActivityEntries(null);
+      setActivityContainerUid(null);
+      try {
+        const result = await controller.getTaskActivity?.(task.uid, { limit: 50 });
+        if (result && Array.isArray(result.entries)) {
+          setActivityEntries(result.entries);
+          setActivityContainerUid(result.containerUid || null);
+        } else {
+          setActivityEntries([]);
+        }
+      } catch (err) {
+        console.warn("[BetterTasks] activity view load failed", err);
+        setActivityEntries([]);
+      } finally {
+        setActivityLoading(false);
+      }
+    };
+    return () => { delete controller._onActivityViewRequest; };
   }, [controller]);
 
   useEffect(() => {
@@ -4968,6 +5228,23 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
             onClose={() => setSeriesViewTask(null)}
           />
         )}
+        {activityViewTask && (
+          <ActivityLogPanel
+            task={activityViewTask}
+            entries={activityEntries}
+            containerUid={activityContainerUid}
+            loading={activityLoading}
+            controller={controller}
+            language={language}
+            strings={ui}
+            onClose={() => {
+              setActivityViewTask(null);
+              setActivityEntries(null);
+              setActivityContainerUid(null);
+              setActivityLoading(false);
+            }}
+          />
+        )}
         {showKeyboardHelp && (
           <KeyboardHelpOverlay
             keybindings={{ ...DEFAULT_KEYBINDINGS, ...(controller?.getKeyboardBindings?.() || {}) }}
@@ -5599,6 +5876,23 @@ export default function DashboardApp({ controller, onRequestClose, onHeaderReady
           controller={controller}
           language={language}
           onClose={() => setSeriesViewTask(null)}
+        />
+      )}
+      {activityViewTask && (
+        <ActivityLogPanel
+          task={activityViewTask}
+          entries={activityEntries}
+          containerUid={activityContainerUid}
+          loading={activityLoading}
+          controller={controller}
+          language={language}
+          strings={ui}
+          onClose={() => {
+            setActivityViewTask(null);
+            setActivityEntries(null);
+            setActivityContainerUid(null);
+            setActivityLoading(false);
+          }}
         />
       )}
       {showKeyboardHelp && (

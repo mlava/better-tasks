@@ -113,6 +113,14 @@ const locale = {
     dependsAttrDescription: "Rótulo para o atributo de dependências de tarefa (bloco filho)",
     parentAttr: "Nome do atributo de tarefa pai",
     parentAttrDescription: "Rótulo para o atributo de tarefa pai (bloco filho)",
+    notesAttr: "Nome do atributo de notas",
+    notesAttrDescription: "Rótulo para o atributo de notas livres (bloco filho)",
+    activityLogEnabled: "Ativar registo de atividade da tarefa",
+    activityLogEnabledDescription: "Registar um histórico apenas de acréscimo das alterações (adiamentos, conclusões, edições de atributos) sob cada tarefa. Armazenado como um bloco filho no teu grafo.",
+    activityLogTextEdits: "Registar edições do título na atividade",
+    activityLogTextEditsDescription: "Regista também eventos quando o título de uma tarefa é editado. Desativado por predefinição para evitar ruído durante a escrita.",
+    activityLogMaxEntries: "Número máximo de entradas do registo de atividade",
+    activityLogMaxEntriesDescription: "Limite opcional de entradas por tarefa. Quando excedido, as entradas mais antigas são removidas a cada nova escrita. Deixa em branco para ilimitado.",
     confirmBeforeSpawn: "Confirmar antes de gerar próxima tarefa",
     confirmBeforeSpawnDescription: "Pedir confirmação antes de gerar quando uma Better Task recorrente é concluída",
     weekStart: "Primeiro dia da semana",
@@ -496,6 +504,7 @@ const locale = {
     snoozePlus1: "+1d",
     snoozePlus7: "+7d",
     untitled: "(Tarefa sem título)",
+    notesLabel: "Notas",
     bulk: {
       select: "Em lote",
       selectTask: "Selecionar",
@@ -659,7 +668,12 @@ const locale = {
     editDepends: "Editar dependências",
     removeDepends: "Remover dependências",
     metaHeading: "Metadados",
-    viewSeries: "Ver série"
+    viewSeries: "Ver série",
+    addNotes: "Adicionar notas",
+    editNotes: "Editar notas",
+    removeNotes: "Remover notas",
+    activityHeading: "Atividade",
+    viewActivity: "Ver atividade"
   },
   series: {
     title: "Série recorrente",
@@ -694,6 +708,7 @@ const locale = {
     start: "Início",
     defer: "Adiar",
     due: "Vencimento",
+    notes: "Notas",
     next: "Próximo",
     repeatingTask: "Better Task recorrente",
     scheduledTask: "Better Task agendada",
@@ -720,6 +735,25 @@ const locale = {
     noItems: "Nenhuma tarefa correspondente encontrada",
     cycleDetected: "Não é possível adicionar — criaria uma dependência circular",
     alreadyAdded: "Já é uma dependência"
+  },
+  activityLog: {
+    title: "Registo de atividade",
+    containerTitle: "**Registo de atividade**",
+    close: "Fechar",
+    openInRoam: "Abrir histórico no Roam",
+    empty: "Ainda não há atividade.",
+    loading: "A carregar\u2026",
+    event: {
+      create: "Criada",
+      complete: "Marcada como concluída",
+      reopen: "Reaberta",
+      snooze: (d) => `${d.field || ""} adiado em ${d.days || ""} dia${Math.abs(Number(d.days || 0)) === 1 ? "" : "s"} (\u2192 ${d.to || ""})`,
+      reschedule: "{{field}} \u2192 {{to}}",
+      attr_change: "{{field}} \u2192 {{to}}",
+      attr_removed: "{{field}} removido",
+      recurrence_spawned: "Recorrência gerada",
+      text_edit: "Título editado"
+    }
   },
   templates: {
     createFromTemplate: "Criar a partir de modelo Better Task",
