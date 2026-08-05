@@ -215,6 +215,16 @@ test("query searches title, pageTitle and text, case-insensitively", () => {
   assert.deepEqual(uids([t], {}, ""), ["t"], "empty query does not filter");
 });
 
+test("query searches resolved block-reference titles", () => {
+  const t = task({
+    uid: "t",
+    title: "((xJuYmHX0v))",
+    text: "{{[[TODO]]}} ((xJuYmHX0v))",
+    displayTitle: "Commit the dashboard performance changes",
+  });
+  assert.deepEqual(uids([t], {}, "performance"), ["t"]);
+});
+
 test("query tolerates a missing pageTitle", () => {
   const t = task({ uid: "t", pageTitle: null, title: "Alpha" });
   assert.deepEqual(uids([t], {}, "alpha"), ["t"]);

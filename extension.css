@@ -697,6 +697,8 @@ body.bt-theme-dark .bt-sidebar__close:hover {
     max-height: 100%;
     overflow: hidden;
     font-family: inherit;
+    container-name: bt-dashboard;
+    container-type: inline-size;
 }
 
 .bt-dashboard__header {
@@ -704,13 +706,15 @@ body.bt-theme-dark .bt-sidebar__close:hover {
     border-bottom: 1px solid var(--bt-border);
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    gap: 4px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px 12px;
 }
 
 .bt-dashboard__header > div:first-child {
-    flex: 1;
+    flex: 1 1 180px;
     min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .bt-dashboard__header--draggable {
@@ -730,18 +734,30 @@ body.bt-theme-dark .bt-sidebar__close:hover {
 .bt-dashboard__header h2 {
     margin: 0 0 4px;
     font-size: 18px;
+    line-height: 1.2;
+}
+
+.bt-dashboard__header p {
+    margin: 0;
+    line-height: 1.45;
+    max-width: 52ch;
+    overflow-wrap: anywhere;
 }
 
 .bt-dashboard__header-actions {
-    min-width: 175px !important;
+    min-width: 0 !important;
     display: flex;
     align-items: center;
     gap: 6px;
-    flex-wrap: nowrap;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    margin-left: auto;
 }
 
 .bt-dashboard__header-actions button {
-    margin-left: 4px;
+    margin: 0;
+    flex: 0 0 auto;
 }
 
 .bt-dashboard__header-actions .bp3-button {
@@ -752,6 +768,19 @@ body.bt-theme-dark .bt-sidebar__close:hover {
     color: var(--bt-panel-text);
     border: 1px solid var(--bt-border, var(--bt-border));
     box-shadow: none;
+}
+
+@container bt-dashboard (max-width: 700px) {
+    .bt-dashboard__header > div:first-child {
+        flex-basis: 100%;
+        width: 100%;
+    }
+
+    .bt-dashboard__header-actions {
+        width: 100%;
+        margin-left: 0;
+        justify-content: flex-start;
+    }
 }
 
 .bt-dashboard__quick-add {
@@ -5536,16 +5565,22 @@ body.bt-theme-dark .bt-activity-item__source {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 16px;
+    width: 22px;
+    min-width: 22px;
     height: 16px;
     margin-left: 6px;
-    padding: 0 4px;
+    padding: 0 2px;
     border-radius: 8px;
     background: var(--bt-chart-bar, #4a90d9);
     color: #fff;
     font-size: 10px;
     font-weight: 700;
+    font-variant-numeric: tabular-nums;
     line-height: 1;
+}
+
+.bt-suggestions-badge--placeholder {
+    visibility: hidden;
 }
 
 @media (max-width: 640px) {
