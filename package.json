@@ -8,6 +8,7 @@
     "check:i18n:values": "node scripts/check-i18n-parity.js --values",
     "check:release": "node scripts/check-i18n-parity.js --values --strict && npm test",
     "test": "node --test tests/*.test.mjs",
+    "check": "npm run build",
     "build": "npm run check:i18n && npm test && webpack",
     "build:watch": "npm run check:i18n && npm test && webpack --watch"
   },
