@@ -88,6 +88,7 @@ import {
   formatContextListForWrite,
 } from "./core/page-refs";
 import { parseBtQuery, KNOWN_KEYS as BT_QUERY_KNOWN_KEYS } from "./core/bt-query-parser";
+import { resolvePanelIsDark, shouldSkipThemeSync } from "./core/theme-resolve.js";
 import {
   normalizePulledSubtree,
   flattenSubtreeToCreateSteps,
@@ -19714,16 +19715,6 @@ function syncDashboardThemeVars() {
     root.dataset.theme === "dark";
 
   const externalMode = getExternalAppearanceFromToggle(); // "dark" | "light" | "auto" | null
-  let finalIsDark;
-  if (externalMode === "dark") {
-    finalIsDark = true;
-  } else if (externalMode === "light") {
-    finalIsDark = false;
-  } else if (externalMode === "auto") {
-    finalIsDark = explicitDark || systemPrefersDark;
-  } else {
-    finalIsDark = explicitDark || systemPrefersDark;
-  }
 
   const layoutBg = sampleBackgroundColor([
     ".roam-main",
@@ -19731,6 +19722,18 @@ function syncDashboardThemeVars() {
     ".roam-body",
     "#app",
   ]);
+
+  const finalIsDark = resolvePanelIsDark({
+    externalMode,
+    explicitDark,
+    sampledLuminance: computeLuminance(
+      parseColorToRgb(
+        layoutBg ||
+          sampleEffectiveBackgroundColor([".roam-main", ".roam-article", "#app", "body"])
+      )
+    ),
+    systemPrefersDark,
+  });
 
   // Theme-specific dark fallback for the panel surface
   const darkFallbackSurface = usingBlueprint ? "#202B33" : "#1f2428";
@@ -19744,9 +19747,18 @@ function syncDashboardThemeVars() {
     computed.backgroundColor
   );
 
+  // Keying "nothing changed" on the surface sample alone let a genuine
+  // dark<->light transition get silently dropped: the theme-observer's
+  // class-mutation resync can land while the surface-colour heuristic still
+  // reports the pre-flip value, so the mode flip itself has to be checked
+  // too, or this returns before ever reaching the classList.toggle /
+  // six-property writes below. See shouldSkipThemeSync's header comment.
   if (
-    !btPendingRoamStudioTheme &&
-    baseSurfaceCandidate === (lastThemeSample?.surface || null)
+    shouldSkipThemeSync({
+      forced: btPendingRoamStudioTheme,
+      sameSurface: baseSurfaceCandidate === (lastThemeSample?.surface || null),
+      sameMode: (lastThemeSample?.dark ?? null) === finalIsDark,
+    })
   ) {
     return;
   }
@@ -19774,49 +19786,98 @@ function syncDashboardThemeVars() {
   const fallbackMutedDark = usingBlueprint
     ? "rgba(255,255,255,0.82)"
     : "rgba(255,255,255,0.65)";
+  // Non-Blueprint value tracks the stylesheet's own dark --bt-pill-bg: this is
+  // now the authoritative source for that variable, so anything lower would
+  // make pills fainter in dark themes than they were before the cascade fix.
   const fallbackPillBgDark = usingBlueprint
     ? "rgba(255,255,255,0.18)"
-    : "rgba(255,255,255,0.08)";
+    : "rgba(255,255,255,0.12)";
 
-  const textColor = pickColorValue(
-    finalIsDark ? fallbackTextDark : "#111111",
-    computed.getPropertyValue("--bt-text"),
-    computed.getPropertyValue("--bp3-text-color"),
-    computed.color
+  // A sample only helps if it agrees with the mode we resolved. Roam keeps
+  // --bp3-text-color at #202B33 under .bp3-dark, and --bp3-border-color at its
+  // light-mode ink, so these chains can hand back a light-theme colour while we
+  // are painting a dark panel. That never showed while these writes landed on
+  // <html>, because the stylesheet's `body.bt-theme-dark` block shadowed them;
+  // now that they land on <body> and actually win (see the writes below), an
+  // unchecked sample would paint dark-on-dark. Reject a dark sample in dark mode
+  // and keep the pinned fallback — the same clamp the panel surface already got
+  // above. Light mode is deliberately left alone: its writes were never
+  // shadowed, so its sampling is the behaviour already shipping.
+  const darkSafe = (value, fallback) => {
+    if (!finalIsDark) return value;
+    const luminance = computeLuminance(parseColorToRgb(value));
+    return typeof luminance === "number" && luminance >= 0.5 ? value : fallback;
+  };
+
+  const textColor = darkSafe(
+    pickColorValue(
+      finalIsDark ? fallbackTextDark : "#111111",
+      computed.getPropertyValue("--bt-text"),
+      computed.getPropertyValue("--bp3-text-color"),
+      computed.color
+    ),
+    fallbackTextDark
   );
 
-  const borderColor = pickColorValue(
-    finalIsDark ? fallbackBorderDark : "rgba(0,0,0,0.08)",
-    computed.getPropertyValue("--bt-border-color"),
-    computed.getPropertyValue("--bp3-border-color"),
-    computed.getPropertyValue("--border-color")
+  const borderColor = darkSafe(
+    pickColorValue(
+      finalIsDark ? fallbackBorderDark : "rgba(0,0,0,0.08)",
+      computed.getPropertyValue("--bt-border-color"),
+      computed.getPropertyValue("--bp3-border-color"),
+      computed.getPropertyValue("--border-color")
+    ),
+    fallbackBorderDark
   );
 
-  const mutedColor = pickColorValue(
-    finalIsDark ? fallbackMutedDark : "rgba(0,0,0,0.6)",
-    computed.getPropertyValue("--bt-muted-color"),
-    computed.getPropertyValue("--text-color-muted")
+  const mutedColor = darkSafe(
+    pickColorValue(
+      finalIsDark ? fallbackMutedDark : "rgba(0,0,0,0.6)",
+      computed.getPropertyValue("--bt-muted-color"),
+      computed.getPropertyValue("--text-color-muted")
+    ),
+    fallbackMutedDark
   );
 
-  const pillBg = pickColorValue(
-    finalIsDark ? fallbackPillBgDark : "rgba(0,0,0,0.07)",
-    computed.getPropertyValue("--bt-pill-bg")
-  );
+  // Every other sample above reads a THEME-owned input variable (--bt-surface,
+  // --bt-text, --bt-border-color, --bt-muted-color) and writes a different,
+  // extension-owned output variable. --bt-pill-bg was the one name used as both
+  // input and output, so it never resolved to anything but the value the
+  // stylesheet had just declared — the theme-specific fallbacks below were dead.
+  // Reading it is also unsafe now that the write target is <body> (see below):
+  // the value written on a dark pass would be read back on the next light pass
+  // and pin dark pills onto a light panel.
+  const pillBg = finalIsDark ? fallbackPillBgDark : "rgba(0,0,0,0.07)";
 
   body.classList.toggle("bt-theme-dark", finalIsDark);
   body.classList.toggle("bt-theme-light", !finalIsDark);
 
   const adjustedPanel =
     adjustColor(panelRgb, finalIsDark ? -0.06 : 0.03) || baseSurface;
+  // adjustColor mixes toward white for a positive delta and toward black for a
+  // negative one, so a "strong" border has to move AWAY from the panel: lighter
+  // than a dark surface, darker than a light one. The old signs did the reverse
+  // and, on the default white panel, resolved --bt-border-strong to #ffffff —
+  // an invisible border, which is live today because only the dark half of
+  // these writes was being shadowed by the stylesheet.
   const borderStrong =
-    adjustColor(panelRgb, finalIsDark ? -0.22 : 0.15) || borderColor;
+    adjustColor(panelRgb, finalIsDark ? 0.22 : -0.15) || borderColor;
 
-  root.style.setProperty("--bt-panel-bg", adjustedPanel);
-  root.style.setProperty("--bt-panel-text", textColor);
-  root.style.setProperty("--bt-border", borderColor);
-  root.style.setProperty("--bt-border-strong", borderStrong);
-  root.style.setProperty("--bt-muted", mutedColor);
-  root.style.setProperty("--bt-pill-bg", pillBg);
+  // Write on <body>, not <html>. Custom properties resolve per element: the
+  // dark block in extension.css declares these same six names on
+  // `body.bt-theme-dark`, so <body> and every panel node under it took the
+  // stylesheet's value and the html-level inline declaration was only ever
+  // visible to <html> itself. Everything this function samples — the clamped
+  // #202B33 Blueprint surface, the stronger Blueprint borders/pills, the
+  // adjustColor() panel and border-strong shades — was therefore computed and
+  // then discarded. Inline style on <body> outranks that class rule, so the
+  // sampled values now reach the panel. The theme MutationObserver filters on
+  // ["class", "data-theme"], so writing style here cannot re-enter this sync.
+  body.style.setProperty("--bt-panel-bg", adjustedPanel);
+  body.style.setProperty("--bt-panel-text", textColor);
+  body.style.setProperty("--bt-border", borderColor);
+  body.style.setProperty("--bt-border-strong", borderStrong);
+  body.style.setProperty("--bt-muted", mutedColor);
+  body.style.setProperty("--bt-pill-bg", pillBg);
 
   lastThemeSample = { surface: baseSurface, dark: finalIsDark };
 }
@@ -19933,6 +19994,26 @@ function sampleBackgroundColor(selectors = []) {
   return null;
 }
 
+// Roam paints the page background on <body> (desktop wraps it once more in
+// .rm-electron); .roam-main, .roam-article and every container between them
+// are fully transparent. Sampling only the selectors themselves therefore
+// returns null and the theme decision would fall through to the OS hint —
+// walk each candidate's ancestor chain until something actually paints.
+function sampleEffectiveBackgroundColor(selectors = []) {
+  if (typeof document === "undefined") return null;
+  for (const selector of selectors) {
+    let node = typeof selector === "string" ? document.querySelector(selector) : selector;
+    while (node) {
+      const color = window.getComputedStyle(node)?.backgroundColor;
+      if (color && color !== "rgba(0, 0, 0, 0)" && color !== "transparent") {
+        return color;
+      }
+      node = node.parentElement;
+    }
+  }
+  return null;
+}
+
 async function waitForAttrDate(uid, attr, targetDate, set, retries = 6, getBlockFn, readMetaFn) {
   if (!uid || !(targetDate instanceof Date) || Number.isNaN(targetDate.getTime())) return;
   if (typeof getBlockFn !== "function" || typeof readMetaFn !== "function") return;
@@ -19993,7 +20074,19 @@ async function waitForRepeatState(uid, set, options = {}, retries = 6, getBlockF
 
 function observeThemeChanges() {
   if (typeof document === "undefined") return;
-  syncDashboardThemeVars();
+
+  // Sampling immediately on boot can land mid Roam's white flash — before
+  // Roam's own theme class/background is applied — which caches a false
+  // "light" surface as lastThemeSample. shouldSkipThemeSync now re-runs on
+  // any later mode change regardless, but skipping the flash sample avoids
+  // relying on that correction at all for the common case. Defer one frame
+  // past paint; the observer below still wires up synchronously so a real
+  // theme mutation during that single frame is never missed.
+  if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(() => syncDashboardThemeVars());
+  } else {
+    syncDashboardThemeVars();
+  }
 
   if (!document.body) return;
 

@@ -428,17 +428,52 @@ body.bt-theme-dark .bt-task-row__page-ref--plain {
     background: rgba(255, 255, 255, 0.1);
 }
 
+/* Filter chips and task pills are both <button>s whose base rules
+   (`.bt-chip`, `.bt-pill`) are 0,1,0 — under the `.bp3-dark button { color:
+   var(--dark-bg) }` rule Roam ships at 0,1,1 their label is painted with the
+   page BACKGROUND colour, the same invisible-text trap documented for the
+   Today panel below. These rules are 0,2,1 and win.
+
+   `.bt-chip` also had no dark background at all: `background: transparent` plus
+   a 1px translucent border reads as an empty outline on a dark panel, and
+   `.bt-pill` had no dark rule whatsoever. Give the inactive states a real
+   surface. `:is(html, body).bp3-dark` matches this Roam build, where bp3-dark
+   lives on <html> so the `body.bp3-dark` form never fires; it has the same
+   0,2,1 specificity as the body form it sits beside. */
 body.bp3-dark .bt-chip,
-body.bt-theme-dark .bt-chip {
-    color: var(--bt-panel-text);
-    border-color: rgba(255, 255, 255, 0.32);
+body.bt-theme-dark .bt-chip,
+:is(html, body).bp3-dark .bt-chip {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--bt-panel-text, rgba(247, 249, 251, 0.92));
+    border-color: var(--bt-border-strong, rgba(255, 255, 255, 0.32));
 }
 
 body.bp3-dark .bt-chip--active,
-body.bt-theme-dark .bt-chip--active {
-    background: var(--bt-panel-text);
+body.bt-theme-dark .bt-chip--active,
+:is(html, body).bp3-dark .bt-chip--active {
+    background: var(--bt-panel-text, rgba(247, 249, 251, 0.92));
     color: #0f1418;
-    border-color: var(--bt-panel-text);
+    border-color: var(--bt-panel-text, rgba(247, 249, 251, 0.92));
+}
+
+body.bp3-dark .bt-pill,
+body.bt-theme-dark .bt-pill,
+:is(html, body).bp3-dark .bt-pill {
+    background: var(--bt-pill-bg, rgba(255, 255, 255, 0.12));
+    color: var(--bt-panel-text, rgba(247, 249, 251, 0.92));
+    border-color: var(--bt-border-strong, rgba(255, 255, 255, 0.28));
+}
+
+/* `.bt-pill--muted { opacity: .6 }` multiplies against text that is already
+   alpha'd, which is how the disabled Today-panel buttons ended up illegible.
+   Dim with an explicit colour instead and keep the pill body visible. */
+body.bp3-dark .bt-pill--muted,
+body.bt-theme-dark .bt-pill--muted,
+:is(html, body).bp3-dark .bt-pill--muted {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.07);
+    color: rgba(247, 249, 251, 0.68);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 body.bp3-dark .bt-filter-row__label,
@@ -456,6 +491,75 @@ body.bt-theme-dark .bt-task-row__meta,
 body.bp3-dark .bt-task-row__context,
 body.bt-theme-dark .bt-task-row__context {
     color: var(--bt-muted);
+}
+
+/* Today panel. Its own styles inherit colour from the host block and read
+   --bt-panel-text, both of which can resolve to a light-theme value (Roam
+   leaves --bp3-text-color at #202B33 under .bp3-dark), leaving invisible
+   titles and ghost icon buttons. Pin literal light values here, like the
+   task-row rules above, rather than routing through the sampled variable. */
+body.bp3-dark .bt-today-panel-root,
+body.bt-theme-dark .bt-today-panel-root {
+    color: rgba(247, 249, 251, 0.92);
+}
+
+body.bp3-dark .bt-today-panel__icon-btn,
+body.bt-theme-dark .bt-today-panel__icon-btn {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(247, 249, 251, 0.92);
+    border-color: rgba(255, 255, 255, 0.28);
+    box-shadow: none;
+}
+
+body.bp3-dark .bt-today-panel__icon-btn:hover,
+body.bt-theme-dark .bt-today-panel__icon-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* disableAll() sets .disabled while an action is in flight; the pinned
+   dark `color` above is an author-level override that beats the
+   button:disabled user-agent grey, so give disabled state its own
+   explicit (dimmer) values instead of leaning on opacity, which would
+   multiply against the already-alpha'd text and land back in the same
+   low-contrast trap as the blocked/completed rows below. */
+body.bp3-dark .bt-today-panel__icon-btn:disabled,
+body.bt-theme-dark .bt-today-panel__icon-btn:disabled {
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(247, 249, 251, 0.45);
+    border-color: rgba(255, 255, 255, 0.14);
+    cursor: not-allowed;
+}
+
+body.bp3-dark .bt-today-panel__icon-btn:focus-visible,
+body.bt-theme-dark .bt-today-panel__icon-btn:focus-visible {
+    outline-color: #63b3ed;
+}
+
+/* Roam core (assets/css/less-compiled/site.css) ships
+       .bp3-dark button { color: var(--dark-bg); }
+   at specificity 0,1,1. A bare `.bt-today-panel__row-title { color: inherit }`
+   is only 0,1,0, so Roam wins and paints the task title with the panel
+   BACKGROUND colour — measured contrast 1.00, i.e. invisible. The icon buttons
+   escaped this only because their dark rule above is 0,2,0.
+
+   So: every <button> the panel renders needs an explicit colour at >= 0,1,1.
+   Scope it to the panel root and match `button` directly (0,2,2) so any button
+   added later inherits the fix instead of silently disappearing. Disabled state
+   above stays 0,3,0 and still wins.
+
+   Note `body.bp3-dark` alone is NOT sufficient: in this Roam build `bp3-dark`
+   lives on <html>, and in Roam's auto mode it exists nowhere at all — hence the
+   :is(html, body) form plus the prefers-color-scheme fallback. */
+body.bt-theme-dark .bt-today-panel-root button,
+:is(html, body).bp3-dark .bt-today-panel-root button {
+    color: rgba(247, 249, 251, 0.92);
+}
+
+@media (prefers-color-scheme: dark) {
+    body:not(.bt-theme-light) .bt-today-panel-root button {
+        color: rgba(247, 249, 251, 0.92);
+    }
 }
 
 .bt-today-badge {
@@ -496,6 +600,16 @@ body.bt-theme-dark .bt-task-row__context {
     font-size: 16px;
     font-weight: 500;
     line-height: 24px;
+}
+
+body.bp3-dark .bt-today-badge:hover,
+body.bt-theme-dark .bt-today-badge:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+body.bp3-dark .bt-today-badge__icon,
+body.bt-theme-dark .bt-today-badge__icon {
+    color: rgba(247, 249, 251, 0.78);
 }
 
 body.bp3-dark .bt-task-row__actions .bp3-button,
@@ -4640,6 +4754,15 @@ body.bt-theme-dark .bt-kb-help-footer kbd {
     background: rgba(0, 0, 0, 0.25);
 }
 
+/* Matches the dark scrim the series and activity overlays already use — a 25%
+   black wash over an already-dark page barely separates the panel from what is
+   behind it. */
+body.bp3-dark .bt-analytics-overlay__backdrop,
+body.bt-theme-dark .bt-analytics-overlay__backdrop,
+:is(html, body).bp3-dark .bt-analytics-overlay__backdrop {
+    background: rgba(0, 0, 0, 0.45);
+}
+
 .bt-analytics-overlay__panel {
     position: relative;
     width: 480px;
@@ -4673,6 +4796,18 @@ body.bt-theme-dark .bt-kb-help-footer kbd {
     margin: 0;
 }
 
+/* The overlay's close ✕ is a bare `.bp3-button.bp3-minimal`. Blueprint's own
+   `.bp3-dark .bp3-button` (0,2,0) covers it only while Roam actually carries
+   bp3-dark; when the panel resolves dark from a sampled background or the
+   external appearance toggle (body.bt-theme-dark, bp3-dark nowhere) the
+   light-theme Blueprint ink renders on a dark panel. Same treatment
+   .bt-dashboard__header-actions .bp3-button already gets, at 0,3,0. */
+body.bp3-dark .bt-analytics-header .bp3-button,
+body.bt-theme-dark .bt-analytics-header .bp3-button,
+:is(html, body).bp3-dark .bt-analytics-header .bp3-button {
+    color: var(--bt-panel-text, rgba(247, 249, 251, 0.92));
+}
+
 .bt-analytics-periods {
     display: flex;
     gap: 4px;
@@ -4694,6 +4829,47 @@ body.bt-theme-dark .bt-kb-help-footer kbd {
     background: var(--bt-chart-bar);
     color: #fff;
     border-color: var(--bt-chart-bar);
+}
+
+/* Both period chips are <button>s and both base rules above are 0,1,0. Roam
+   core ships `.bp3-dark button { color: var(--dark-bg) }` at 0,1,1, so in dark
+   mode Roam wins and paints every chip label with the page BACKGROUND colour —
+   the same invisible-text trap already documented for the Today panel and the
+   filter chips. `background: none` on an inactive chip resolves to the dark
+   panel beneath it, so its label vanished outright; the active chip stayed
+   readable only by accident, because Roam's dark ink happens to land on a
+   light-blue fill.
+
+   These rules are 0,2,1 and win. `:is(html, body).bp3-dark` matches this Roam
+   build, where bp3-dark lives on <html> so the plain `body.bp3-dark` form never
+   fires; same 0,2,1 specificity as the body form beside it. */
+body.bp3-dark .bt-analytics-period-btn,
+body.bt-theme-dark .bt-analytics-period-btn,
+:is(html, body).bp3-dark .bt-analytics-period-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--bt-panel-text, rgba(247, 249, 251, 0.92));
+    border-color: var(--bt-border-strong, rgba(255, 255, 255, 0.32));
+}
+
+/* `:not(--active)` keeps hover disjoint from the active rule below instead of
+   out-specifying it, so source order between the two stops mattering. */
+body.bp3-dark .bt-analytics-period-btn:not(.bt-analytics-period-btn--active):hover,
+body.bt-theme-dark .bt-analytics-period-btn:not(.bt-analytics-period-btn--active):hover,
+:is(html, body).bp3-dark .bt-analytics-period-btn:not(.bt-analytics-period-btn--active):hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: var(--bt-border-strong, rgba(255, 255, 255, 0.4));
+}
+
+/* The active chip's fill is --bt-chart-bar, which the dark token block sets to
+   #60a5fa. Pinning the base rule's `#fff` here would put white on light blue —
+   2.6:1, below WCAG AA — and would be a regression against what renders today,
+   since Roam's rule is currently painting dark ink there. Keep dark ink. */
+body.bp3-dark .bt-analytics-period-btn--active,
+body.bt-theme-dark .bt-analytics-period-btn--active,
+:is(html, body).bp3-dark .bt-analytics-period-btn--active {
+    background: var(--bt-chart-bar, #60a5fa);
+    color: #0f1418;
+    border-color: var(--bt-chart-bar, #60a5fa);
 }
 
 .bt-analytics-content {
