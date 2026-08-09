@@ -1,5 +1,6 @@
 const TASK_MACRO_RE = /^\s*(?:\{\{\s*(?:\[\[\s*)?(?:TODO|DONE)(?:\s*\]\])?\s*\}\}|(?:TODO|DONE)\s+)/i;
 const ATTRIBUTE_RE = /^\s*([\p{L}\p{N}_\-/\s]+)::/u;
+const OWNED_CAPABILITY_NAMESPACES = new WeakSet();
 
 export const FRESH_BLOCK_PULL_PATTERN = `
   [:block/uid :block/string :block/props :block/order :node/title
@@ -531,9 +532,12 @@ export function createBetterTasksCapability({
   });
 }
 
-export function installBetterTasksCapability(windowLike, capability) {
+export function installBetterTasksCapabilityVersion(windowLike, versionKey, capability) {
   if (!windowLike || (typeof windowLike !== "object" && typeof windowLike !== "function")) {
     throw new TypeError("A window-like object is required");
+  }
+  if (typeof versionKey !== "string" || !/^v\d+$/.test(versionKey)) {
+    throw new TypeError("A version key such as v1 or v2 is required");
   }
   if (!capability || typeof capability !== "object") throw new TypeError("A capability object is required");
   const current = windowLike.betterTasks;
@@ -541,19 +545,25 @@ export function installBetterTasksCapability(windowLike, capability) {
     throw new TypeError("window.betterTasks is already owned by a non-object value");
   }
   const namespace = current || {};
+  if (current == null) OWNED_CAPABILITY_NAMESPACES.add(namespace);
   windowLike.betterTasks = namespace;
-  namespace.v1 = capability;
+  namespace[versionKey] = capability;
   let removed = false;
   return () => {
     if (removed) return;
     removed = true;
-    if (windowLike.betterTasks === namespace && namespace.v1 === capability) {
-      delete namespace.v1;
-      if (current == null && Reflect.ownKeys(namespace).length === 0) {
+    if (windowLike.betterTasks === namespace && namespace[versionKey] === capability) {
+      delete namespace[versionKey];
+      if (OWNED_CAPABILITY_NAMESPACES.has(namespace) && Reflect.ownKeys(namespace).length === 0) {
         delete windowLike.betterTasks;
+        OWNED_CAPABILITY_NAMESPACES.delete(namespace);
       }
     }
   };
+}
+
+export function installBetterTasksCapability(windowLike, capability) {
+  return installBetterTasksCapabilityVersion(windowLike, "v1", capability);
 }
 
 export function installOwnedWindowRegistryEntry(

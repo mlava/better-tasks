@@ -94,10 +94,17 @@ import {
   createFreshRoamBlockReader,
   hasBetterTasksOwnershipSignal,
   installBetterTasksCapability,
+  installBetterTasksCapabilityVersion,
   installOwnedWindowRegistryEntry,
   resolveChildSurfaceRepeatText,
   updateDueParseDiagnostics,
 } from "./core/better-tasks-capability.js";
+import {
+  createBetterTasksCapabilityV2,
+  createBetterTasksStatusTagRequester,
+  extractTaskStatusTag,
+  stripTaskStatusTagFromTaskText,
+} from "./core/task-status-capability.js";
 import {
   createDeleteTerminalResult,
   createTaskDeleteFingerprint,
@@ -4206,6 +4213,14 @@ export default {
       return true;
     }
 
+    function getLiveEditorString(uid) {
+      const active = typeof document !== "undefined" ? document.activeElement : null;
+      if (!active || typeof active.value !== "string") return null;
+      const host = active.closest?.(".rm-block-main");
+      if (!host || host.getAttribute("data-uid") !== uid) return null;
+      return active.value;
+    }
+
     async function updateBlockString(uid, string) {
       if (PARENT_WRITE_DELAY_MS > 0) {
         await delay(PARENT_WRITE_DELAY_MS);
@@ -5962,7 +5977,7 @@ export default {
       if (typeof window === "undefined") return;
       removeBetterTasksCapability?.();
       const readBlockFresh = createFreshRoamBlockReader(window.roamAlphaAPI);
-      const capability = createBetterTasksCapability({
+      const v1 = createBetterTasksCapability({
         version: BETTER_TASKS_PACKAGE_VERSION,
         readBlockFresh,
         inspectTask: inspectTaskFromAuthoritativeGraph,
@@ -5982,7 +5997,23 @@ export default {
           return buildToolTaskSummary(task, set);
         },
       });
-      removeBetterTasksCapability = installBetterTasksCapability(window, capability);
+      const requestStatusTag = createBetterTasksStatusTagRequester({
+        readBlockFresh,
+        classifyBlock: v1.classifyBlock,
+        writeBlockString: updateBlockString,
+        getLiveEditorString,
+        notifyBlockChange: (uid) => {
+          invalidateBlockCache(uid);
+          activeDashboardController?.notifyBlockChange?.(uid, { bypassFilters: true });
+        },
+      });
+      const v2 = createBetterTasksCapabilityV2(v1, requestStatusTag);
+      const removeV1 = installBetterTasksCapability(window, v1);
+      const removeV2 = installBetterTasksCapabilityVersion(window, "v2", v2);
+      removeBetterTasksCapability = () => {
+        removeV2();
+        removeV1();
+      };
     }
 
     const KNOWN_BT_ATTR_KEYS = new Set([
@@ -18253,6 +18284,7 @@ export default {
 
     function deriveDashboardTask(block, meta, set) {
       if (!block) return null;
+      const taskStatus = extractTaskStatusTag(block.string || "");
       const title = formatDashboardTitle(block.string || "");
       const attrCompleted = meta?.completed || meta?.childAttrMap?.completed?.value || null;
       const isCompleted = isBlockCompleted(block) || !!attrCompleted;
@@ -18279,13 +18311,14 @@ export default {
             : translateString("Available", getLanguageSetting());
       const richMeta = meta?.metadata || parseRichMetadata(meta?.childAttrMap || {}, set?.attrNames || resolveAttributeNames());
       const metaPills = buildDashboardPills(
-        { startAt, deferUntil, dueAt, repeatText: meta?.repeat, metadata: richMeta },
+        { startAt, deferUntil, dueAt, repeatText: meta?.repeat, metadata: richMeta, taskStatus },
         set
       );
       return {
         uid: block.uid,
         text: block.string || "",
         title,
+        taskStatus,
         pageUid: block.page?.uid || null,
         pageTitle: block.page?.title || block.page?.["node/title"] || "",
         repeatText: meta?.repeat || "",
@@ -18325,6 +18358,15 @@ export default {
       const pills = [];
       const lang = getLanguageSetting();
       const metaLabels = t(["metadata"], lang) || {};
+      if (info.taskStatus?.label) {
+        pills.push({
+          type: "taskStatus",
+          icon: "●",
+          value: info.taskStatus.label,
+          label: `Workflow status: ${info.taskStatus.label}`,
+          statusTitle: info.taskStatus.title,
+        });
+      }
       if (info.repeatText) {
         const label = metaLabels.repeatRule || metaLabels.repeat || "Repeat";
         pills.push({
@@ -18427,7 +18469,7 @@ export default {
 
     function formatDashboardTitle(text) {
       if (!text) return "";
-      return text
+      return stripTaskStatusTagFromTaskText(text)
         .replace(/^\s*\{\{\s*\[\[\s*(?:TODO|DONE)\s*\]\]\s*\}\}\s*/i, "")
         .replace(/^\s*(?:TODO|DONE)\s+/i, "")
         .trim();
