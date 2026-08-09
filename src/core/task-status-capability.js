@@ -2,6 +2,57 @@ const TASK_TOKEN_RE = /^(\s*)(\{\{\s*(?:\[\[\s*)?(TODO|DONE)(?:\s*\]\])?\s*\}\}|
 const BRACKET_STATUS_RE = /^#\[\[(task-status\/[^\]\r\n]+)\]\]/i;
 const PLAIN_STATUS_RE = /^#(task-status\/[^\s\.,;:!\?\)\]\}\r\n]+)(?=$|\s|[\.,;:!\?\)\]\}])/i;
 const STATUS_TITLE_RE = /^task-status\/[^\[\]#\r\n/]+$/i;
+const ROAM_BLOCK_UID_RE = /^[A-Za-z0-9_-]{9}$/;
+
+function normalizeEditorBlockUid(value) {
+  if (typeof value !== "string") return null;
+  const uid = value.trim();
+  return ROAM_BLOCK_UID_RE.test(uid) ? uid : null;
+}
+
+function readUidAttribute(element, name, datasetKey) {
+  if (!element) return null;
+  return normalizeEditorBlockUid(
+    element.getAttribute?.(name) ?? element.dataset?.[datasetKey]
+  );
+}
+
+function readUidFromInputId(element) {
+  const id = typeof element?.id === "string" ? element.id : "";
+  return id.startsWith("block-input-")
+    ? normalizeEditorBlockUid(id.slice("block-input-".length))
+    : null;
+}
+
+export function resolveEditorBlockUid(element, domUtil = null) {
+  if (!element) return null;
+
+  const candidates = [
+    element,
+    element.closest?.("[data-block-uid]"),
+    element.closest?.("[data-uid]"),
+    element.closest?.("[id^='block-input-']"),
+  ];
+  for (const candidate of candidates) {
+    const uid =
+      readUidAttribute(candidate, "data-block-uid", "blockUid") ||
+      readUidAttribute(candidate, "data-uid", "uid") ||
+      readUidFromInputId(candidate);
+    if (uid) return uid;
+  }
+
+  for (const resolverName of ["blockUidFromTarget", "elToUid"]) {
+    const resolver = domUtil?.[resolverName];
+    if (typeof resolver !== "function") continue;
+    try {
+      const uid = normalizeEditorBlockUid(resolver.call(domUtil, element));
+      if (uid) return uid;
+    } catch (_) {
+      // DOM helpers are optional; unresolved editors must remain fail-closed.
+    }
+  }
+  return null;
+}
 
 function skipHorizontalWhitespace(text, index) {
   let cursor = index;

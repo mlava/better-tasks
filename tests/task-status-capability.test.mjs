@@ -7,6 +7,7 @@ import {
   createBetterTasksCapabilityV2,
   createBetterTasksStatusTagRequester,
   extractTaskStatusTag,
+  resolveEditorBlockUid,
   stripTaskStatusTagFromTaskText,
 } from "../src/core/task-status-capability.js";
 import { installBetterTasksCapabilityVersion } from "../src/core/better-tasks-capability.js";
@@ -14,6 +15,46 @@ import { installBetterTasksCapabilityVersion } from "../src/core/better-tasks-ca
 const contract = JSON.parse(
   readFileSync(new URL("./fixtures/better-tasks-capability-v2.json", import.meta.url), "utf8")
 );
+
+function fakeEditor({ id = "", ancestors = {} } = {}) {
+  return {
+    id,
+    dataset: {},
+    getAttribute: () => null,
+    closest: (selector) => ancestors[selector] || null,
+  };
+}
+
+function fakeUidHost(attribute, uid) {
+  return {
+    id: "",
+    dataset: {},
+    getAttribute: (name) => name === attribute ? uid : null,
+  };
+}
+
+test("editor UID resolution supports current Roam data-block-uid ancestors", () => {
+  const uid = "1HOlv_LF5";
+  const editor = fakeEditor({
+    ancestors: {
+      "[data-block-uid]": fakeUidHost("data-block-uid", uid),
+    },
+  });
+  assert.equal(resolveEditorBlockUid(editor), uid);
+});
+
+test("editor UID resolution supports legacy attributes, input IDs, and DOM helpers", () => {
+  assert.equal(resolveEditorBlockUid(fakeEditor({
+    ancestors: { "[data-uid]": fakeUidHost("data-uid", "abcdefghi") },
+  })), "abcdefghi");
+  assert.equal(resolveEditorBlockUid(fakeEditor({ id: "block-input-123456789" })), "123456789");
+  assert.equal(resolveEditorBlockUid(fakeEditor(), {
+    blockUidFromTarget: () => "helperUID",
+  }), "helperUID");
+  assert.equal(resolveEditorBlockUid(fakeEditor(), {
+    blockUidFromTarget: () => "not a uid",
+  }), null);
+});
 
 test("managed status transform preserves TODO/DONE and task prose", () => {
   assert.equal(
@@ -215,6 +256,7 @@ test("production index installs v2 and separates the workflow label from dashboa
   assert.match(indexSource, /createBetterTasksCapabilityV2\(v1, requestStatusTag\)/);
   assert.match(indexSource, /installBetterTasksCapabilityVersion\(window, "v2", v2\)/);
   assert.match(indexSource, /stripTaskStatusTagFromTaskText\(text\)/);
+  assert.match(indexSource, /resolveEditorBlockUid\(active, window\.roamAlphaAPI\?\.util\?\.dom\)/);
   assert.match(indexSource, /statusTitle: info\.taskStatus\.title/);
   assert.match(dashboardSource, /data-task-status-title=/);
 });

@@ -103,6 +103,7 @@ import {
   createBetterTasksCapabilityV2,
   createBetterTasksStatusTagRequester,
   extractTaskStatusTag,
+  resolveEditorBlockUid,
   stripTaskStatusTagFromTaskText,
 } from "./core/task-status-capability.js";
 import {
@@ -4202,10 +4203,8 @@ export default {
     function syncActiveTextarea(uid, string) {
       const active = typeof document !== "undefined" ? document.activeElement : null;
       if (!active || typeof string !== "string") return false;
-      const host = active.closest?.(".rm-block-main");
-      if (!host) return false;
-      const hostUid = host.getAttribute("data-uid");
-      if (hostUid !== uid) return false;
+      const activeUid = resolveEditorBlockUid(active, window.roamAlphaAPI?.util?.dom);
+      if (activeUid !== uid) return false;
       if (typeof active.value === "string" && active.value !== string) {
         active.value = string;
         active.dispatchEvent(new Event("input", { bubbles: true }));
@@ -4216,8 +4215,8 @@ export default {
     function getLiveEditorString(uid) {
       const active = typeof document !== "undefined" ? document.activeElement : null;
       if (!active || typeof active.value !== "string") return null;
-      const host = active.closest?.(".rm-block-main");
-      if (!host || host.getAttribute("data-uid") !== uid) return null;
+      const activeUid = resolveEditorBlockUid(active, window.roamAlphaAPI?.util?.dom);
+      if (activeUid !== uid) return null;
       return active.value;
     }
 
@@ -4230,7 +4229,9 @@ export default {
         if (typeof string === "string") {
           const synced = syncActiveTextarea(uid, string);
           if (!synced) {
-            const blockMain = document.querySelector(`.rm-block-main[data-uid="${uid}"]`);
+            const blockMain =
+              document.querySelector(`[data-block-uid="${uid}"] .rm-block-main`) ||
+              document.querySelector(`.rm-block-main[data-uid="${uid}"]`);
             const textarea =
               blockMain?.querySelector?.("textarea.rm-block-input") ||
               blockMain?.querySelector?.("textarea.rm-block__input") ||
