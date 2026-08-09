@@ -22,6 +22,9 @@ import {
 const packageMetadata = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8")
 );
+const sharedContractFixture = JSON.parse(
+  readFileSync(new URL("./fixtures/better-tasks-capability-v1.json", import.meta.url), "utf8")
+);
 
 function makeGraph(definitions) {
   const nodes = new Map();
@@ -88,6 +91,17 @@ function makeCapability(graph, overrides = {}) {
     ...overrides,
   });
 }
+
+test("capability satisfies the shared companion v1 contract fixture", async () => {
+  const capability = makeCapability(makeGraph(sharedContractFixture.graph));
+  for (const fixtureCase of sharedContractFixture.cases) {
+    assert.deepEqual(
+      await capability.classifyBlock(fixtureCase.uid, fixtureCase.options),
+      fixtureCase.expected,
+      fixtureCase.uid
+    );
+  }
+});
 
 test("fresh Roam reader uses data.async.pull and the direct-parent reverse ref on every call", async () => {
   const calls = [];
