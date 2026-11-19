@@ -364,7 +364,17 @@ label.revealIn>input {
     --bt-heatmap-4: rgba(59, 130, 246, 0.8);
 }
 
-body.bp3-dark,
+/* Dark mode has exactly one hook: `body.bt-theme-dark`.
+
+   syncDashboardThemeVars() resolves the mode (theme-extension toggle >
+   `bp3-dark` on <html> or <body> > measured background luminance > OS hint)
+   and toggles bt-theme-dark / bt-theme-light on <body>. Never key a rule on
+   `bp3-dark`, `.rm-dark-mode` or `prefers-color-scheme` directly:
+   - `body.bp3-dark` matches nothing in current Roam, where bp3-dark sits on
+     <html>, so those halves were dead;
+   - any raw marker bypasses the resolver, so a theme toggle set to light (or a
+     light Roam on a dark OS) would still pull in dark rules and paint
+     near-white text on a white page. */
 body.bt-theme-dark {
     --bt-panel-bg: var(--bt-surface, #1f2428);
     --bt-panel-text: var(--bt-text, #f7f9fb);
@@ -381,81 +391,192 @@ body.bt-theme-dark {
     --bt-heatmap-4: rgba(96, 165, 250, 0.8);
 }
 
-body.bp3-dark .bt-dashboard__header h2,
 body.bt-theme-dark .bt-dashboard__header h2 {
     color: var(--bt-panel-text);
 }
 
-body.bp3-dark .bt-dashboard__header-actions .bp3-button,
-body.bt-theme-dark .bt-dashboard__header-actions .bp3-button {
+/* Dashboard header and row-action buttons are bare `.bp3-button`s. Setting
+   only `color` here assumed the theme would darken the button itself, but
+   Blueprint ships `.bp3-button:not([class*="bp3-intent-"])` (0,2,0) with a
+   light fill and a white gradient background-image, and its dark variant only
+   applies under `.bp3-dark`. A theme that goes dark without bp3-dark (the
+   Blueprint extension's own toggle) therefore left near-white labels on a
+   white button. Own the whole surface instead: these selectors are 0,3,1 and
+   beat both Blueprint rules; `background-image: none` drops the gradient. */
+body.bt-theme-dark .bt-dashboard__header-actions .bp3-button,
+body.bt-theme-dark .bt-dashboard__toolbar .bp3-button,
+body.bt-theme-dark .bt-quick-add .bp3-button:not(.bp3-minimal),
+body.bt-theme-dark .bt-task-row__actions .bp3-button,
+body.bt-theme-dark .bt-task-row__snooze .bp3-button {
+    background-color: rgba(255, 255, 255, 0.1);
+    background-image: none;
+    box-shadow: none;
     color: var(--bt-panel-text);
     border-color: var(--bt-border-strong);
 }
 
-body.bp3-dark .bt-group-header,
+body.bt-theme-dark .bt-dashboard__header-actions .bp3-button:hover:not(:disabled),
+body.bt-theme-dark .bt-dashboard__toolbar .bp3-button:hover:not(:disabled),
+body.bt-theme-dark .bt-quick-add .bp3-button:not(.bp3-minimal):hover:not(:disabled),
+body.bt-theme-dark .bt-task-row__actions .bp3-button:hover:not(:disabled),
+body.bt-theme-dark .bt-task-row__snooze .bp3-button:hover:not(:disabled) {
+    background-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Disabled (e.g. Saved Views "Update" with no unsaved changes): explicit dim
+   values rather than opacity, which multiplies against the already-alpha'd
+   text and lands back in the low-contrast trap. */
+body.bt-theme-dark .bt-dashboard__toolbar .bp3-button:disabled,
+body.bt-theme-dark .bt-quick-add .bp3-button:disabled {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: rgba(247, 249, 251, 0.45);
+    border-color: rgba(255, 255, 255, 0.14);
+    cursor: not-allowed;
+}
+
+/* More bare <button>s relying on `color: inherit` / a 0,1,1 rule, which Roam's
+   `.bp3-dark button { color: var(--dark-bg) }` (0,1,1) beats or ties — the
+   group headers (OVERDUE, NO DUE DATE…) rendered in the background colour
+   while their <span> counts stayed visible. 0,2,1/0,2,2 wins. */
+body.bt-theme-dark .bt-group-header__toggle {
+    color: inherit;
+}
+
+body.bt-theme-dark .bt-review-menu__popover button {
+    color: var(--bt-panel-text);
+}
+
 body.bt-theme-dark .bt-group-header {
     color: rgba(247, 249, 251, 0.88);
 }
 
-body.bp3-dark .bt-task-row__checkbox,
 body.bt-theme-dark .bt-task-row__checkbox {
     color: rgba(247, 249, 251, 0.64);
 }
 
-body.bp3-dark .bt-task-row__checkbox--done,
 body.bt-theme-dark .bt-task-row__checkbox--done {
     color: #5dd48a;
 }
 
-body.bp3-dark .bt-task-row__context-link,
 body.bt-theme-dark .bt-task-row__context-link {
     color: rgba(247, 249, 251, 0.9);
 }
 
-body.bp3-dark .bt-task-row__page-ref,
 body.bt-theme-dark .bt-task-row__page-ref {
     background: rgba(255, 255, 255, 0.1);
     color: rgba(247, 249, 251, 0.9);
 }
 
-body.bp3-dark .bt-task-row__page-ref:hover,
 body.bt-theme-dark .bt-task-row__page-ref:hover {
     background: rgba(255, 255, 255, 0.18);
 }
 
-body.bp3-dark .bt-task-row__page-ref--plain,
 body.bt-theme-dark .bt-task-row__page-ref--plain {
     background: rgba(255, 255, 255, 0.1);
 }
 
-body.bp3-dark .bt-chip,
+/* Filter chips and task pills are both <button>s whose base rules
+   (`.bt-chip`, `.bt-pill`) are 0,1,0 — under the `.bp3-dark button { color:
+   var(--dark-bg) }` rule Roam ships at 0,1,1 their label is painted with the
+   page BACKGROUND colour, the same invisible-text trap documented for the
+   Today panel below. These rules are 0,2,1 and win.
+
+   `.bt-chip` also had no dark background at all: `background: transparent` plus
+   a 1px translucent border reads as an empty outline on a dark panel, and
+   `.bt-pill` had no dark rule whatsoever. Give the inactive states a real
+   surface. */
 body.bt-theme-dark .bt-chip {
-    color: var(--bt-panel-text);
-    border-color: rgba(255, 255, 255, 0.32);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--bt-panel-text, rgba(247, 249, 251, 0.92));
+    border-color: var(--bt-border-strong, rgba(255, 255, 255, 0.32));
 }
 
-body.bp3-dark .bt-chip--active,
 body.bt-theme-dark .bt-chip--active {
-    background: var(--bt-panel-text);
+    background: var(--bt-panel-text, rgba(247, 249, 251, 0.92));
     color: #0f1418;
-    border-color: var(--bt-panel-text);
+    border-color: var(--bt-panel-text, rgba(247, 249, 251, 0.92));
 }
 
-body.bp3-dark .bt-filter-row__label,
+body.bt-theme-dark .bt-pill {
+    background: var(--bt-pill-bg, rgba(255, 255, 255, 0.12));
+    color: var(--bt-panel-text, rgba(247, 249, 251, 0.92));
+    border-color: var(--bt-border-strong, rgba(255, 255, 255, 0.28));
+}
+
+/* `.bt-pill--muted { opacity: .6 }` multiplies against text that is already
+   alpha'd, which is how the disabled Today-panel buttons ended up illegible.
+   Dim with an explicit colour instead and keep the pill body visible. */
+body.bt-theme-dark .bt-pill--muted {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.07);
+    color: rgba(247, 249, 251, 0.68);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
 body.bt-theme-dark .bt-filter-row__label {
     color: var(--bt-muted);
 }
 
-body.bp3-dark .bt-task-row__title,
 body.bt-theme-dark .bt-task-row__title {
     color: var(--bt-panel-text);
 }
 
-body.bp3-dark .bt-task-row__meta,
 body.bt-theme-dark .bt-task-row__meta,
-body.bp3-dark .bt-task-row__context,
 body.bt-theme-dark .bt-task-row__context {
     color: var(--bt-muted);
+}
+
+/* Today panel. Its own styles inherit colour from the host block and read
+   --bt-panel-text, both of which can resolve to a light-theme value (Roam
+   leaves --bp3-text-color at #202B33 under .bp3-dark), leaving invisible
+   titles and ghost icon buttons. Pin literal light values here, like the
+   task-row rules above, rather than routing through the sampled variable. */
+body.bt-theme-dark .bt-today-panel-root {
+    color: rgba(247, 249, 251, 0.92);
+}
+
+body.bt-theme-dark .bt-today-panel__icon-btn {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(247, 249, 251, 0.92);
+    border-color: rgba(255, 255, 255, 0.28);
+    box-shadow: none;
+}
+
+body.bt-theme-dark .bt-today-panel__icon-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* disableAll() sets .disabled while an action is in flight; the pinned
+   dark `color` above is an author-level override that beats the
+   button:disabled user-agent grey, so give disabled state its own
+   explicit (dimmer) values instead of leaning on opacity, which would
+   multiply against the already-alpha'd text and land back in the same
+   low-contrast trap as the blocked/completed rows below. */
+body.bt-theme-dark .bt-today-panel__icon-btn:disabled {
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(247, 249, 251, 0.45);
+    border-color: rgba(255, 255, 255, 0.14);
+    cursor: not-allowed;
+}
+
+body.bt-theme-dark .bt-today-panel__icon-btn:focus-visible {
+    outline-color: #63b3ed;
+}
+
+/* Roam core (assets/css/less-compiled/site.css) ships
+       .bp3-dark button { color: var(--dark-bg); }
+   at specificity 0,1,1. A bare `.bt-today-panel__row-title { color: inherit }`
+   is only 0,1,0, so Roam wins and paints the task title with the panel
+   BACKGROUND colour — measured contrast 1.00, i.e. invisible. The icon buttons
+   escaped this only because their dark rule above is 0,2,1.
+
+   So: every <button> the panel renders needs an explicit colour at >= 0,1,1.
+   Scope it to the panel root and match `button` directly (0,2,2) so any button
+   added later inherits the fix instead of silently disappearing. Disabled state
+   above stays 0,3,1 and still wins. */
+body.bt-theme-dark .bt-today-panel-root button {
+    color: rgba(247, 249, 251, 0.92);
 }
 
 .bt-today-badge {
@@ -498,15 +619,14 @@ body.bt-theme-dark .bt-task-row__context {
     line-height: 24px;
 }
 
-body.bp3-dark .bt-task-row__actions .bp3-button,
-body.bt-theme-dark .bt-task-row__actions .bp3-button,
-body.bp3-dark .bt-task-row__snooze .bp3-button,
-body.bt-theme-dark .bt-task-row__snooze .bp3-button {
-    color: var(--bt-panel-text);
-    border-color: var(--bt-border-strong);
+body.bt-theme-dark .bt-today-badge:hover {
+    background: rgba(255, 255, 255, 0.08);
 }
 
-body.bp3-dark .bt-task-menu__trigger,
+body.bt-theme-dark .bt-today-badge__icon {
+    color: rgba(247, 249, 251, 0.78);
+}
+
 body.bt-theme-dark .bt-task-menu__trigger {
     color: var(--bt-panel-text);
     border-color: var(--bt-border);
@@ -631,7 +751,6 @@ body.bt-theme-dark .bt-task-menu__trigger {
     transform: translateY(1px);
 }
 
-body.bp3-dark .bt-sidebar__close:hover,
 body.bt-theme-dark .bt-sidebar__close:hover {
     background: rgba(255, 255, 255, 0.08);
 }
@@ -852,6 +971,13 @@ body.bt-theme-dark .bt-sidebar__close:hover {
 
 .bt-views-select {
     min-width: 160px;
+}
+
+/* Reserve room for Blueprint's ::after caret so long view names truncate
+   instead of running underneath it. 0,3,1 beats `.bp3-select.bp3-small select`. */
+.bt-dashboard__toolbar .bt-views-select.bp3-select select {
+    padding-right: 28px;
+    text-overflow: ellipsis;
 }
 
 .bt-dashboard__toolbar .bp3-button {
@@ -1484,23 +1610,19 @@ body.bt-theme-dark .bt-sidebar__close:hover {
 }
 
 /* Dark mode adjustments for bulk selection and keyboard focus */
-.bp3-dark .bt-task-row--focused,
 body.bt-theme-dark .bt-task-row--focused {
     background: rgba(59, 130, 246, 0.10);
 }
 
-.bp3-dark .bt-task-row--focused.bt-task-row--selected,
 body.bt-theme-dark .bt-task-row--focused.bt-task-row--selected {
     background: rgba(59, 130, 246, 0.20);
 }
 
-.bp3-dark .bt-task-row--selected,
-.rm-dark-mode .bt-task-row--selected {
+body.bt-theme-dark .bt-task-row--selected {
     background: rgba(59, 130, 246, 0.15);
 }
 
-.bp3-dark .bt-bulk-action-bar,
-.rm-dark-mode .bt-bulk-action-bar {
+body.bt-theme-dark .bt-bulk-action-bar {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
@@ -1630,13 +1752,11 @@ body.bt-theme-dark .bt-task-row--focused.bt-task-row--selected {
     background: var(--bt-hover-bg, rgba(0, 0, 0, 0.04));
 }
 
-.bp3-dark .bt-bulk-meta-menu,
-.rm-dark-mode .bt-bulk-meta-menu {
+body.bt-theme-dark .bt-bulk-meta-menu {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
-.bp3-dark .bt-bulk-meta-submenu,
-.rm-dark-mode .bt-bulk-meta-submenu {
+body.bt-theme-dark .bt-bulk-meta-submenu {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
@@ -1732,7 +1852,6 @@ body.bt-theme-dark .bt-task-row--focused.bt-task-row--selected {
     letter-spacing: 0.05em;
 }
 
-body.bp3-dark .bt-task-menu__item:hover,
 body.bt-theme-dark .bt-task-menu__item:hover {
     background: rgba(255, 255, 255, 0.08);
 }
@@ -1741,7 +1860,6 @@ body.bt-theme-dark .bt-task-menu__item:hover {
     color: #c03532;
 }
 
-body.bp3-dark .bt-task-menu__item--danger,
 body.bt-theme-dark .bt-task-menu__item--danger {
     color: #ff9d9a;
 }
@@ -1753,7 +1871,6 @@ body.bt-theme-dark .bt-task-menu__item--danger {
     border-radius: 6px;
 }
 
-body.bp3-dark #bt-dashboard-button.bt-dashboard-button--active,
 body.bt-theme-dark #bt-dashboard-button.bt-dashboard-button--active {
     background: rgba(46, 204, 113, 0.35);
     color: #bef5be;
@@ -1802,7 +1919,6 @@ body.bt-theme-dark #bt-dashboard-button.bt-dashboard-button--active {
     z-index: 1000;
 }
 
-body.bp3-dark .bt-dashboard__sidebar-backdrop,
 body.bt-theme-dark .bt-dashboard__sidebar-backdrop {
     background: rgba(0, 0, 0, 0.6);
 }
@@ -4124,7 +4240,6 @@ body.bt-theme-dark .bt-dashboard {
     inset: 0;
     background: rgba(0, 0, 0, 0.25);
 }
-body.bp3-dark .bt-series-overlay__backdrop,
 body.bt-theme-dark .bt-series-overlay__backdrop {
     background: rgba(0, 0, 0, 0.45);
 }
@@ -4307,7 +4422,6 @@ body.bt-theme-dark .bt-series-overlay__backdrop {
     background: rgba(76, 175, 80, 0.15);
     color: #2e7d32;
 }
-body.bp3-dark .bt-series-timeline-item__badge--ontime,
 body.bt-theme-dark .bt-series-timeline-item__badge--ontime {
     background: rgba(76, 175, 80, 0.25);
     color: #81c784;
@@ -4316,7 +4430,6 @@ body.bt-theme-dark .bt-series-timeline-item__badge--ontime {
     background: rgba(244, 67, 54, 0.12);
     color: #c62828;
 }
-body.bp3-dark .bt-series-timeline-item__badge--late,
 body.bt-theme-dark .bt-series-timeline-item__badge--late {
     background: rgba(244, 67, 54, 0.25);
     color: #ef9a9a;
@@ -4325,7 +4438,6 @@ body.bt-theme-dark .bt-series-timeline-item__badge--late {
     background: rgba(33, 150, 243, 0.15);
     color: #1565c0;
 }
-body.bp3-dark .bt-series-timeline-item__badge--current,
 body.bt-theme-dark .bt-series-timeline-item__badge--current {
     background: rgba(33, 150, 243, 0.25);
     color: #90caf9;
@@ -4371,7 +4483,6 @@ body.bt-theme-dark .bt-series-timeline-item__badge--current {
     background: rgba(33, 150, 243, 0.15);
     color: #1565c0;
 }
-body.bp3-dark .bt-series-projections__chip--active,
 body.bt-theme-dark .bt-series-projections__chip--active {
     background: rgba(33, 150, 243, 0.25);
     color: #90caf9;
@@ -4427,7 +4538,6 @@ body.bt-theme-dark .bt-series-projections__chip--active {
     background: rgba(244, 67, 54, 0.1);
     color: #c62828;
 }
-body.bp3-dark .bt-series-exceptions__item,
 body.bt-theme-dark .bt-series-exceptions__item {
     background: rgba(244, 67, 54, 0.2);
     color: #ef9a9a;
@@ -4476,7 +4586,6 @@ body.bt-theme-dark .bt-series-exceptions__item {
     background: rgba(59, 130, 246, 0.10);
 }
 
-body.bp3-dark .bt-task-menu__item--highlight,
 body.bt-theme-dark .bt-task-menu__item--highlight {
     background: rgba(59, 130, 246, 0.20);
 }
@@ -4548,18 +4657,15 @@ body.bt-theme-dark .bt-task-menu__item--highlight {
     border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
-body.bp3-dark .bt-kb-help-panel,
 body.bt-theme-dark .bt-kb-help-panel {
     background: var(--bt-panel-bg, #2a2a2a);
 }
 
-body.bp3-dark .bt-kb-help-key,
 body.bt-theme-dark .bt-kb-help-key {
     background: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.15);
 }
 
-body.bp3-dark .bt-kb-help-footer kbd,
 body.bt-theme-dark .bt-kb-help-footer kbd {
     background: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.15);
@@ -4640,6 +4746,13 @@ body.bt-theme-dark .bt-kb-help-footer kbd {
     background: rgba(0, 0, 0, 0.25);
 }
 
+/* Matches the dark scrim the series and activity overlays already use — a 25%
+   black wash over an already-dark page barely separates the panel from what is
+   behind it. */
+body.bt-theme-dark .bt-analytics-overlay__backdrop {
+    background: rgba(0, 0, 0, 0.45);
+}
+
 .bt-analytics-overlay__panel {
     position: relative;
     width: 480px;
@@ -4673,6 +4786,16 @@ body.bt-theme-dark .bt-kb-help-footer kbd {
     margin: 0;
 }
 
+/* The overlay's close ✕ is a bare `.bp3-button.bp3-minimal`. Blueprint's own
+   `.bp3-dark .bp3-button` (0,2,0) covers it only while Roam actually carries
+   bp3-dark; when the panel resolves dark from a sampled background or the
+   external appearance toggle (body.bt-theme-dark, bp3-dark nowhere) the
+   light-theme Blueprint ink renders on a dark panel. Same treatment
+   .bt-dashboard__header-actions .bp3-button already gets, at 0,3,1. */
+body.bt-theme-dark .bt-analytics-header .bp3-button {
+    color: var(--bt-panel-text, rgba(247, 249, 251, 0.92));
+}
+
 .bt-analytics-periods {
     display: flex;
     gap: 4px;
@@ -4694,6 +4817,39 @@ body.bt-theme-dark .bt-kb-help-footer kbd {
     background: var(--bt-chart-bar);
     color: #fff;
     border-color: var(--bt-chart-bar);
+}
+
+/* Both period chips are <button>s and both base rules above are 0,1,0. Roam
+   core ships `.bp3-dark button { color: var(--dark-bg) }` at 0,1,1, so in dark
+   mode Roam wins and paints every chip label with the page BACKGROUND colour —
+   the same invisible-text trap already documented for the Today panel and the
+   filter chips. `background: none` on an inactive chip resolves to the dark
+   panel beneath it, so its label vanished outright; the active chip stayed
+   readable only by accident, because Roam's dark ink happens to land on a
+   light-blue fill.
+
+   These rules are 0,2,1 and win. */
+body.bt-theme-dark .bt-analytics-period-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--bt-panel-text, rgba(247, 249, 251, 0.92));
+    border-color: var(--bt-border-strong, rgba(255, 255, 255, 0.32));
+}
+
+/* `:not(--active)` keeps hover disjoint from the active rule below instead of
+   out-specifying it, so source order between the two stops mattering. */
+body.bt-theme-dark .bt-analytics-period-btn:not(.bt-analytics-period-btn--active):hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: var(--bt-border-strong, rgba(255, 255, 255, 0.4));
+}
+
+/* The active chip's fill is --bt-chart-bar, which the dark token block sets to
+   #60a5fa. Pinning the base rule's `#fff` here would put white on light blue —
+   2.6:1, below WCAG AA — and would be a regression against what renders today,
+   since Roam's rule is currently painting dark ink there. Keep dark ink. */
+body.bt-theme-dark .bt-analytics-period-btn--active {
+    background: var(--bt-chart-bar, #60a5fa);
+    color: #0f1418;
+    border-color: var(--bt-chart-bar, #60a5fa);
 }
 
 .bt-analytics-content {
@@ -5271,7 +5427,6 @@ body.bt-theme-dark .bt-kb-help-footer kbd {
     text-overflow: ellipsis;
     word-break: break-word;
 }
-body.bp3-dark .bt-task-row__notes,
 body.bt-theme-dark .bt-task-row__notes {
     background: rgba(255, 255, 255, 0.05);
     color: rgba(255, 255, 255, 0.75);
@@ -5290,7 +5445,6 @@ body.bt-theme-dark .bt-task-row__notes {
     inset: 0;
     background: rgba(0, 0, 0, 0.25);
 }
-body.bp3-dark .bt-activity-overlay__backdrop,
 body.bt-theme-dark .bt-activity-overlay__backdrop {
     background: rgba(0, 0, 0, 0.45);
 }
@@ -5370,7 +5524,6 @@ body.bt-theme-dark .bt-activity-overlay__backdrop {
     font-size: 12px;
     line-height: 1.35;
 }
-body.bp3-dark .bt-activity-item,
 body.bt-theme-dark .bt-activity-item {
     background: rgba(255, 255, 255, 0.04);
 }
@@ -5384,7 +5537,6 @@ body.bt-theme-dark .bt-activity-item {
     color: var(--bt-panel-text, #111);
     font-weight: 500;
 }
-body.bp3-dark .bt-activity-item__label,
 body.bt-theme-dark .bt-activity-item__label {
     color: rgba(255, 255, 255, 0.9);
 }
@@ -5399,7 +5551,6 @@ body.bt-theme-dark .bt-activity-item__label {
     border-radius: 3px;
     background: rgba(0, 0, 0, 0.04);
 }
-body.bp3-dark .bt-activity-item__source,
 body.bt-theme-dark .bt-activity-item__source {
     background: rgba(255, 255, 255, 0.06);
 }
