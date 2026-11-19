@@ -165,6 +165,11 @@ const BUTTON_SURFACES = [
   ".bt-chip--active",
   ".bt-pill",
   ".bt-today-panel-root button",
+  ".bt-group-header__toggle",
+  ".bt-review-menu__popover button",
+  ".bt-dashboard__header-actions .bp3-button",
+  ".bt-dashboard__toolbar .bp3-button",
+  ".bt-task-row__actions .bp3-button",
 ];
 
 for (const target of BUTTON_SURFACES) {
@@ -180,15 +185,32 @@ for (const target of BUTTON_SURFACES) {
   });
 }
 
-// bp3-dark lives on <html> in this Roam build, so a rule that only ever says
-// `body.bp3-dark` never fires; each of these needs the :is(html, body) form or
-// the JS-applied bt-theme-dark class to reach it.
+// Dark mode has exactly one hook: the `body.bt-theme-dark` class that
+// syncDashboardThemeVars() applies after resolving theme toggle > bp3-dark >
+// measured background > OS hint. Keying a rule on a raw marker bypasses that
+// resolver: `body.bp3-dark` never matches (bp3-dark sits on <html> in current
+// Roam), and `html.bp3-dark` / `.rm-dark-mode` / `prefers-color-scheme` would
+// fire even when the user's theme toggle or Roam's rendered page is light.
+test("no rule keys dark styling on a raw marker instead of bt-theme-dark", () => {
+  const offenders = [];
+  for (const rule of RULES) {
+    for (const selector of selectorList(rule)) {
+      if (/\.bp3-dark|\.rm-dark-mode/.test(selector)) offenders.push(selector);
+    }
+  }
+  assert.deepEqual(offenders, [], "dark rules must use body.bt-theme-dark");
+  assert.ok(
+    !/@media[^{]*prefers-color-scheme/.test(stripComments(css)),
+    "prefers-color-scheme is an input to the resolver, not a styling hook"
+  );
+});
+
 for (const target of BUTTON_SURFACES) {
-  test(`${target} is reachable when bp3-dark sits on <html>`, () => {
+  test(`${target} has a bt-theme-dark colour rule`, () => {
     const selectors = darkSelectorsFor(target, "color");
     assert.ok(
-      selectors.some((s) => /:is\(\s*html\s*,\s*body\s*\)\.bp3-dark|\.bt-theme-dark/.test(s)),
-      `${target} is only covered by \`body.bp3-dark\`, which never matches`
+      selectors.some((s) => /^body\.bt-theme-dark\s/.test(s)),
+      `${target} has no body.bt-theme-dark colour rule`
     );
   });
 }

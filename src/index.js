@@ -367,6 +367,15 @@ const dashboardWatchers = new Map();
 let topbarButtonObserver = null;
 let themeObserver = null;
 let themeSyncTimer = null;
+let themeInitialSyncFrame = null;
+const THEME_BODY_PROPS = [
+  "--bt-panel-bg",
+  "--bt-panel-text",
+  "--bt-border",
+  "--bt-border-strong",
+  "--bt-muted",
+  "--bt-pill-bg",
+];
 let lastThemeSample = null;
 let roamStudioToggleObserver = null;
 let roamStudioToggleRetryTimer = null;
@@ -19665,6 +19674,17 @@ function disconnectThemeObserver() {
     clearTimeout(themeSyncTimer);
     themeSyncTimer = null;
   }
+  if (themeInitialSyncFrame != null) {
+    if (typeof window !== "undefined") window.cancelAnimationFrame?.(themeInitialSyncFrame);
+    themeInitialSyncFrame = null;
+  }
+  // syncDashboardThemeVars() tags <body> and writes its custom properties
+  // there; leave the host page as we found it.
+  if (typeof document !== "undefined" && document.body) {
+    document.body.classList.remove("bt-theme-dark", "bt-theme-light");
+    for (const prop of THEME_BODY_PROPS) document.body.style.removeProperty(prop);
+  }
+  lastThemeSample = null;
   if (typeof window !== "undefined" && window.__btThemeMediaQuery) {
     if (themeMediaQueryHandler) {
       window.__btThemeMediaQuery.removeEventListener?.("change", themeMediaQueryHandler);
@@ -20083,7 +20103,11 @@ function observeThemeChanges() {
   // past paint; the observer below still wires up synchronously so a real
   // theme mutation during that single frame is never missed.
   if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
-    window.requestAnimationFrame(() => syncDashboardThemeVars());
+    if (themeInitialSyncFrame != null) window.cancelAnimationFrame?.(themeInitialSyncFrame);
+    themeInitialSyncFrame = window.requestAnimationFrame(() => {
+      themeInitialSyncFrame = null;
+      syncDashboardThemeVars();
+    });
   } else {
     syncDashboardThemeVars();
   }
