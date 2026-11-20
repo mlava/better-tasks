@@ -1,0 +1,92 @@
+{
+  "schema": "better-tasks-capability-v1",
+  "graph": [
+    { "uid": "page", "string": "" },
+    { "uid": "ancestor1", "string": "ordinary ancestor", "directParentUid": "page" },
+    { "uid": "task00001", "string": "{{[[TODO]]}} Root", "directParentUid": "ancestor1", "meta": { "rtId": "root" } },
+    { "uid": "task00002", "string": "{{[[TODO]]}} Child", "directParentUid": "task00001", "meta": { "rtId": "child" } },
+    { "uid": "metadata1", "string": "BT_attrDue:: [[today]]", "directParentUid": "task00001" },
+    { "uid": "ordinary1", "string": "ordinary", "directParentUid": "page" }
+  ],
+  "cases": [
+    {
+      "uid": "task00001",
+      "options": {},
+      "expected": {
+        "kind": "task",
+        "uid": "task00001",
+        "ownerTaskUid": "task00001",
+        "relationship": null,
+        "directParentTaskUid": null,
+        "containsManagedTasks": false,
+        "topLevelManagedTaskUids": []
+      }
+    },
+    {
+      "uid": "task00002",
+      "options": {},
+      "expected": {
+        "kind": "task",
+        "uid": "task00002",
+        "ownerTaskUid": "task00002",
+        "relationship": "structural",
+        "directParentTaskUid": "task00001",
+        "containsManagedTasks": false,
+        "topLevelManagedTaskUids": []
+      }
+    },
+    {
+      "uid": "metadata1",
+      "options": {},
+      "expected": {
+        "kind": "task-owned",
+        "uid": "metadata1",
+        "ownerTaskUid": "task00001",
+        "relationship": null,
+        "directParentTaskUid": null,
+        "containsManagedTasks": false,
+        "topLevelManagedTaskUids": []
+      }
+    },
+    {
+      "uid": "ordinary1",
+      "options": {},
+      "expected": {
+        "kind": "ordinary",
+        "uid": "ordinary1",
+        "ownerTaskUid": null,
+        "relationship": null,
+        "directParentTaskUid": null,
+        "containsManagedTasks": false,
+        "topLevelManagedTaskUids": []
+      }
+    },
+    {
+      "uid": "ancestor1",
+      "options": { "includeDescendants": true },
+      "expected": {
+        "kind": "ordinary",
+        "uid": "ancestor1",
+        "ownerTaskUid": null,
+        "relationship": null,
+        "directParentTaskUid": null,
+        "containsManagedTasks": true,
+        "topLevelManagedTaskUids": ["task00001"]
+      }
+    },
+    {
+      "uid": "missing01",
+      "options": {},
+      "expected": {
+        "kind": "unknown",
+        "uid": "missing01",
+        "ownerTaskUid": null,
+        "relationship": null,
+        "directParentTaskUid": null,
+        "containsManagedTasks": false,
+        "topLevelManagedTaskUids": [],
+        "reason": "block-not-found"
+      }
+    }
+  ]
+}

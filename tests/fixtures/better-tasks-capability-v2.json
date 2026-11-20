@@ -1,0 +1,29 @@
+{
+  "namespace": "betterTasks",
+  "key": "v2",
+  "exactMethods": [
+    "version",
+    "classifyBlock",
+    "requestDelete",
+    "createSubtask",
+    "requestStatusTag"
+  ],
+  "classificationKinds": [
+    "task",
+    "task-owned",
+    "ordinary",
+    "unknown"
+  ],
+  "statusRequest": {
+    "required": [
+      "expectedString",
+      "statusTagTitle",
+      "source"
+    ],
+    "statusTagPrefix": "task-status/",
+    "optionalEditorHandoff": [
+      "expectedLiveEditorString",
+      "editorString"
+    ]
+  }
+}

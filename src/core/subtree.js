@@ -47,10 +47,10 @@ export function normalizePulledSubtree(raw) {
     children: [],
   };
 
-  if (":block/props" in raw) node.props = normalizePropKeys(raw[":block/props"]);
-  if (":block/open" in raw) node.open = raw[":block/open"];
-  if (":block/heading" in raw) node.heading = raw[":block/heading"];
-  if (":block/text-align" in raw) node.textAlign = raw[":block/text-align"];
+  if (raw[":block/props"] != null) node.props = normalizePropKeys(raw[":block/props"]);
+  if (raw[":block/open"] != null) node.open = raw[":block/open"];
+  if (raw[":block/heading"] != null) node.heading = raw[":block/heading"];
+  if (raw[":block/text-align"] != null) node.textAlign = raw[":block/text-align"];
 
   if (":block/children" in raw && Array.isArray(raw[":block/children"])) {
     node.children = raw[":block/children"]
