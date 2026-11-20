@@ -152,7 +152,7 @@ export function applyFilters(tasks, filters, query = "", options = {}) {
       if (!matches) return false;
     }
     if (queryText) {
-      const haystack = `${task.title} ${task.pageTitle || ""} ${task.text}`.toLowerCase();
+      const haystack = `${task.displayTitle || ""} ${task.title} ${task.pageTitle || ""} ${task.text}`.toLowerCase();
       if (!haystack.includes(queryText)) return false;
     }
     return true;
